@@ -2,13 +2,20 @@ const express = require("express");
 const db = require("../db");
 const { searchPlaces } = require("../placesApi");
 const { tagNeeds } = require("../filters");
-const { enrichWithSocials } = require("../socialScraper");
 const apiKeys = require("../apiKeys");
 
 const router = express.Router();
 
+const DEFAULT_DAILY_CAP = 300;
+
 function todayStr() {
   return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+}
+
+function userDailyCap(userId) {
+  const row = db.prepare("SELECT daily_lead_cap FROM users WHERE id = ?").get(userId);
+  if (row && row.daily_lead_cap) return row.daily_lead_cap;
+  return Number(process.env.DAILY_LEAD_CAP) || DEFAULT_DAILY_CAP;
 }
 
 function leadsPulledToday(userId) {
@@ -23,21 +30,21 @@ function firstWordOfLocation(loc) {
   return word || loc.trim();
 }
 
-function uniqueLogName(baseName, nicheId) {
-  let candidate = baseName;
-  let suffix = 2;
-  while (db.prepare("SELECT 1 FROM catch_logs WHERE niche_id = ? AND name = ?").get(nicheId, candidate)) {
-    candidate = `${baseName} (${suffix})`;
-    suffix++;
-  }
-  return candidate;
-}
-
-// Normalizes a free-text location into a stable key for the seen_places
-// dedup table, so "Berlin, Germany" and "berlin,  germany" are treated as
-// the same city rather than accidentally tracked as two different scopes.
+// Normalizes a free-text location into a stable key, so "Berlin, Germany"
+// and "berlin,  germany" are treated as the same city rather than
+// accidentally tracked (or hunted into) as two different scopes.
 function normalizeLocationKey(location) {
   return location.trim().toLowerCase().replace(/[,\s]+/g, " ");
+}
+
+// A niche has at most ONE catch log per distinct city. Repeat hunts for a
+// city you've already searched append new businesses into that same catch
+// log rather than creating another one - this is what makes the dedup-
+// across-hunts logic (seen_places) actually mean something structurally,
+// not just cosmetically.
+function findExistingCatchLogForCity(nicheId, locationKey) {
+  const logs = db.prepare("SELECT * FROM catch_logs WHERE niche_id = ? AND location IS NOT NULL").all(nicheId);
+  return logs.find((log) => normalizeLocationKey(log.location) === locationKey) || null;
 }
 
 // POST /api/search  { keyword, location, maxResults, includeRatings, nicheId?, nicheName?, catchLogName? }
@@ -66,25 +73,25 @@ router.post("/", async (req, res) => {
       existingNiche = db.prepare("SELECT * FROM niches WHERE name = ? AND user_id = ?").get(nicheName.trim(), userId);
     }
 
-    const cap = Number(process.env.DAILY_LEAD_CAP || 100);
+    const cap = userDailyCap(userId);
     const pulledToday = leadsPulledToday(userId);
     const remaining = cap - pulledToday;
 
     if (remaining <= 0) {
       return res.status(429).json({
-        error: `Daily lead cap of ${cap} reached. Try again tomorrow, or raise DAILY_LEAD_CAP in .env.`,
+        error: `Daily lead cap of ${cap} reached. Try again tomorrow, or raise it under Settings.`,
       });
     }
 
     const requestCount = Math.min(Number(maxResults) || 20, remaining, 60);
+    const locationKey = normalizeLocationKey(location);
 
     // Build the "already hunted" exclusion set for this niche+city, so a
     // repeat hunt surfaces new businesses instead of the same ones again.
-    // Only meaningful if the niche already exists - a brand-new niche can't
-    // have any prior hunts to exclude.
-    const locationKey = normalizeLocationKey(location);
     let excludePlaceIds = new Set();
+    let existingCatchLog = null;
     if (existingNiche) {
+      existingCatchLog = findExistingCatchLogForCity(existingNiche.id, locationKey);
       const seenRows = db
         .prepare("SELECT place_id FROM seen_places WHERE user_id = ? AND niche_id = ? AND location_key = ?")
         .all(userId, existingNiche.id, locationKey);
@@ -102,16 +109,6 @@ router.post("/", async (req, res) => {
     });
     const { places, requestsMade, keyId, exhausted } = searchResult;
 
-    // Best-effort: scan each business's own website for social profile links.
-    // Never blocks the search on failure - sites that time out or block bots
-    // just end up with no socials found, same as having none at all.
-    let socialsByPlaceId = new Map();
-    try {
-      socialsByPlaceId = await enrichWithSocials(places);
-    } catch (err) {
-      console.error("Social link enrichment failed (continuing without it):", err);
-    }
-
     // Only now create/reuse the niche and catch log, since we know we have results to save.
     let niche = existingNiche;
     if (!niche) {
@@ -119,12 +116,19 @@ router.post("/", async (req, res) => {
       niche = { id: info.lastInsertRowid, name: nicheName.trim() };
     }
 
-    const baseLogName = (catchLogName && catchLogName.trim()) || firstWordOfLocation(location);
-    const logName = uniqueLogName(baseLogName, niche.id);
-    const logInfo = db
-      .prepare("INSERT INTO catch_logs (niche_id, name, keyword, location) VALUES (?, ?, ?, ?)")
-      .run(niche.id, logName, keyword, location);
-    const catchLogId = logInfo.lastInsertRowid;
+    let catchLogId;
+    let logName;
+    if (existingCatchLog) {
+      // Same niche + same city as a previous hunt - append to it, don't duplicate.
+      catchLogId = existingCatchLog.id;
+      logName = existingCatchLog.name;
+    } else {
+      logName = (catchLogName && catchLogName.trim()) || firstWordOfLocation(location);
+      const logInfo = db
+        .prepare("INSERT INTO catch_logs (niche_id, name, keyword, location) VALUES (?, ?, ?, ?)")
+        .run(niche.id, logName, keyword, location);
+      catchLogId = logInfo.lastInsertRowid;
+    }
 
     const insert = db.prepare(`
       INSERT INTO leads (catch_log_id, place_id, name, address, phone, website, rating, review_count, business_status, needs, socials)
@@ -132,7 +136,7 @@ router.post("/", async (req, res) => {
       ON CONFLICT(catch_log_id, place_id) DO UPDATE SET
         name=excluded.name, address=excluded.address, phone=excluded.phone,
         website=excluded.website, rating=excluded.rating, review_count=excluded.review_count,
-        business_status=excluded.business_status, needs=excluded.needs, socials=excluded.socials
+        business_status=excluded.business_status, needs=excluded.needs
     `);
     const markSeen = db.prepare(
       "INSERT OR IGNORE INTO seen_places (user_id, niche_id, location_key, place_id) VALUES (?, ?, ?, ?)"
@@ -142,10 +146,12 @@ router.post("/", async (req, res) => {
     const results = [];
     for (const place of places) {
       const needs = tagNeeds(place);
-      const socials = socialsByPlaceId.get(place.place_id) || {};
-      insert.run({ ...place, catch_log_id: catchLogId, needs: JSON.stringify(needs), socials: JSON.stringify(socials) });
+      // No automatic social scraping here - that's now only ever done via
+      // the explicit "Scrape" button (separate Python microservice), so a
+      // hunt never gets slowed down or blocked by scanning every website.
+      insert.run({ ...place, catch_log_id: catchLogId, needs: JSON.stringify(needs), socials: JSON.stringify({}) });
       markSeen.run(userId, niche.id, locationKey, place.place_id);
-      results.push({ ...place, needs, socials });
+      results.push({ ...place, needs, socials: {} });
       newCount++;
     }
 
@@ -164,6 +170,7 @@ router.post("/", async (req, res) => {
       nicheName: niche.name,
       leads: results,
       exhausted: exhausted && newCount < requestCount,
+      appendedToExisting: !!existingCatchLog,
     });
   } catch (err) {
     console.error(err);
@@ -173,7 +180,7 @@ router.post("/", async (req, res) => {
 
 // GET /api/search/quota  -> how many leads left today
 router.get("/quota", (req, res) => {
-  const cap = Number(process.env.DAILY_LEAD_CAP || 100);
+  const cap = userDailyCap(req.session.userId);
   const pulled = leadsPulledToday(req.session.userId);
   res.json({ cap, pulledToday: pulled, remaining: Math.max(cap - pulled, 0) });
 });

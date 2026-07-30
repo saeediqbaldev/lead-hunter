@@ -287,4 +287,69 @@ if (!leadsTableExists) {
   }
 }
 
+// ---------- Per-user daily lead cap (default 300, editable in Settings) ----------
+{
+  const userCols = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
+  if (!userCols.includes("daily_lead_cap")) {
+    db.exec("ALTER TABLE users ADD COLUMN daily_lead_cap INTEGER DEFAULT 300");
+    console.log('[migration] Added "daily_lead_cap" column to users (default 300).');
+  }
+}
+
+// ---------- One catch log per (niche, city): merge any existing duplicates ----------
+// Before this version, every hunt created a brand new catch log even for a
+// niche+city you'd already searched before. Merge any existing duplicates
+// into a single canonical catch log per (niche_id, normalized location) so
+// old data matches the new "hunts append instead of duplicating" behavior.
+{
+  function normLoc(loc) {
+    return (loc || "").trim().toLowerCase().replace(/[,\s]+/g, " ");
+  }
+
+  const allLogs = db
+    .prepare("SELECT * FROM catch_logs WHERE location IS NOT NULL AND location != ''")
+    .all();
+  const groups = new Map(); // "nicheId::normalizedLocation" -> [logs...]
+  for (const log of allLogs) {
+    const key = `${log.niche_id}::${normLoc(log.location)}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(log);
+  }
+
+  let mergedGroups = 0;
+  const mergeTx = db.transaction(() => {
+    for (const logs of groups.values()) {
+      if (logs.length < 2) continue; // nothing to merge
+
+      logs.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      const canonical = logs[0];
+      const duplicates = logs.slice(1);
+
+      for (const dup of duplicates) {
+        const dupLeads = db.prepare("SELECT * FROM leads WHERE catch_log_id = ?").all(dup.id);
+        for (const lead of dupLeads) {
+          const clash = lead.place_id
+            ? db
+                .prepare("SELECT id FROM leads WHERE catch_log_id = ? AND place_id = ?")
+                .get(canonical.id, lead.place_id)
+            : null;
+          if (clash) {
+            // Already have this exact business in the canonical log - drop the duplicate row
+            db.prepare("DELETE FROM leads WHERE id = ?").run(lead.id);
+          } else {
+            db.prepare("UPDATE leads SET catch_log_id = ? WHERE id = ?").run(canonical.id, lead.id);
+          }
+        }
+        db.prepare("DELETE FROM catch_logs WHERE id = ?").run(dup.id);
+      }
+      mergedGroups++;
+    }
+  });
+  mergeTx();
+
+  if (mergedGroups > 0) {
+    console.log(`[migration] Merged duplicate catch logs for ${mergedGroups} niche+city combo(s) into one each.`);
+  }
+}
+
 module.exports = db;

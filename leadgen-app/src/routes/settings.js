@@ -1,8 +1,25 @@
 const express = require("express");
 const { testApiKey } = require("../placesApi");
 const apiKeys = require("../apiKeys");
+const db = require("../db");
 
 const router = express.Router();
+
+// GET /api/settings/daily-cap -> this user's own daily lead cap
+router.get("/daily-cap", (req, res) => {
+  const row = db.prepare("SELECT daily_lead_cap FROM users WHERE id = ?").get(req.session.userId);
+  res.json({ dailyLeadCap: (row && row.daily_lead_cap) || 300 });
+});
+
+// PUT /api/settings/daily-cap { dailyLeadCap }
+router.put("/daily-cap", (req, res) => {
+  const value = Number(req.body.dailyLeadCap);
+  if (!Number.isFinite(value) || value < 1 || value > 5000) {
+    return res.status(400).json({ error: "Enter a number between 1 and 5000" });
+  }
+  db.prepare("UPDATE users SET daily_lead_cap = ? WHERE id = ?").run(Math.round(value), req.session.userId);
+  res.json({ dailyLeadCap: Math.round(value) });
+});
 
 function maskKey(key) {
   if (!key) return null;

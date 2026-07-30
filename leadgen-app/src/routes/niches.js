@@ -21,7 +21,8 @@ function getCatchLogsWithLeads(nicheId) {
     leads: db
       .prepare("SELECT * FROM leads WHERE catch_log_id = ? ORDER BY created_at ASC")
       .all(log.id)
-      .map(parseLeadRow),
+      .map(parseLeadRow)
+      .map((lead) => ({ ...lead, city_name: log.name })),
   }));
 }
 

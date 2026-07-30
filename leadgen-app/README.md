@@ -6,6 +6,30 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V10 (app renamed to "Xeven Leads")
+- **New SaaS-style navigation**: left sidebar with collapsible sections —
+  **Hunt** (Niche → City tree, click a city to see its records; "+ New Hunt"
+  opens the search form), **Reach Out** (Niche → City → pipeline-stage tree:
+  Shortlisted/Contacted/Engaged/Converted/Won), and a standalone **Reports** page.
+- **One catch log per niche+city**: hunting a city you've already searched
+  now appends new businesses to that same catch log instead of creating a
+  duplicate. Existing duplicate catch logs from before this version are
+  automatically merged into one on first boot (tested against a realistic
+  multi-duplicate scenario - safe, no data lost).
+- **No more automatic scraping during a hunt** - contact/social data is now
+  exclusively pulled via the manual Scrape button on a catch log.
+- **City column** added to the records list and every export format.
+- **Per-user daily lead cap**, default 300, editable under Settings (⚙).
+- **Reports page**: total hunted + per-status counts, pie/donut charts
+  (Chart.js), a by-niche/city breakdown table, and API key usage - all with
+  a date-range filter (24h/7d/30d/3mo/6mo/1yr/all time).
+- **Functional breadcrumb**: click any part of "Hunt / Niche / City" (or the
+  Reach Out equivalent) to jump back up a level.
+- Collapsible sidebar (compact/expand), scrollbars hidden everywhere while
+  scrolling itself still works, doubled the width of the Settings/Team/Theme
+  popups, a smaller always-visible color legend at the top of every catch
+  log, and filters collapsed by default.
+
 ## What's in this V8
 - **Multi-user accounts with private workspaces**: an admin can create member
   accounts (topbar → 👤 Team). Each account's niches, catch logs, leads, and

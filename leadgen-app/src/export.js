@@ -4,6 +4,7 @@ const ExcelJS = require("exceljs");
 const LEAD_COLUMNS = [
   "S/N",
   "Business Name",
+  "City",
   "Address",
   "Maps Link",
   "Phone",
@@ -46,6 +47,7 @@ function leadToRow(lead, index) {
   return [
     index + 1,
     lead.name,
+    lead.city_name || "",
     lead.address || "",
     mapsLinkFor(lead),
     lead.phone || "",
@@ -115,12 +117,12 @@ async function buildNicheXlsx(nicheName, catchLogsWithLeads) {
     cl.leads.forEach((lead, i) => {
       const values = leadToRow(lead, i);
       const row = sheet.addRow(values);
-      const mapsUrl = values[3];
-      const waUrl = values[5];
-      const websiteUrl = values[6];
-      if (mapsUrl) row.getCell(4).value = { text: "Open Map", hyperlink: mapsUrl };
-      if (waUrl) row.getCell(6).value = { text: "Chat", hyperlink: waUrl };
-      if (websiteUrl) row.getCell(7).value = { text: websiteUrl, hyperlink: websiteUrl };
+      const mapsUrl = values[4];
+      const waUrl = values[6];
+      const websiteUrl = values[7];
+      if (mapsUrl) row.getCell(5).value = { text: "Open Map", hyperlink: mapsUrl };
+      if (waUrl) row.getCell(7).value = { text: "Chat", hyperlink: waUrl };
+      if (websiteUrl) row.getCell(8).value = { text: websiteUrl, hyperlink: websiteUrl };
     });
 
     sheet.columns.forEach((col) => {

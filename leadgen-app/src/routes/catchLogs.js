@@ -108,7 +108,8 @@ router.get("/:id/export/csv", (req, res) => {
   const leads = db
     .prepare("SELECT * FROM leads WHERE catch_log_id = ? ORDER BY created_at ASC")
     .all(req.params.id)
-    .map(parseLeadRow);
+    .map(parseLeadRow)
+    .map((lead) => ({ ...lead, city_name: log.name }));
 
   const csv = buildCatchLogCsv(log.name, leads);
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
@@ -124,7 +125,8 @@ router.get("/:id/export/pdf", (req, res) => {
   const leads = db
     .prepare("SELECT * FROM leads WHERE catch_log_id = ? ORDER BY created_at ASC")
     .all(req.params.id)
-    .map(parseLeadRow);
+    .map(parseLeadRow)
+    .map((lead) => ({ ...lead, city_name: log.name }));
 
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename="${sanitizeFilename(log.name)}.pdf"`);

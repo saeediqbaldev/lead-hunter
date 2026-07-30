@@ -103,6 +103,38 @@ settingsBtn.addEventListener("click", async () => {
   hideSettingsResult();
   settingsOverlay.style.display = "flex";
   await loadApiKeys();
+  await loadDailyCap();
+});
+
+async function loadDailyCap() {
+  try {
+    const res = await api("/api/settings/daily-cap");
+    const data = await res.json();
+    document.getElementById("dailyCapInput").value = data.dailyLeadCap;
+  } catch (err) {
+    console.error("Failed to load daily cap:", err);
+  }
+}
+
+document.getElementById("dailyCapSaveBtn").addEventListener("click", async () => {
+  const input = document.getElementById("dailyCapInput");
+  const btn = document.getElementById("dailyCapSaveBtn");
+  btn.disabled = true;
+  try {
+    const res = await api("/api/settings/daily-cap", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dailyLeadCap: Number(input.value) }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Could not save");
+    showSettingsResult("ok", `Daily cap set to ${data.dailyLeadCap}.`);
+    await refreshQuota();
+  } catch (err) {
+    showSettingsResult("err", err.message);
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 function closeSettingsModal() {
@@ -619,7 +651,6 @@ const scrapePanel = document.getElementById("scrapePanel");
 const scrapeStopBtn = document.getElementById("scrapeStopBtn");
 const scrapeRefreshBtn = document.getElementById("scrapeRefreshBtn");
 const scrapeStatusLine = document.getElementById("scrapeStatusLine");
-const outreachTabs = document.getElementById("outreachTabs");
 const outreachTree = document.getElementById("outreachTree");
 
 const paginationRow = document.getElementById("paginationRow");
@@ -639,9 +670,10 @@ const catchLogNameInput = document.getElementById("catchLogName");
 const nichesTree = document.getElementById("nichesTree");
 const newNicheBtnTree = document.getElementById("newNicheBtnTree");
 
-const tabButtons = document.querySelectorAll(".tab-btn");
-const tabHunt = document.getElementById("tab-hunt");
-const tabNiches = document.getElementById("tab-niches");
+const huntFormPanel = document.getElementById("huntFormPanel");
+const boardPanel = document.getElementById("boardPanel");
+const reportsPanel = document.getElementById("reportsPanel");
+const newHuntLeafBtn = document.getElementById("newHuntLeafBtn");
 
 // Themed niche dropdown
 const nicheDropdown = document.getElementById("nicheDropdown");
@@ -689,6 +721,7 @@ const state = {
   openNicheIds: new Set(),
   selectedNicheId: null, // for the Hunt form's niche dropdown
 
+  contentView: "huntForm", // "huntForm" | "board" | "reports" - which content panel is shown
   mode: "board", // "board" | "outreach"
   page: 1,
   pageSize: 50,
@@ -701,8 +734,22 @@ const state = {
     status: "shortlisted",
   },
   outreachOpenNicheIds: new Set(),
+  outreachOpenCityIds: new Set(), // "nicheId:catchLogId" -> expanded to show status leaves
   outreachSummaries: new Map(), // nicheId -> [{catchLogId, catchLogName, shortlisted, contacted, won}]
 };
+
+function setContentView(view) {
+  state.contentView = view;
+  huntFormPanel.style.display = view === "huntForm" ? "block" : "none";
+  boardPanel.style.display = view === "board" ? "block" : "none";
+  reportsPanel.style.display = view === "reports" ? "block" : "none";
+
+  document.querySelectorAll(".nav-section-header").forEach((btn) => {
+    btn.classList.toggle("active-view", btn.dataset.section === view || (view === "board" && btn.dataset.section === state.lastNavSection));
+  });
+
+  if (view === "reports") loadReports();
+}
 
 function tagClass(tag) {
   return TAG_CLASS_MAP[tag] || "low";
@@ -722,12 +769,6 @@ collapseToggleBtn.addEventListener("click", () => {
 // ---------- Filters bar collapse toggle ----------
 document.getElementById("filtersToggleBtn").addEventListener("click", () => {
   boardFilters.classList.toggle("collapsed");
-});
-
-// ---------- Color legend toggle ----------
-document.getElementById("legendToggleBtn").addEventListener("click", () => {
-  const panel = document.getElementById("legendPanel");
-  panel.style.display = panel.style.display === "none" ? "flex" : "none";
 });
 
 // ---------- Export current view (CSV/XLSX/PDF, same filters as the board) ----------
@@ -881,57 +922,44 @@ scrapeStopBtn.addEventListener("click", async () => {
 
 scrapeRefreshBtn.addEventListener("click", pollScrapeStatus);
 
-// ---------- Tabs ----------
-const tabOutreach = document.getElementById("tab-outreach");
-
-tabButtons.forEach((btn) => {
+// ---------- Sidebar nav sections (Hunt / Reach Out collapsible; Reports single page) ----------
+document.querySelectorAll(".nav-section-header").forEach((btn) => {
   btn.addEventListener("click", async () => {
-    tabButtons.forEach((b) => b.classList.remove("active"));
-    btn.classList.add("active");
-    tabHunt.style.display = "none";
-    tabNiches.style.display = "none";
-    tabOutreach.style.display = "none";
+    const section = btn.dataset.section;
 
-    if (btn.dataset.tab === "hunt") {
-      tabHunt.style.display = "block";
-      setBoardMode("board");
-    } else if (btn.dataset.tab === "niches") {
-      tabNiches.style.display = "block";
-      setBoardMode("board");
-    } else {
-      tabOutreach.style.display = "block";
-      setBoardMode("outreach");
+    if (section === "reports") {
+      state.lastNavSection = "reports";
+      setContentView("reports");
+      return;
+    }
+
+    // Hunt / Reach Out headers toggle their section open/closed (sidebar
+    // accordion), independent of which content view is currently showing.
+    const navSection = btn.closest(".nav-section");
+    navSection.classList.toggle("open");
+
+    if (section === "reachout" && navSection.classList.contains("open")) {
       await renderOutreachTree();
     }
   });
+});
+
+newHuntLeafBtn.addEventListener("click", () => {
+  state.lastNavSection = "hunt";
+  setContentView("huntForm");
 });
 
 function setBoardMode(mode) {
   state.mode = mode;
   state.page = 1;
   if (mode === "outreach") {
-    boardFilters.style.display = "none";
-    outreachTabs.style.display = "flex";
-    document.querySelectorAll(".outreach-tab-btn").forEach((b) => {
-      b.classList.toggle("active", b.dataset.status === state.outreach.status);
-    });
+    boardFilters.style.display = "none"; // irrelevant in outreach mode - scope is already fixed by the tree click
   } else {
-    boardFilters.style.display = "flex";
-    outreachTabs.style.display = "none";
+    boardFilters.style.removeProperty("display"); // let the .collapsed class (toggled by the funnel button) govern visibility
   }
   updateScopeLine();
   loadLeads();
 }
-
-document.querySelectorAll(".outreach-tab-btn").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    state.outreach.status = btn.dataset.status;
-    state.page = 1;
-    document.querySelectorAll(".outreach-tab-btn").forEach((b) => b.classList.toggle("active", b === btn));
-    updateScopeLine();
-    loadLeads();
-  });
-});
 
 // ---------- Quota ----------
 async function refreshQuota() {
@@ -1324,11 +1352,12 @@ nichesTree.addEventListener("click", async (e) => {
   state.activeCatchLogId = logId;
   state.activeNicheId = null;
   state.page = 1;
-  updateScopeLine();
+  state.lastNavSection = "hunt";
+  setContentView("board");
   renderNichesTree();
   renderQuickNicheDropdown();
   renderQuickCityDropdown();
-  await loadLeads();
+  setBoardMode("board");
 });
 
 // ---------- Outreach Report tree ----------
@@ -1340,9 +1369,17 @@ async function getOutreachSummary(nicheId) {
   return summary;
 }
 
+const OUTREACH_STATUS_LIST = [
+  { key: "shortlisted", label: "Shortlisted" },
+  { key: "contacted", label: "Contacted" },
+  { key: "engaged", label: "Engaged" },
+  { key: "converted", label: "Converted" },
+  { key: "won", label: "Won" },
+];
+
 async function renderOutreachTree() {
   if (state.niches.length === 0) {
-    outreachTree.innerHTML = `<div class="empty-state">No niches yet. Create one in the Hunt tab first.</div>`;
+    outreachTree.innerHTML = `<div class="empty-state">No niches yet. Create one under Hunt first.</div>`;
     return;
   }
 
@@ -1354,19 +1391,34 @@ async function renderOutreachTree() {
         const summary = await getOutreachSummary(niche.id);
         citiesHtml = summary.length
           ? summary
-              .map(
-                (city) => `
-            <div class="catchlog-row outreach-city-row ${city.catchLogId === state.outreach.catchLogId ? "active" : ""}" data-niche-id="${niche.id}" data-log-id="${city.catchLogId}">
-              <div class="catchlog-name">${city.catchLogName}</div>
-              <div class="outreach-badges">
-                <span class="outreach-badge shortlisted" title="Shortlisted">${city.shortlisted}</span>
-                <span class="outreach-badge contacted" title="Contacted">${city.contacted}</span>
-                <span class="outreach-badge engaged" title="Engaged">${city.engaged}</span>
-                <span class="outreach-badge converted" title="Converted">${city.converted}</span>
-                <span class="outreach-badge won" title="Won">${city.won}</span>
-              </div>
-            </div>`
-              )
+              .map((city) => {
+                const cityKey = `${niche.id}:${city.catchLogId}`;
+                const cityOpen = state.outreachOpenCityIds.has(cityKey);
+                const cityTotal =
+                  city.shortlisted + city.contacted + city.engaged + city.converted + city.won;
+
+                const statusLeaves = OUTREACH_STATUS_LIST.map(
+                  (s) => `
+                  <div class="status-leaf-row ${
+                    state.outreach.catchLogId === city.catchLogId && state.outreach.status === s.key && state.mode === "outreach"
+                      ? "active"
+                      : ""
+                  }" data-niche-id="${niche.id}" data-log-id="${city.catchLogId}" data-status="${s.key}">
+                    <span class="outreach-badge ${s.key}">${city[s.key]}</span>
+                    <span class="status-leaf-label">${s.label}</span>
+                  </div>`
+                ).join("");
+
+                return `
+                <div class="catchlog-block ${cityOpen ? "open" : ""}">
+                  <div class="catchlog-row outreach-city-row" data-action="toggle-outreach-city" data-niche-id="${niche.id}" data-log-id="${city.catchLogId}">
+                    <span class="niche-caret small">▶</span>
+                    <div class="catchlog-name">${city.catchLogName}</div>
+                    <div class="catchlog-meta">${cityTotal} total</div>
+                  </div>
+                  <div class="status-leaf-list">${statusLeaves}</div>
+                </div>`;
+              })
               .join("")
           : `<div class="catchlog-row"><span class="catchlog-meta">No catch logs yet</span></div>`;
       }
@@ -1389,23 +1441,34 @@ async function renderOutreachTree() {
 }
 
 outreachTree.addEventListener("click", async (e) => {
-  const toggleRow = e.target.closest('[data-action="toggle-outreach-niche"]');
-  if (toggleRow) {
-    const nicheId = Number(toggleRow.dataset.id);
+  const toggleNiche = e.target.closest('[data-action="toggle-outreach-niche"]');
+  if (toggleNiche) {
+    const nicheId = Number(toggleNiche.dataset.id);
     if (state.outreachOpenNicheIds.has(nicheId)) state.outreachOpenNicheIds.delete(nicheId);
     else state.outreachOpenNicheIds.add(nicheId);
     await renderOutreachTree();
     return;
   }
 
-  const cityRow = e.target.closest(".outreach-city-row");
-  if (cityRow) {
-    state.outreach.nicheId = Number(cityRow.dataset.nicheId);
-    state.outreach.catchLogId = Number(cityRow.dataset.logId);
-    state.page = 1;
+  const toggleCity = e.target.closest('[data-action="toggle-outreach-city"]');
+  if (toggleCity) {
+    const cityKey = `${toggleCity.dataset.nicheId}:${toggleCity.dataset.logId}`;
+    if (state.outreachOpenCityIds.has(cityKey)) state.outreachOpenCityIds.delete(cityKey);
+    else state.outreachOpenCityIds.add(cityKey);
     await renderOutreachTree();
-    updateScopeLine();
-    await loadLeads();
+    return;
+  }
+
+  const statusLeaf = e.target.closest(".status-leaf-row");
+  if (statusLeaf) {
+    state.outreach.nicheId = Number(statusLeaf.dataset.nicheId);
+    state.outreach.catchLogId = Number(statusLeaf.dataset.logId);
+    state.outreach.status = statusLeaf.dataset.status;
+    state.page = 1;
+    state.lastNavSection = "reachout";
+    setContentView("board");
+    await renderOutreachTree();
+    setBoardMode("outreach");
   }
 });
 
@@ -1441,13 +1504,17 @@ function updateScopeLine() {
   updateScrapeButtonVisibility();
 
   if (state.mode === "outreach") {
-    const log = state.outreach.catchLogId
-      ? findOutreachCatchLog(state.outreach.catchLogId)
-      : null;
+    const log = state.outreach.catchLogId ? findOutreachCatchLog(state.outreach.catchLogId) : null;
     if (!log) {
-      scopeLine.innerHTML = "Outreach Report — <strong>pick a niche and city</strong>";
+      scopeLine.innerHTML = `<a class="breadcrumb-link" data-action="crumb-reachout-root">Reach Out</a> — pick a niche and city`;
     } else {
-      scopeLine.innerHTML = `Outreach Report: <strong>${log.nicheName} / ${log.catchLogName}</strong>`;
+      const statusLabel =
+        OUTREACH_STATUS_LIST.find((s) => s.key === state.outreach.status)?.label || state.outreach.status;
+      scopeLine.innerHTML = `
+        <a class="breadcrumb-link" data-action="crumb-reachout-root">Reach Out</a> /
+        <a class="breadcrumb-link" data-action="crumb-reachout-niche" data-niche-id="${state.outreach.nicheId}">${log.nicheName}</a> /
+        <a class="breadcrumb-link" data-action="crumb-reachout-city" data-niche-id="${state.outreach.nicheId}" data-log-id="${state.outreach.catchLogId}">${log.catchLogName}</a> /
+        <strong>${statusLabel}</strong>`;
     }
     return;
   }
@@ -1455,21 +1522,52 @@ function updateScopeLine() {
   if (state.activeCatchLogId) {
     const log = state.catchLogs.find((l) => l.id === state.activeCatchLogId);
     const niche = log ? state.niches.find((n) => n.id === log.niche_id) : null;
-    scopeLine.innerHTML = `Viewing: <strong>${niche ? niche.name : "?"} / ${log ? log.name : "?"}</strong>`;
+    scopeLine.innerHTML = `
+      <a class="breadcrumb-link" data-action="crumb-hunt-root">Hunt</a> /
+      <a class="breadcrumb-link" data-action="crumb-hunt-niche" data-niche-id="${niche ? niche.id : ""}">${niche ? niche.name : "?"}</a> /
+      <strong>${log ? log.name : "?"}</strong>`;
     clearScopeBtn.style.display = "inline-block";
     return;
   }
 
   if (state.activeNicheId) {
     const niche = state.niches.find((n) => n.id === state.activeNicheId);
-    scopeLine.innerHTML = `Viewing: <strong>${niche ? niche.name : "?"} (all cities)</strong>`;
+    scopeLine.innerHTML = `<a class="breadcrumb-link" data-action="crumb-hunt-root">Hunt</a> / <strong>${niche ? niche.name : "?"} (all cities)</strong>`;
     clearScopeBtn.style.display = "inline-block";
     return;
   }
 
-  scopeLine.innerHTML = "Viewing: <strong>All records</strong>";
+  scopeLine.innerHTML = `<a class="breadcrumb-link" data-action="crumb-hunt-root">Hunt</a> / <strong>All records</strong>`;
   clearScopeBtn.style.display = "none";
 }
+
+scopeLine.addEventListener("click", async (e) => {
+  const link = e.target.closest(".breadcrumb-link");
+  if (!link) return;
+  const action = link.dataset.action;
+
+  if (action === "crumb-hunt-root") {
+    state.activeCatchLogId = null;
+    state.activeNicheId = null;
+  } else if (action === "crumb-hunt-niche") {
+    state.activeCatchLogId = null;
+    state.activeNicheId = Number(link.dataset.nicheId) || null;
+  } else if (action === "crumb-reachout-root") {
+    state.outreach.catchLogId = null;
+    state.outreach.nicheId = null;
+  } else if (action === "crumb-reachout-niche") {
+    state.outreach.catchLogId = null;
+  } else if (action === "crumb-reachout-city") {
+    state.outreach.status = "shortlisted";
+  }
+  state.page = 1;
+  updateScopeLine();
+  renderNichesTree();
+  renderQuickNicheDropdown();
+  renderQuickCityDropdown();
+  await renderOutreachTree();
+  await loadLeads();
+});
 
 function findOutreachCatchLog(catchLogId) {
   for (const [nicheId, summary] of state.outreachSummaries.entries()) {
@@ -1703,6 +1801,7 @@ function renderLeads(leads) {
           <span class="lead-name" title="${lead.name}">${lead.name}</span>
         </div>
       </div>
+      <div class="city-cell" title="${lead.city_name || ""}">${lead.city_name || "—"}</div>
       <div><div class="contact-row">${websiteHtml}<br/>${phoneHtml}</div></div>
       <div>${needsDotsHtml(lead)}</div>
       <div><div class="social-row">${socialLinksHtml(lead)}</div></div>
@@ -1853,6 +1952,170 @@ filterSearch.addEventListener("input", () => {
   }, 250);
 });
 
+// ---------- Reports page ----------
+const reportsRangeDropdown = document.getElementById("reportsRangeDropdown");
+const reportsRangeDropdownTrigger = document.getElementById("reportsRangeDropdownTrigger");
+const reportsRangeDropdownPanel = document.getElementById("reportsRangeDropdownPanel");
+const reportsRangeDropdownLabel = document.getElementById("reportsRangeDropdownLabel");
+const reportsStatGrid = document.getElementById("reportsStatGrid");
+const reportsTableBody = document.getElementById("reportsTableBody");
+const apiUsageTableBody = document.getElementById("apiUsageTableBody");
+
+const REPORT_RANGE_OPTIONS = [
+  { value: "1d", label: "Last 24 hours", color: "#948d80" },
+  { value: "7d", label: "Last 7 days", color: "#7fa8d9" },
+  { value: "1m", label: "Last 30 days", color: "#e0b355" },
+  { value: "3m", label: "Last 3 months", color: "#ff6a3d" },
+  { value: "6m", label: "Last 6 months", color: "#c586e0" },
+  { value: "1y", label: "Last year", color: "#7fb88a" },
+  { value: "all", label: "All time", color: "#4fd1c5" },
+];
+
+let reportsRange = "1m";
+let pieChartInstance = null;
+let donutChartInstance = null;
+
+function renderReportsRangeDropdown() {
+  buildFilterDropdown({
+    options: REPORT_RANGE_OPTIONS,
+    trigger: reportsRangeDropdownTrigger,
+    panel: reportsRangeDropdownPanel,
+    label: reportsRangeDropdownLabel,
+    currentValue: reportsRange,
+    onSelect: (value) => {
+      reportsRange = value;
+      renderReportsRangeDropdown();
+      loadReports();
+    },
+  });
+}
+
+reportsRangeDropdownTrigger.addEventListener("click", () => {
+  reportsRangeDropdown.classList.toggle("open");
+});
+document.addEventListener("click", (e) => {
+  if (!reportsRangeDropdown.contains(e.target)) reportsRangeDropdown.classList.remove("open");
+});
+
+const REPORT_STATUS_META = [
+  { key: "new", label: "New", color: "#7fa8d9" },
+  { key: "shortlisted", label: "Shortlisted", color: "#e0b355" },
+  { key: "contacted", label: "Contacted", color: "#ff6a3d" },
+  { key: "engaged", label: "Engaged", color: "#c586e0" },
+  { key: "converted", label: "Converted", color: "#4fd1c5" },
+  { key: "won", label: "Won", color: "#7fb88a" },
+  { key: "rejected", label: "Rejected", color: "#d95d5d" },
+];
+
+function renderReportsStatGrid(summary) {
+  const cards = [
+    { label: "Total Hunted", value: summary.total, color: "#ece7dd" },
+    ...REPORT_STATUS_META.map((s) => ({ label: s.label, value: summary.byStatus[s.key] || 0, color: s.color })),
+  ];
+  reportsStatGrid.innerHTML = cards
+    .map(
+      (c) => `
+    <div class="report-stat-card">
+      <span class="report-stat-value" style="color:${c.color}">${c.value}</span>
+      <span class="report-stat-label">${c.label}</span>
+    </div>`
+    )
+    .join("");
+}
+
+function renderReportsCharts(summary) {
+  if (typeof Chart === "undefined") return; // CDN failed to load - fail quietly, tables still work
+
+  const labels = REPORT_STATUS_META.map((s) => s.label);
+  const data = REPORT_STATUS_META.map((s) => summary.byStatus[s.key] || 0);
+  const colors = REPORT_STATUS_META.map((s) => s.color);
+
+  if (pieChartInstance) pieChartInstance.destroy();
+  if (donutChartInstance) donutChartInstance.destroy();
+
+  const commonOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: "bottom", labels: { color: "#ece7dd", font: { size: 11 }, boxWidth: 10 } },
+    },
+  };
+
+  const pieCtx = document.getElementById("reportsPieChart");
+  pieChartInstance = new Chart(pieCtx, {
+    type: "pie",
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: "#1b1815", borderWidth: 2 }] },
+    options: commonOptions,
+  });
+
+  const donutCtx = document.getElementById("reportsDonutChart");
+  donutChartInstance = new Chart(donutCtx, {
+    type: "doughnut",
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: "#1b1815", borderWidth: 2 }] },
+    options: commonOptions,
+  });
+}
+
+function renderReportsTable(byNicheCity) {
+  if (byNicheCity.length === 0) {
+    reportsTableBody.innerHTML = `<tr><td colspan="10" class="empty-cell-row">No data in this range yet.</td></tr>`;
+    return;
+  }
+  reportsTableBody.innerHTML = byNicheCity
+    .map(
+      (row) => `
+    <tr>
+      <td>${row.niche}</td>
+      <td>${row.city}</td>
+      <td class="mono">${row.total}</td>
+      <td class="mono">${row.new}</td>
+      <td class="mono">${row.shortlisted}</td>
+      <td class="mono">${row.contacted}</td>
+      <td class="mono">${row.engaged}</td>
+      <td class="mono">${row.converted}</td>
+      <td class="mono">${row.won}</td>
+      <td class="mono">${row.rejected}</td>
+    </tr>`
+    )
+    .join("");
+}
+
+function renderApiUsageTable(rows) {
+  if (rows.length === 0) {
+    apiUsageTableBody.innerHTML = `<tr><td colspan="4" class="empty-cell-row">No API keys saved yet.</td></tr>`;
+    return;
+  }
+  apiUsageTableBody.innerHTML = rows
+    .map(
+      (r) => `
+    <tr>
+      <td>${r.label}</td>
+      <td>${r.active ? '<span class="api-key-active-badge">● In use</span>' : "Inactive"}</td>
+      <td class="mono">${r.requestsMade}</td>
+      <td class="mono">${r.leadsCaught}</td>
+    </tr>`
+    )
+    .join("");
+}
+
+async function loadReports() {
+  try {
+    const [summaryRes, usageRes] = await Promise.all([
+      api(`/api/reports/summary?range=${reportsRange}`),
+      api("/api/reports/api-usage"),
+    ]);
+    const summary = await summaryRes.json();
+    const usage = await usageRes.json();
+
+    renderReportsStatGrid(summary);
+    renderReportsCharts(summary);
+    renderReportsTable(summary.byNicheCity);
+    renderApiUsageTable(usage);
+  } catch (err) {
+    console.error("Failed to load reports:", err);
+  }
+}
+
 // ---------- Init ----------
 (async function init() {
   hideBanner();
@@ -1863,8 +2126,11 @@ filterSearch.addEventListener("input", () => {
   renderStatusDropdown();
   renderNeedDropdown();
   renderSortDropdown();
+  renderReportsRangeDropdown();
   await loadWhoami();
   const failures = [];
+
+  setContentView("board");
 
   try {
     await refreshQuota();

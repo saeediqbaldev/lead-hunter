@@ -13,6 +13,7 @@ const catchLogsRoute = require("./src/routes/catchLogs");
 const settingsRoute = require("./src/routes/settings");
 const usersRoute = require("./src/routes/users");
 const themeRoute = require("./src/routes/theme");
+const reportsRoute = require("./src/routes/reports");
 
 const app = express();
 
@@ -70,6 +71,7 @@ app.use("/api/catch-logs", requireAuth, catchLogsRoute);
 app.use("/api/settings", requireAuth, settingsRoute);
 app.use("/api/users", requireAuth, requireAdmin, usersRoute);
 app.use("/api/theme", requireAuth, themeRoute);
+app.use("/api/reports", requireAuth, reportsRoute);
 
 app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
 

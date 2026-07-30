@@ -73,7 +73,7 @@ router.get("/", (req, res) => {
 
   const offset = (page - 1) * pageSize;
   const rows = db
-    .prepare(`SELECT l.* ${baseQuery} ORDER BY ${SORT_COLUMNS[sortBy]} ${direction} LIMIT ? OFFSET ?`)
+    .prepare(`SELECT l.*, cl.name AS city_name, n.name AS niche_name ${baseQuery} ORDER BY ${SORT_COLUMNS[sortBy]} ${direction} LIMIT ? OFFSET ?`)
     .all(...params, pageSize, offset);
 
   res.json({
@@ -94,7 +94,7 @@ router.get("/export/:format", (req, res) => {
 
   const { baseQuery, params, sortBy, direction } = buildLeadsQuery(req.session.userId, req.query);
   const rows = db
-    .prepare(`SELECT l.* ${baseQuery} ORDER BY ${SORT_COLUMNS[sortBy]} ${direction}`)
+    .prepare(`SELECT l.*, cl.name AS city_name, n.name AS niche_name ${baseQuery} ORDER BY ${SORT_COLUMNS[sortBy]} ${direction}`)
     .all(...params);
   const leads = rows.map(rowToLead);
 
