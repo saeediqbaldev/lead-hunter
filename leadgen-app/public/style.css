@@ -680,31 +680,57 @@ body {
   cursor: pointer;
 }
 
-/* ---------- Color legend (compact, always visible, grouped at top of catch log) ---------- */
-.legend-panel-compact {
+/* ---------- Legend column (max 30vw) + content column (auto width) split ---------- */
+.catchlog-split {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  padding: 0 22px 22px 22px;
+}
+
+.legend-col {
+  max-width: 30vw;
+  width: 200px;
+  flex-shrink: 0;
+  position: static; /* explicitly non-sticky - scrolls away with the page, doesn't pin */
   background: var(--panel-raised);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 10px;
-  margin: 0 22px 10px 22px;
-  width: calc(100% - 44px);
+  border-radius: 8px;
+  padding: 14px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
-.legend-group-title {
+.legend-col-group-title {
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 9.5px;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-muted);
+  margin-bottom: 8px;
 }
-.legend-sep { width: 1px; height: 12px; background: var(--border); margin: 0 2px; }
-.legend-item { display: flex; align-items: center; gap: 3px; font-size: 10.5px; color: var(--text-muted); }
-.legend-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
-.legend-dot-outline { background: transparent; border: 1.5px solid var(--border); }
+.legend-col-item { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-muted); padding: 3px 0; }
+.legend-col-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+
+.content-col {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden; /* the column itself never scrolls or overflows - only records-wrap inside it does */
+}
+.content-col .board-header { padding: 18px 20px 12px 20px; }
+.content-col .scrape-panel,
+.content-col .filters { margin-left: 20px; margin-right: 20px; width: auto; }
+.content-col .records-wrap { border-top: 1px solid var(--border); }
 
 .filter-dropdown { width: 190px; margin-bottom: 0; }
 .filter-dropdown .theme-dropdown-trigger { padding: 9px 12px; font-size: 13px; }
@@ -1122,6 +1148,13 @@ button#huntBtn:disabled, .primary-btn:disabled { background: var(--border); colo
   height: 300px;
   display: flex;
   flex-direction: column;
+  position: relative;
+}
+.chart-error-msg {
+  font-size: 12px;
+  color: var(--danger);
+  line-height: 1.5;
+  padding: 8px 4px;
 }
 .reports-chart-card h3 {
   margin: 0 0 10px 0;

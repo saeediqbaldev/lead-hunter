@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.07.31-11.1";
+const APP_VERSION = "2026.07.31-11.2";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -2256,11 +2256,37 @@ function destroyReportsCharts() {
   lineChartInstance = null;
 }
 
+function showChartsError(message) {
+  ["reportsPieChart", "reportsDonutChart", "reportsLineChart"].forEach((id) => {
+    const canvas = document.getElementById(id);
+    if (!canvas || !canvas.parentElement) return;
+    let errorEl = canvas.parentElement.querySelector(".chart-error-msg");
+    if (!errorEl) {
+      errorEl = document.createElement("div");
+      errorEl.className = "chart-error-msg";
+      canvas.parentElement.appendChild(errorEl);
+    }
+    errorEl.textContent = message;
+    canvas.style.display = "none";
+  });
+}
+
+function clearChartsError() {
+  document.querySelectorAll(".chart-error-msg").forEach((el) => el.remove());
+  ["reportsPieChart", "reportsDonutChart", "reportsLineChart"].forEach((id) => {
+    const canvas = document.getElementById(id);
+    if (canvas) canvas.style.display = "";
+  });
+}
+
 function renderReportsCharts(summary, timeseries) {
   if (typeof Chart === "undefined") {
-    console.error("Chart.js did not load from the CDN - charts will stay blank, but the tables below still work.");
+    showChartsError(
+      "Charts couldn't load - the Chart.js library was blocked or failed to load from the CDN (cdnjs.cloudflare.com). Try disabling ad-blockers/privacy extensions for this site, or check your network/firewall settings. The numbers above and the table below are unaffected."
+    );
     return;
   }
+  clearChartsError();
 
   const labels = REPORT_STATUS_META.map((s) => s.label);
   const data = REPORT_STATUS_META.map((s) => summary.byStatus[s.key] || 0);
@@ -2283,48 +2309,55 @@ function renderReportsCharts(summary, timeseries) {
   // calls guarantee at least one full layout+paint has happened first.
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      const pieCtx = document.getElementById("reportsPieChart");
-      const donutCtx = document.getElementById("reportsDonutChart");
-      const lineCtx = document.getElementById("reportsLineChart");
+      try {
+        const pieCtx = document.getElementById("reportsPieChart");
+        const donutCtx = document.getElementById("reportsDonutChart");
+        const lineCtx = document.getElementById("reportsLineChart");
 
-      pieChartInstance = new Chart(pieCtx, {
-        type: "pie",
-        data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: "#1b1815", borderWidth: 2 }] },
-        options: commonOptions,
-      });
+        pieChartInstance = new Chart(pieCtx, {
+          type: "pie",
+          data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: "#1b1815", borderWidth: 2 }] },
+          options: commonOptions,
+        });
 
-      donutChartInstance = new Chart(donutCtx, {
-        type: "doughnut",
-        data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: "#1b1815", borderWidth: 2 }] },
-        options: commonOptions,
-      });
+        donutChartInstance = new Chart(donutCtx, {
+          type: "doughnut",
+          data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: "#1b1815", borderWidth: 2 }] },
+          options: commonOptions,
+        });
 
-      const lineLabels = timeseries.days.length ? timeseries.days : ["No data yet"];
-      lineChartInstance = new Chart(lineCtx, {
-        type: "line",
-        data: {
-          labels: lineLabels,
-          datasets: REPORT_STATUS_META.map((s) => ({
-            label: s.label,
-            data: timeseries.days.length ? timeseries.series[s.key] : [0],
-            borderColor: s.color,
-            backgroundColor: s.color,
-            tension: 0.3,
-            pointRadius: 3,
-          })),
-        },
-        options: {
-          ...commonOptions,
-          scales: {
-            x: { ticks: { color: "#948d80", font: { size: 10 } }, grid: { color: "rgba(255,255,255,0.05)" } },
-            y: { beginAtZero: true, ticks: { color: "#948d80", precision: 0 }, grid: { color: "rgba(255,255,255,0.05)" } },
+        const safeDays = timeseries && Array.isArray(timeseries.days) ? timeseries.days : [];
+        const safeSeries = timeseries && timeseries.series ? timeseries.series : {};
+        const lineLabels = safeDays.length ? safeDays : ["No data yet"];
+        lineChartInstance = new Chart(lineCtx, {
+          type: "line",
+          data: {
+            labels: lineLabels,
+            datasets: REPORT_STATUS_META.map((s) => ({
+              label: s.label,
+              data: safeDays.length ? safeSeries[s.key] || safeDays.map(() => 0) : [0],
+              borderColor: s.color,
+              backgroundColor: s.color,
+              tension: 0.3,
+              pointRadius: 3,
+            })),
           },
-        },
-      });
+          options: {
+            ...commonOptions,
+            scales: {
+              x: { ticks: { color: "#948d80", font: { size: 10 } }, grid: { color: "rgba(255,255,255,0.05)" } },
+              y: { beginAtZero: true, ticks: { color: "#948d80", precision: 0 }, grid: { color: "rgba(255,255,255,0.05)" } },
+            },
+          },
+        });
 
-      pieChartInstance.resize();
-      donutChartInstance.resize();
-      lineChartInstance.resize();
+        pieChartInstance.resize();
+        donutChartInstance.resize();
+        lineChartInstance.resize();
+      } catch (err) {
+        console.error("Failed to render Reports charts:", err);
+        showChartsError(`Charts failed to render: ${err.message}. The numbers above and the table below are unaffected.`);
+      }
     });
   });
 }
@@ -2369,15 +2402,21 @@ async function loadReports() {
       api(`/api/reports/timeseries?${params.toString()}`),
       api("/api/reports/api-usage"),
     ]);
+
+    if (!summaryRes.ok || !timeseriesRes.ok) {
+      throw new Error(`Reports API returned an error (summary: ${summaryRes.status}, timeseries: ${timeseriesRes.status})`);
+    }
+
     const summary = await summaryRes.json();
     const timeseries = await timeseriesRes.json();
-    const usage = await usageRes.json();
+    const usage = usageRes.ok ? await usageRes.json() : [];
 
     renderReportsStatGrid(summary);
     renderReportsCharts(summary, timeseries);
     renderApiUsageTable(usage);
   } catch (err) {
     console.error("Failed to load reports:", err);
+    showChartsError(`Couldn't load report data: ${err.message}`);
   }
 }
 

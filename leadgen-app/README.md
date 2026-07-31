@@ -6,6 +6,21 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V11.2
+- **Fixed the Reports charts for real this time**: confirmed via direct
+  testing that Chart.js's CDN (cdnjs.cloudflare.com) was being blocked
+  entirely in the browser - not a bug in the chart code or the app's data,
+  both of which were verified correct independently. Chart.js is now
+  bundled locally and served from the app's own origin
+  (`public/vendor/chart.umd.min.js`), so it no longer depends on any
+  external CDN or is vulnerable to ad-blockers/network policies blocking it.
+- **Catch log layout restructured**: the color legend is now a dedicated
+  column capped at `max-width: 30vw` (not full-width and not sticky/pinned)
+  sitting beside the records content, which takes all remaining width and
+  is fully responsive. The content column itself never overflows or
+  scrolls as a whole - only the records list inside it does, independently
+  of the legend column.
+
 ## What's in this V11.1
 - **Found and fixed the real root cause** of the content overflow/scrolling
   issue: `.layout`'s CSS Grid never defined `grid-template-rows`, so its

@@ -6,9 +6,9 @@
 <title>Xeven Leads</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=111" />
+<link rel="stylesheet" href="style.css?v=112" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="vendor/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -133,23 +133,30 @@
 
       <!-- ---------- Records board (Hunt cities and Reach Out statuses both render here) ---------- -->
       <section class="panel board-panel" id="boardPanel" style="display:none;">
-        <div class="legend-panel-compact" id="legendPanel">
-          <span class="legend-group-title">Status</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#7fa8d9"></span>New</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#e0b355"></span>Shortlisted</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#ff6a3d"></span>Contacted</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#c586e0"></span>Engaged</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#4fd1c5"></span>Converted</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#7fb88a"></span>Won</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#d95d5d"></span>Rejected</span>
-          <span class="legend-sep"></span>
-          <span class="legend-group-title">Needs</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#d95d5d"></span>Website</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#e0b355"></span>GMB</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#7fa8d9"></span>SEO</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#7fb88a"></span>Reviews</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#ff6a3d"></span>Reputation</span>
-        </div>
+        <div class="catchlog-split">
+
+          <aside class="legend-col" id="legendPanel">
+            <div>
+              <div class="legend-col-group-title">Status</div>
+              <div class="legend-col-item"><span class="legend-col-dot" style="background:#7fa8d9"></span>New</div>
+              <div class="legend-col-item"><span class="legend-col-dot" style="background:#e0b355"></span>Shortlisted</div>
+              <div class="legend-col-item"><span class="legend-col-dot" style="background:#ff6a3d"></span>Contacted</div>
+              <div class="legend-col-item"><span class="legend-col-dot" style="background:#c586e0"></span>Engaged</div>
+              <div class="legend-col-item"><span class="legend-col-dot" style="background:#4fd1c5"></span>Converted</div>
+              <div class="legend-col-item"><span class="legend-col-dot" style="background:#7fb88a"></span>Won</div>
+              <div class="legend-col-item"><span class="legend-col-dot" style="background:#d95d5d"></span>Rejected</div>
+            </div>
+            <div>
+              <div class="legend-col-group-title">Needs</div>
+              <div class="legend-col-item"><span class="legend-col-dot" style="background:#d95d5d"></span>Website Design</div>
+              <div class="legend-col-item"><span class="legend-col-dot" style="background:#e0b355"></span>GMB Optimization</div>
+              <div class="legend-col-item"><span class="legend-col-dot" style="background:#7fa8d9"></span>Local SEO</div>
+              <div class="legend-col-item"><span class="legend-col-dot" style="background:#7fb88a"></span>Review Generation</div>
+              <div class="legend-col-item"><span class="legend-col-dot" style="background:#ff6a3d"></span>Reputation Management</div>
+            </div>
+          </aside>
+
+          <div class="content-col">
 
         <div class="board-header">
           <div>
@@ -279,6 +286,9 @@
             <button id="prevPageBtn" class="small-btn">‹ Prev</button>
             <span id="pageInfo" class="page-info"></span>
             <button id="nextPageBtn" class="small-btn">Next ›</button>
+          </div>
+        </div>
+
           </div>
         </div>
       </section>
@@ -460,6 +470,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=111"></script>
+  <script src="app.js?v=112"></script>
 </body>
 </html>
