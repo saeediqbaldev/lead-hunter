@@ -48,6 +48,29 @@ function recordUsage(userId, keyId, { requests = 0, leadsCaught = 0 } = {}) {
   db.prepare(
     "UPDATE api_keys SET requests_made = requests_made + ?, leads_caught = leads_caught + ? WHERE user_id = ? AND id = ?"
   ).run(requests, leadsCaught, userId, keyId);
+
+  const today = new Date().toISOString().slice(0, 10);
+  db.prepare(
+    `INSERT INTO api_key_daily_usage (api_key_id, usage_date, requests_made, leads_caught) VALUES (?, ?, ?, ?)
+     ON CONFLICT(api_key_id, usage_date) DO UPDATE SET
+       requests_made = requests_made + excluded.requests_made,
+       leads_caught = leads_caught + excluded.leads_caught`
+  ).run(keyId, today, requests, leadsCaught);
+}
+
+function todaysUsage(userId) {
+  const today = new Date().toISOString().slice(0, 10);
+  return db
+    .prepare(
+      `SELECT k.id, k.label, k.is_active,
+              COALESCE(d.requests_made, 0) AS requests_made,
+              COALESCE(d.leads_caught, 0) AS leads_caught
+       FROM api_keys k
+       LEFT JOIN api_key_daily_usage d ON d.api_key_id = k.id AND d.usage_date = ?
+       WHERE k.user_id = ?
+       ORDER BY k.created_at ASC`
+    )
+    .all(today, userId);
 }
 
 module.exports = {
@@ -59,4 +82,5 @@ module.exports = {
   insertKey,
   deleteKey,
   recordUsage,
+  todaysUsage,
 };

@@ -138,66 +138,175 @@ async function buildNicheXlsx(nicheName, catchLogsWithLeads) {
 }
 
 // ---------- PDF ----------
-function writeLeadsSection(doc, title, leads) {
-  doc.fontSize(16).fillColor("#111").text(title, { underline: true });
-  doc.moveDown(0.4);
+// ---------- PDF: real table layout with clickable social icon glyphs ----------
+const SOCIAL_ICON_META = {
+  email: { letter: "@", color: "#5a5550" },
+  facebook: { letter: "f", color: "#3b5998" },
+  instagram: { letter: "IG", color: "#c8347a" },
+  phone: { letter: "\u260E", color: "#4caf6d" }, // phone glyph
+  linkedin: { letter: "in", color: "#0a66c2" },
+  tiktok: { letter: "TT", color: "#111111" },
+};
+const SOCIAL_ORDER = ["email", "facebook", "instagram", "phone", "linkedin", "tiktok"];
+
+const TABLE_COLS = [
+  { key: "sn", label: "S/N", width: 26 },
+  { key: "business", label: "Business", width: 118 },
+  { key: "city", label: "City", width: 62 },
+  { key: "phone", label: "Phone", width: 82 },
+  { key: "website", label: "Website", width: 100 },
+  { key: "social", label: "Social", width: 100 },
+  { key: "rating", label: "Rating", width: 48 },
+  { key: "status", label: "Status", width: 62 },
+];
+
+const ROW_HEIGHT = 30;
+const HEADER_HEIGHT = 20;
+const TABLE_LEFT = 36;
+
+function drawTableHeader(doc, y) {
+  let x = TABLE_LEFT;
+  doc.rect(TABLE_LEFT, y, TABLE_COLS.reduce((s, c) => s + c.width, 0), HEADER_HEIGHT).fill("#2b2723");
+  doc.fillColor("#fff").fontSize(8).font("Helvetica-Bold");
+  for (const col of TABLE_COLS) {
+    doc.text(col.label, x + 4, y + 6, { width: col.width - 8, lineBreak: false });
+    x += col.width;
+  }
+  doc.font("Helvetica");
+  return y + HEADER_HEIGHT;
+}
+
+function drawSocialIcons(doc, lead, x, y) {
+  const socials = lead.socials || {};
+  let cx = x;
+  const size = 14;
+  for (const key of SOCIAL_ORDER) {
+    let url = null;
+    if (key === "phone") {
+      if (socials.phone) url = `tel:${String(socials.phone).replace(/\s+/g, "")}`;
+    } else if (socials[key]) {
+      url = socials[key];
+    }
+    if (!url) continue;
+
+    const meta = SOCIAL_ICON_META[key];
+    doc.roundedRect(cx, y, size, size, 3).fill(meta.color);
+    doc
+      .fillColor("#fff")
+      .fontSize(6)
+      .text(meta.letter, cx, y + size / 2 - 3, { width: size, align: "center", lineBreak: false });
+    doc.link(cx, y, size, size, url); // clickable region over the icon
+    cx += size + 3;
+    if (cx > x + 96) break; // stay within the Social column's width
+  }
+}
+
+function drawTableRow(doc, lead, index, y) {
+  const rowColor = index % 2 === 0 ? "#ffffff" : "#f6f4f0";
+  const totalWidth = TABLE_COLS.reduce((s, c) => s + c.width, 0);
+  doc.rect(TABLE_LEFT, y, totalWidth, ROW_HEIGHT).fill(rowColor);
+  doc.strokeColor("#ddd7cc").lineWidth(0.5).rect(TABLE_LEFT, y, totalWidth, ROW_HEIGHT).stroke();
+
+  let x = TABLE_LEFT;
+  const textY = y + 8;
+
+  // S/N
+  doc.fillColor("#333").fontSize(8).text(String(index + 1), x + 4, textY, { width: TABLE_COLS[0].width - 8 });
+  x += TABLE_COLS[0].width;
+
+  // Business (clickable to Maps)
+  const maps = mapsLinkFor(lead);
+  doc.fillColor(maps ? "#1a4d8f" : "#111").fontSize(8).text(lead.name || "", x + 4, textY, {
+    width: TABLE_COLS[1].width - 8,
+    height: ROW_HEIGHT - 10,
+    ellipsis: true,
+  });
+  if (maps) doc.link(x, y, TABLE_COLS[1].width, ROW_HEIGHT, maps);
+  x += TABLE_COLS[1].width;
+
+  // City
+  doc.fillColor("#555").text(lead.city_name || "", x + 4, textY, { width: TABLE_COLS[2].width - 8, ellipsis: true });
+  x += TABLE_COLS[2].width;
+
+  // Phone (clickable tel:)
+  if (lead.phone) {
+    doc.fillColor("#1a4d8f").text(lead.phone, x + 4, textY, { width: TABLE_COLS[3].width - 8, ellipsis: true });
+    doc.link(x, y, TABLE_COLS[3].width, ROW_HEIGHT, `tel:${lead.phone.replace(/\s+/g, "")}`);
+  } else {
+    doc.fillColor("#999").text("-", x + 4, textY, { width: TABLE_COLS[3].width - 8 });
+  }
+  x += TABLE_COLS[3].width;
+
+  // Website (clickable)
+  if (lead.website) {
+    let host = lead.website;
+    try {
+      host = new URL(lead.website).hostname;
+    } catch {
+      // keep raw string
+    }
+    doc.fillColor("#1a4d8f").text(host, x + 4, textY, { width: TABLE_COLS[4].width - 8, ellipsis: true });
+    doc.link(x, y, TABLE_COLS[4].width, ROW_HEIGHT, lead.website);
+  } else {
+    doc.fillColor("#999").text("-", x + 4, textY, { width: TABLE_COLS[4].width - 8 });
+  }
+  x += TABLE_COLS[4].width;
+
+  // Social icons (clickable glyphs, not text)
+  drawSocialIcons(doc, lead, x + 4, y + (ROW_HEIGHT - 14) / 2);
+  x += TABLE_COLS[5].width;
+
+  // Rating
+  const ratingText = lead.rating ? `${lead.rating.toFixed(1)}${lead.review_count ? ` (${lead.review_count})` : ""}` : "n/a";
+  doc.fillColor("#333").text(ratingText, x + 4, textY, { width: TABLE_COLS[6].width - 8 });
+  x += TABLE_COLS[6].width;
+
+  // Status
+  doc.fillColor("#333").text(lead.status || "", x + 4, textY, { width: TABLE_COLS[7].width - 8, ellipsis: true });
+}
+
+function drawLeadsTable(doc, title, leads) {
+  doc.fontSize(14).fillColor("#111").font("Helvetica-Bold").text(title, TABLE_LEFT, doc.y);
+  doc.font("Helvetica");
+  doc.moveDown(0.5);
 
   if (leads.length === 0) {
-    doc.fontSize(10).fillColor("#666").text("No records in this catch log.");
+    doc.fontSize(9).fillColor("#666").text("No records in this catch log.", TABLE_LEFT);
     doc.moveDown();
     return;
   }
 
+  const pageBottom = doc.page.height - doc.page.margins.bottom;
+  let y = drawTableHeader(doc, doc.y);
+
   leads.forEach((lead, i) => {
-    if (doc.y > 700) doc.addPage();
-
-    const maps = mapsLinkFor(lead);
-    doc
-      .fontSize(11)
-      .fillColor("#111")
-      .text(`${i + 1}. ${lead.name}`, maps ? { link: maps, underline: true } : {});
-
-    doc.fontSize(9).fillColor("#555");
-    if (lead.address) doc.text(`    ${lead.address}`);
-
-    if (lead.phone) {
-      const wa = whatsappLinkFor(lead.phone);
-      doc.text(`    Phone: ${lead.phone}${wa ? "  (WhatsApp click-to-chat below)" : ""}`);
-      if (wa) doc.fillColor("#1a7a3c").text(`    Chat on WhatsApp`, { link: wa, underline: true });
-      doc.fillColor("#555");
+    if (y + ROW_HEIGHT > pageBottom) {
+      doc.addPage();
+      y = drawTableHeader(doc, doc.page.margins.top);
     }
-
-    if (lead.website) {
-      doc.fillColor("#1a4d8f").text(`    ${lead.website}`, { link: lead.website, underline: true });
-      doc.fillColor("#555");
-    }
-
-    doc.text(
-      `    Needs: ${needsText(lead) || "-"}    Rating: ${lead.rating ?? "n/a"}${
-        lead.review_count ? ` (${lead.review_count})` : ""
-      }    Status: ${lead.status}`
-    );
-    if (lead.notes) doc.text(`    Notes: ${lead.notes}`);
-
-    doc.moveDown(0.6);
+    drawTableRow(doc, lead, i, y);
+    y += ROW_HEIGHT;
   });
+
+  doc.y = y + 14;
 }
 
 function buildCatchLogPdf(catchLogName, leads) {
-  const doc = new PDFDocument({ margin: 40 });
-  writeLeadsSection(doc, catchLogName, leads);
+  const doc = new PDFDocument({ margin: 36, size: "A4", layout: "landscape" });
+  drawLeadsTable(doc, catchLogName, leads);
   doc.end();
   return doc;
 }
 
 function buildNichePdf(nicheName, catchLogsWithLeads) {
-  const doc = new PDFDocument({ margin: 40 });
-  doc.fontSize(20).fillColor("#111").text(`Niche: ${nicheName}`, { underline: true });
+  const doc = new PDFDocument({ margin: 36, size: "A4", layout: "landscape" });
+  doc.fontSize(18).fillColor("#111").font("Helvetica-Bold").text(`Niche: ${nicheName}`, TABLE_LEFT, doc.y);
+  doc.font("Helvetica");
   doc.moveDown();
 
   catchLogsWithLeads.forEach((cl, idx) => {
     if (idx > 0) doc.addPage();
-    writeLeadsSection(doc, `Catch Log: ${cl.name}`, cl.leads);
+    drawLeadsTable(doc, `Catch Log: ${cl.name}`, cl.leads);
   });
 
   doc.end();

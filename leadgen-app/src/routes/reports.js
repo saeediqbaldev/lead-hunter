@@ -1,5 +1,6 @@
 const express = require("express");
 const db = require("../db");
+const apiKeys = require("../apiKeys");
 
 const router = express.Router();
 
@@ -21,92 +22,97 @@ function rangeStartDate(rangeKey) {
   return d.toISOString().slice(0, 10) + " 00:00:00";
 }
 
-// GET /api/reports/summary?range=7d|1m|3m|6m|1y|all
-// Counts every lead this user owns (via niches -> catch_logs -> leads),
-// broken down by status, restricted to leads created within the range.
-router.get("/summary", (req, res) => {
-  const userId = req.session.userId;
-  const range = RANGE_DAYS.hasOwnProperty(req.query.range) ? req.query.range : "1m";
+const STATUS_KEYS = ["new", "shortlisted", "contacted", "engaged", "converted", "won", "rejected"];
+
+// Shared filter builder for both /summary and /timeseries - keeps the two
+// endpoints scoped identically to whatever range/niche/city is selected.
+function buildFilteredQuery(userId, query) {
+  const { niche, city } = query;
+  const range = RANGE_DAYS.hasOwnProperty(query.range) ? query.range : "1d";
   const startDate = rangeStartDate(range);
 
-  let query = `
-    SELECT l.status, COUNT(*) AS c
+  let sql = `
     FROM leads l
     JOIN catch_logs cl ON cl.id = l.catch_log_id
     JOIN niches n ON n.id = cl.niche_id
     WHERE n.user_id = ?
   `;
   const params = [userId];
+
   if (startDate) {
-    query += " AND l.created_at >= ?";
+    sql += " AND l.created_at >= ?";
     params.push(startDate);
   }
-  query += " GROUP BY l.status";
+  if (niche) {
+    sql += " AND n.id = ?";
+    params.push(niche);
+  }
+  if (city) {
+    sql += " AND cl.id = ?";
+    params.push(city);
+  }
 
-  const rows = db.prepare(query).all(...params);
-  const byStatus = { new: 0, shortlisted: 0, contacted: 0, engaged: 0, converted: 0, won: 0, rejected: 0 };
+  return { sql, params, range };
+}
+
+// GET /api/reports/summary?range=1d|7d|1m|3m|6m|1y|all&niche=&city=
+router.get("/summary", (req, res) => {
+  const userId = req.session.userId;
+  const { sql, params, range } = buildFilteredQuery(userId, req.query);
+
+  const rows = db.prepare(`SELECT l.status, COUNT(*) AS c ${sql} GROUP BY l.status`).all(...params);
+  const byStatus = Object.fromEntries(STATUS_KEYS.map((k) => [k, 0]));
   let total = 0;
   for (const row of rows) {
     if (byStatus.hasOwnProperty(row.status)) byStatus[row.status] = row.c;
     total += row.c;
   }
 
-  // Per-niche breakdown, same range, for the tabular view
-  let nicheQuery = `
-    SELECT n.name AS niche_name, cl.name AS city_name, l.status, COUNT(*) AS c
-    FROM leads l
-    JOIN catch_logs cl ON cl.id = l.catch_log_id
-    JOIN niches n ON n.id = cl.niche_id
-    WHERE n.user_id = ?
-  `;
-  const nicheParams = [userId];
-  if (startDate) {
-    nicheQuery += " AND l.created_at >= ?";
-    nicheParams.push(startDate);
-  }
-  nicheQuery += " GROUP BY n.id, cl.id, l.status ORDER BY n.name ASC, cl.name ASC";
-
-  const nicheRows = db.prepare(nicheQuery).all(...nicheParams);
-  const byNicheCity = new Map(); // "niche||city" -> { niche, city, ...statusCounts, total }
-  for (const row of nicheRows) {
-    const key = `${row.niche_name}||${row.city_name}`;
-    if (!byNicheCity.has(key)) {
-      byNicheCity.set(key, {
-        niche: row.niche_name,
-        city: row.city_name,
-        new: 0,
-        shortlisted: 0,
-        contacted: 0,
-        engaged: 0,
-        converted: 0,
-        won: 0,
-        rejected: 0,
-        total: 0,
-      });
-    }
-    const entry = byNicheCity.get(key);
-    if (entry.hasOwnProperty(row.status)) entry[row.status] = row.c;
-    entry.total += row.c;
-  }
-
-  res.json({
-    range,
-    total,
-    byStatus,
-    byNicheCity: Array.from(byNicheCity.values()),
-  });
+  res.json({ range, total, byStatus });
 });
 
-// GET /api/reports/api-usage -> this user's saved API keys with usage totals
-// (reuses the same numbers Settings already shows, surfaced here for a
-// combined at-a-glance view alongside the lead pipeline stats)
-router.get("/api-usage", (req, res) => {
-  const rows = db
-    .prepare(
-      "SELECT id, label, requests_made, leads_caught, is_active FROM api_keys WHERE user_id = ? ORDER BY created_at ASC"
-    )
-    .all(req.session.userId);
+// GET /api/reports/timeseries?range=&niche=&city=
+// Daily-bucketed counts per status, for the line chart. Bucket size is
+// always one day regardless of range - for "all time" on an old account
+// this could be a lot of points, but that's a reasonable tradeoff for
+// keeping the query simple and the chart meaningful at every range.
+router.get("/timeseries", (req, res) => {
+  const userId = req.session.userId;
+  const { sql, params, range } = buildFilteredQuery(userId, req.query);
 
+  const rows = db
+    .prepare(`SELECT date(l.created_at) AS day, l.status, COUNT(*) AS c ${sql} GROUP BY day, l.status ORDER BY day ASC`)
+    .all(...params);
+
+  const dayMap = new Map(); // day -> {status: count}
+  for (const row of rows) {
+    if (!dayMap.has(row.day)) dayMap.set(row.day, {});
+    dayMap.get(row.day)[row.status] = row.c;
+  }
+
+  const days = Array.from(dayMap.keys()).sort();
+  const series = Object.fromEntries(STATUS_KEYS.map((k) => [k, days.map((d) => dayMap.get(d)[k] || 0)]));
+
+  res.json({ range, days, series });
+});
+
+// GET /api/reports/niches-cities -> flat list for the Reports page filter dropdowns
+router.get("/niches-cities", (req, res) => {
+  const userId = req.session.userId;
+  const niches = db.prepare("SELECT id, name FROM niches WHERE user_id = ? ORDER BY name ASC").all(userId);
+  const cities = db
+    .prepare(
+      `SELECT cl.id, cl.name, cl.niche_id FROM catch_logs cl
+       JOIN niches n ON n.id = cl.niche_id
+       WHERE n.user_id = ? ORDER BY cl.name ASC`
+    )
+    .all(userId);
+  res.json({ niches, cities });
+});
+
+// GET /api/reports/api-usage -> TODAY's usage specifically (not all-time totals)
+router.get("/api-usage", (req, res) => {
+  const rows = apiKeys.todaysUsage(req.session.userId);
   res.json(
     rows.map((r) => ({
       id: r.id,

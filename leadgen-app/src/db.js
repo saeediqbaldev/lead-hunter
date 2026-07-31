@@ -352,4 +352,17 @@ if (!leadsTableExists) {
   }
 }
 
+// ---------- Daily-granularity API key usage (Reports page needs "today's
+// usage" specifically, not just the all-time cumulative totals already on
+// api_keys) ----------
+db.exec(`
+CREATE TABLE IF NOT EXISTS api_key_daily_usage (
+  api_key_id INTEGER NOT NULL,
+  usage_date TEXT NOT NULL,
+  requests_made INTEGER DEFAULT 0,
+  leads_caught INTEGER DEFAULT 0,
+  PRIMARY KEY (api_key_id, usage_date)
+);
+`);
+
 module.exports = db;

@@ -6,6 +6,37 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V11.1
+- **Found and fixed the real root cause** of the content overflow/scrolling
+  issue: `.layout`'s CSS Grid never defined `grid-template-rows`, so its
+  single row sized to content instead of being capped to the viewport -
+  every earlier `min-height: 0` fix was correct but couldn't matter without
+  this. One CSS line fixes it at the actual source.
+- **Reports page overhaul**: added real daily-granularity API key usage
+  tracking (didn't exist before - only cumulative totals did), a Niche/City
+  filter alongside the date range (defaults: Last 24 hours / All niches /
+  All cities), and a new line chart showing each pipeline stage's trend over
+  time. Removed the "By niche & city" table. API key usage now shows
+  **today's** numbers specifically, not all-time totals - verified this is
+  genuinely isolated, not just relabeled.
+- **PDF exports rewritten as real tables**: proper grid with borders,
+  headers, and alternating row shading (not a plain document/list anymore),
+  with social platforms shown as small clickable colored icon badges
+  instead of text/links - verified via direct text extraction that the
+  table structure and icon glyphs are actually present in the output.
+- **Bootstrap Icons everywhere**: replaced every remaining social icon
+  (including WhatsApp) and any leftover symbol with Bootstrap Icons.
+- **Sidebar**: each section (Hunt/Reach Out) now has its own independently
+  scrollable tree instead of one long shared scroll; collapsed state now
+  only shows icons, strengthened for certainty. Legend stays above the
+  heading in both Hunt and Reach Out.
+- **Tablet/mobile block**: below ~1024px width, the app now blurs and shows
+  a clear "not mobile friendly" message instead of a half-working
+  responsive layout.
+- **Faster interactions**: deleting a record and changing a lead's status
+  in the Reach Out view now update the screen instantly instead of waiting
+  on a network round-trip first.
+
 ## What's in this V11
 - **Fixed a real layout bug**: content could overflow past the viewport with
   no way to scroll to it. Root cause was a broken CSS flex height-cascade

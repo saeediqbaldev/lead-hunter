@@ -87,6 +87,7 @@ body {
 .layout {
   display: grid;
   grid-template-columns: 320px 1fr;
+  grid-template-rows: minmax(0, 1fr);
   gap: 24px;
   padding: 24px 32px;
   flex: 1;
@@ -104,44 +105,38 @@ body {
 }
 .content-area > .panel { flex: 1; min-height: 0; }
 
-/* ---------- Responsive: below this width, the fixed-viewport-height,
-   two-independently-scrolling-panes desktop layout doesn't work - switch to
-   a normal single-column, page-scrolls layout instead. ---------- */
-@media (max-width: 900px) {
-  body { height: auto; overflow: visible; }
-  .layout {
-    grid-template-columns: 1fr;
-    height: auto;
-    padding: 16px;
-    gap: 16px;
+/* ---------- Mobile/tablet block overlay ----------
+   This app isn't designed to work below tablet width - rather than a half
+   -working responsive layout, block access cleanly with a clear message. */
+#mobileBlockOverlay { display: none; }
+
+@media (max-width: 1024px) {
+  body > *:not(#mobileBlockOverlay) {
+    filter: blur(20px);
+    pointer-events: none;
+    user-select: none;
   }
-  .layout.panel-collapsed { grid-template-columns: 1fr; }
-
-  .left-col {
-    position: static;
-    height: auto;
-    max-height: none;
-    overflow: visible;
+  #mobileBlockOverlay {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+    background: rgba(18, 16, 14, 0.75);
+    padding: 24px;
   }
-  .collapse-toggle { display: none; } /* collapsing isn't useful once the panel is no longer sticky */
-
-  .board-panel { height: auto; }
-  .records-wrap { max-height: 65vh; }
-
-  .topbar { flex-wrap: wrap; gap: 10px; padding: 14px 16px; }
-  .topbar-right { flex-wrap: wrap; }
-  .brand-tag, .version-tag { display: none; } /* save space on small screens */
-
-  .board-header { padding: 16px 16px 12px 16px; }
-  .list-header, .list-row { padding-left: 16px; padding-right: 16px; }
-}
-
-@media (max-width: 520px) {
-  .username-tag { display: none; }
-  .scrape-stats { grid-template-columns: repeat(2, 1fr); }
-  .theme-color-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
-  .modal-box { padding: 18px; width: 94vw; }
-  .legend-panel-compact { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .mobile-block-message {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px 28px;
+    text-align: center;
+    max-width: 340px;
+  }
+  .mobile-block-message i { font-size: 36px; color: var(--accent); margin-bottom: 14px; display: block; }
+  .mobile-block-message p { font-size: 15px; line-height: 1.5; margin: 0 0 12px 0; color: var(--text); }
+  .mobile-block-message span { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
 }
 
 .left-col {
@@ -158,7 +153,8 @@ body {
 
 .left-col.collapsed .nav-section-label,
 .left-col.collapsed .nav-caret,
-.left-col.collapsed .nav-section-body { display: none; }
+.left-col.collapsed .nav-hint,
+.left-col.collapsed .nav-section-body { display: none !important; }
 .left-col.collapsed .nav-section-header { justify-content: center; padding: 12px 0; }
 
 .collapse-toggle {
@@ -236,7 +232,11 @@ body {
 .nav-leaf-action:hover { color: var(--accent); border-color: var(--accent); }
 .nav-hint { font-size: 11px; color: var(--text-muted); margin: 0 0 8px 0; }
 
-.nav-tree { max-height: none; }
+.nav-tree {
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
 
 /* 3rd level: city expandable to show pipeline-stage leaves (Reach Out tree) */
 .catchlog-block { border-bottom: 1px solid var(--border); }
@@ -930,7 +930,7 @@ button#huntBtn:disabled, .primary-btn:disabled { background: var(--border); colo
   white-space: nowrap;
   min-width: 0;
 }
-.location-pin { color: var(--text-muted); flex-shrink: 0; display: inline-flex; line-height: 0; }
+.location-pin { color: var(--text-muted); flex-shrink: 0; display: inline-flex; align-items: center; font-size: 13px; }
 .location-pin:hover { color: var(--accent); }
 
 .contact-row {
@@ -986,9 +986,18 @@ button#huntBtn:disabled, .primary-btn:disabled { background: var(--border); colo
 
 /* ---------- Social links column ---------- */
 .social-row { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
-.social-icon { display: inline-flex; line-height: 0; border-radius: 5px; overflow: hidden; width: 20px; height: 20px; }
-.social-icon svg { display: block; width: 20px; height: 20px; }
+.social-icon { display: inline-flex; line-height: 0; }
 .social-icon:hover { filter: brightness(1.15); transform: translateY(-1px); }
+.social-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  color: #fff;
+  font-size: 11px;
+}
 
 /* ---------- Contact scrape progress panel ---------- */
 .scrape-panel {
@@ -1096,6 +1105,9 @@ button#huntBtn:disabled, .primary-btn:disabled { background: var(--border); colo
 }
 .report-stat-value { font-family: var(--font-mono); font-size: 22px; font-weight: 600; }
 .report-stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+
+.reports-filter-group { display: flex; gap: 8px; flex-wrap: wrap; }
+.reports-line-card { height: 320px; }
 
 .reports-charts-row {
   display: grid;

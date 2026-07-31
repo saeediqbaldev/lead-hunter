@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.07.31-11";
+const APP_VERSION = "2026.07.31-11.1";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -825,7 +825,10 @@ function setContentView(view) {
     btn.classList.toggle("active-view", btn.dataset.section === view || (view === "board" && btn.dataset.section === state.lastNavSection));
   });
 
-  if (view === "reports") loadReports();
+  if (view === "reports") {
+    loadReportsFilterOptions();
+    loadReports();
+  }
 }
 
 function tagClass(tag) {
@@ -1745,7 +1748,7 @@ function whatsappLinkFor(phone) {
   return `https://wa.me/${digits}`;
 }
 
-const WHATSAPP_SVG = `<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12.02 2C6.5 2 2.02 6.48 2.02 12c0 1.85.5 3.58 1.36 5.07L2 22l5.06-1.33A9.94 9.94 0 0 0 12.02 22C17.54 22 22 17.52 22 12S17.54 2 12.02 2zm0 18.1c-1.62 0-3.13-.47-4.4-1.28l-.31-.19-3 .79.8-2.92-.2-.3A8.07 8.07 0 0 1 3.9 12c0-4.48 3.65-8.1 8.12-8.1 4.47 0 8.1 3.63 8.1 8.1s-3.63 8.1-8.1 8.1zm4.44-6.06c-.24-.12-1.43-.7-1.65-.78-.22-.08-.38-.12-.55.12-.16.24-.63.78-.77.94-.14.16-.28.18-.52.06-.24-.12-1.02-.38-1.94-1.2-.72-.64-1.2-1.43-1.34-1.67-.14-.24-.02-.37.1-.49.11-.11.24-.28.36-.42.12-.14.16-.24.24-.4.08-.16.04-.3-.02-.42-.06-.12-.55-1.32-.75-1.8-.2-.48-.4-.42-.55-.42h-.47c-.16 0-.42.06-.64.3-.22.24-.84.82-.84 2s.86 2.32.98 2.48c.12.16 1.7 2.6 4.12 3.64.58.25 1.03.4 1.38.51.58.18 1.1.16 1.52.1.46-.07 1.43-.58 1.63-1.15.2-.56.2-1.04.14-1.15-.06-.1-.22-.16-.46-.28z"/></svg>`;
+const WHATSAPP_SVG = `<i class="bi bi-whatsapp"></i>`;
 
 function statusColorFor(value) {
   const found = STATUS_COLORS.find((s) => s.value === value);
@@ -1804,6 +1807,16 @@ recordsBody.addEventListener("click", (e) => {
     dd.querySelectorAll("[data-value]").forEach((el) => el.classList.toggle("selected", el.dataset.value === value));
     dd.classList.remove("open");
 
+    // In Reach Out mode, a status change away from the currently-viewed
+    // pipeline stage should make the row vanish from this list right away,
+    // not after a network round-trip - remove it instantly, let the
+    // background refresh below correct S/N numbering and badge counts.
+    if (state.mode === "outreach" && value !== state.outreach.status) {
+      const row = dd.closest(".list-row");
+      if (row) row.remove();
+      if (!recordsBody.querySelector(".list-row")) emptyState.style.display = "block";
+    }
+
     api(`/api/leads/${leadId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -1830,42 +1843,47 @@ document.addEventListener("click", (e) => {
   }
 });
 
-const LOCATION_PIN_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>`;
+const LOCATION_PIN_SVG = `<i class="bi bi-geo-alt-fill"></i>`;
 
 // Order matches the requested spec: Email, FB, Insta, Phone, LinkedIn, TikTok
-const SOCIAL_SVGS = {
-  email: `<svg viewBox="0 0 24 24" width="15" height="15"><rect x="1" y="3" width="22" height="18" rx="3" fill="#5a5550"/><path d="M2 5.5 12 13l10-7.5" fill="none" stroke="#fff" stroke-width="1.6"/></svg>`,
-  facebook: `<svg viewBox="0 0 24 24" width="15" height="15"><circle cx="12" cy="12" r="11" fill="#3b5998"/><text x="12" y="16.5" text-anchor="middle" font-size="12" font-family="Georgia, serif" fill="#fff" font-weight="bold">f</text></svg>`,
-  instagram: `<svg viewBox="0 0 24 24" width="15" height="15"><rect x="1" y="1" width="22" height="22" rx="6" fill="#c8347a"/><rect x="6" y="6" width="12" height="12" rx="4" fill="none" stroke="#fff" stroke-width="1.6"/><circle cx="17.3" cy="6.7" r="1.1" fill="#fff"/></svg>`,
-  phone: `<svg viewBox="0 0 24 24" width="15" height="15"><circle cx="12" cy="12" r="11" fill="#4caf6d"/><path d="M8 7.5c.3-.7.9-1 1.6-1h1c.5 0 .9.4 1 .9l.4 2c.1.4-.1.9-.4 1.1l-.9.7c.7 1.6 2 2.9 3.6 3.6l.7-.9c.3-.3.7-.5 1.1-.4l2 .4c.5.1.9.5.9 1v1c0 .7-.3 1.3-1 1.6-3 .6-8.2-1.7-9.6-6.2-.4-1.2-.6-2.8-.4-3.8Z" fill="none" stroke="#fff" stroke-width="1.3" stroke-linejoin="round"/></svg>`,
-  linkedin: `<svg viewBox="0 0 24 24" width="15" height="15"><rect x="1" y="1" width="22" height="22" rx="4" fill="#0a66c2"/><text x="12" y="16" text-anchor="middle" font-size="9" font-family="Arial, sans-serif" fill="#fff" font-weight="bold">in</text></svg>`,
-  tiktok: `<svg viewBox="0 0 24 24" width="15" height="15"><rect x="1" y="1" width="22" height="22" rx="6" fill="#111"/><path d="M13.5 6.5v7.3a2.4 2.4 0 1 1-2-2.36" fill="none" stroke="#25f4ee" stroke-width="1.3"/><path d="M13.2 6.3v7.3a2.4 2.4 0 1 1-2-2.36" fill="none" stroke="#fe2c55" stroke-width="1.3"/><path d="M13.35 6.4c.2 1.4 1.2 2.4 2.65 2.5" fill="none" stroke="#fff" stroke-width="1.3"/></svg>`,
+const SOCIAL_ICON_META = {
+  email: { icon: "bi-envelope-fill", bg: "#5a5550" },
+  facebook: { icon: "bi-facebook", bg: "#3b5998" },
+  instagram: { icon: "bi-instagram", bg: "#c8347a" },
+  phone: { icon: "bi-telephone-fill", bg: "#4caf6d" },
+  linkedin: { icon: "bi-linkedin", bg: "#0a66c2" },
+  tiktok: { icon: "bi-tiktok", bg: "#111" },
 };
+
+function socialBadge(key) {
+  const meta = SOCIAL_ICON_META[key];
+  return `<span class="social-badge" style="background:${meta.bg}"><i class="bi ${meta.icon}"></i></span>`;
+}
 
 function socialLinksHtml(lead) {
   const socials = lead.socials || {};
   const items = [];
 
   if (socials.email) {
-    items.push(`<a href="mailto:${socials.email}" class="social-icon" title="Email: ${socials.email}">${SOCIAL_SVGS.email}</a>`);
+    items.push(`<a href="mailto:${socials.email}" class="social-icon" title="Email: ${socials.email}">${socialBadge("email")}</a>`);
   }
   if (socials.facebook) {
-    items.push(`<a href="${socials.facebook}" target="_blank" rel="noopener" class="social-icon" title="Facebook">${SOCIAL_SVGS.facebook}</a>`);
+    items.push(`<a href="${socials.facebook}" target="_blank" rel="noopener" class="social-icon" title="Facebook">${socialBadge("facebook")}</a>`);
   }
   if (socials.instagram) {
-    items.push(`<a href="${socials.instagram}" target="_blank" rel="noopener" class="social-icon" title="Instagram">${SOCIAL_SVGS.instagram}</a>`);
+    items.push(`<a href="${socials.instagram}" target="_blank" rel="noopener" class="social-icon" title="Instagram">${socialBadge("instagram")}</a>`);
   }
   // Uses the scraper's own tel: link finding, not the Google-Places phone
   // already shown in the Contact column - this icon specifically means "we
   // independently confirmed a click-to-call link on their own website."
   if (socials.phone) {
-    items.push(`<a href="tel:${socials.phone.replace(/\s+/g, "")}" class="social-icon" title="Call ${socials.phone} (found on their website)">${SOCIAL_SVGS.phone}</a>`);
+    items.push(`<a href="tel:${socials.phone.replace(/\s+/g, "")}" class="social-icon" title="Call ${socials.phone} (found on their website)">${socialBadge("phone")}</a>`);
   }
   if (socials.linkedin) {
-    items.push(`<a href="${socials.linkedin}" target="_blank" rel="noopener" class="social-icon" title="LinkedIn">${SOCIAL_SVGS.linkedin}</a>`);
+    items.push(`<a href="${socials.linkedin}" target="_blank" rel="noopener" class="social-icon" title="LinkedIn">${socialBadge("linkedin")}</a>`);
   }
   if (socials.tiktok) {
-    items.push(`<a href="${socials.tiktok}" target="_blank" rel="noopener" class="social-icon" title="TikTok">${SOCIAL_SVGS.tiktok}</a>`);
+    items.push(`<a href="${socials.tiktok}" target="_blank" rel="noopener" class="social-icon" title="TikTok">${socialBadge("tiktok")}</a>`);
   }
 
   return items.join("") || `<span class="no-website">—</span>`;
@@ -1959,9 +1977,20 @@ function renderLeads(leads) {
         danger: true,
       });
       if (!confirmed) return;
-      await api(`/api/leads/${id}`, { method: "DELETE" });
-      await loadLeads();
-      await loadNichesAndLogs();
+
+      // Remove instantly instead of waiting on the network round-trip -
+      // the delete call and the follow-up refreshes happen in the
+      // background afterward, not blocking what the user sees.
+      const row = e.target.closest(".list-row");
+      if (row) row.remove();
+      if (!recordsBody.querySelector(".list-row")) emptyState.style.display = "block";
+
+      api(`/api/leads/${id}`, { method: "DELETE" })
+        .then(() => {
+          loadLeads(); // corrects S/N numbering and pagination counts shortly after
+          loadNichesAndLogs();
+        })
+        .catch((err) => console.error("Failed to delete lead:", err));
     });
   });
 }
@@ -2094,8 +2123,15 @@ const reportsRangeDropdown = document.getElementById("reportsRangeDropdown");
 const reportsRangeDropdownTrigger = document.getElementById("reportsRangeDropdownTrigger");
 const reportsRangeDropdownPanel = document.getElementById("reportsRangeDropdownPanel");
 const reportsRangeDropdownLabel = document.getElementById("reportsRangeDropdownLabel");
+const reportsNicheDropdown = document.getElementById("reportsNicheDropdown");
+const reportsNicheDropdownTrigger = document.getElementById("reportsNicheDropdownTrigger");
+const reportsNicheDropdownPanel = document.getElementById("reportsNicheDropdownPanel");
+const reportsNicheDropdownLabel = document.getElementById("reportsNicheDropdownLabel");
+const reportsCityDropdown = document.getElementById("reportsCityDropdown");
+const reportsCityDropdownTrigger = document.getElementById("reportsCityDropdownTrigger");
+const reportsCityDropdownPanel = document.getElementById("reportsCityDropdownPanel");
+const reportsCityDropdownLabel = document.getElementById("reportsCityDropdownLabel");
 const reportsStatGrid = document.getElementById("reportsStatGrid");
-const reportsTableBody = document.getElementById("reportsTableBody");
 const apiUsageTableBody = document.getElementById("apiUsageTableBody");
 
 const REPORT_RANGE_OPTIONS = [
@@ -2108,9 +2144,12 @@ const REPORT_RANGE_OPTIONS = [
   { value: "all", label: "All time", color: "#4fd1c5" },
 ];
 
-let reportsRange = "1m";
+// Defaults per spec: 1 Day / All niches / All cities
+const reportsFilters = { range: "1d", nicheId: "", cityId: "" };
+let reportsNichesCities = { niches: [], cities: [] };
 let pieChartInstance = null;
 let donutChartInstance = null;
+let lineChartInstance = null;
 
 function renderReportsRangeDropdown() {
   buildFilterDropdown({
@@ -2118,20 +2157,70 @@ function renderReportsRangeDropdown() {
     trigger: reportsRangeDropdownTrigger,
     panel: reportsRangeDropdownPanel,
     label: reportsRangeDropdownLabel,
-    currentValue: reportsRange,
+    currentValue: reportsFilters.range,
     onSelect: (value) => {
-      reportsRange = value;
+      reportsFilters.range = value;
       renderReportsRangeDropdown();
       loadReports();
     },
   });
 }
 
-reportsRangeDropdownTrigger.addEventListener("click", () => {
-  reportsRangeDropdown.classList.toggle("open");
+function renderReportsNicheDropdown() {
+  const options = [
+    { value: "", label: "All niches", color: "#948d80" },
+    ...reportsNichesCities.niches.map((n) => ({ value: String(n.id), label: n.name, color: "#7fa8d9" })),
+  ];
+  buildFilterDropdown({
+    options,
+    trigger: reportsNicheDropdownTrigger,
+    panel: reportsNicheDropdownPanel,
+    label: reportsNicheDropdownLabel,
+    currentValue: reportsFilters.nicheId,
+    onSelect: (value) => {
+      reportsFilters.nicheId = value;
+      reportsFilters.cityId = ""; // changing niche resets the (now possibly invalid) city selection
+      renderReportsNicheDropdown();
+      renderReportsCityDropdown();
+      loadReports();
+    },
+  });
+}
+
+function renderReportsCityDropdown() {
+  const filteredCities = reportsFilters.nicheId
+    ? reportsNichesCities.cities.filter((c) => String(c.niche_id) === String(reportsFilters.nicheId))
+    : reportsNichesCities.cities;
+  const options = [
+    { value: "", label: "All cities", color: "#948d80" },
+    ...filteredCities.map((c) => ({ value: String(c.id), label: c.name, color: "#7fb88a" })),
+  ];
+  buildFilterDropdown({
+    options,
+    trigger: reportsCityDropdownTrigger,
+    panel: reportsCityDropdownPanel,
+    label: reportsCityDropdownLabel,
+    currentValue: reportsFilters.cityId,
+    onSelect: (value) => {
+      reportsFilters.cityId = value;
+      renderReportsCityDropdown();
+      loadReports();
+    },
+  });
+}
+
+[reportsRangeDropdownTrigger, reportsNicheDropdownTrigger, reportsCityDropdownTrigger].forEach((trigger, i) => {
+  const dd = [reportsRangeDropdown, reportsNicheDropdown, reportsCityDropdown][i];
+  trigger.addEventListener("click", () => {
+    const wasOpen = dd.classList.contains("open");
+    [reportsRangeDropdown, reportsNicheDropdown, reportsCityDropdown].forEach((d) => d.classList.remove("open"));
+    if (!wasOpen) dd.classList.add("open");
+  });
 });
 document.addEventListener("click", (e) => {
-  if (!reportsRangeDropdown.contains(e.target)) reportsRangeDropdown.classList.remove("open");
+  [reportsRangeDropdown, reportsNicheDropdown, reportsCityDropdown].forEach((d) => {
+    if (!d.contains(e.target)) d.classList.remove("open");
+  });
 });
 
 const REPORT_STATUS_META = [
@@ -2160,7 +2249,14 @@ function renderReportsStatGrid(summary) {
     .join("");
 }
 
-function renderReportsCharts(summary) {
+function destroyReportsCharts() {
+  [pieChartInstance, donutChartInstance, lineChartInstance].forEach((c) => c && c.destroy());
+  pieChartInstance = null;
+  donutChartInstance = null;
+  lineChartInstance = null;
+}
+
+function renderReportsCharts(summary, timeseries) {
   if (typeof Chart === "undefined") {
     console.error("Chart.js did not load from the CDN - charts will stay blank, but the tables below still work.");
     return;
@@ -2170,14 +2266,7 @@ function renderReportsCharts(summary) {
   const data = REPORT_STATUS_META.map((s) => summary.byStatus[s.key] || 0);
   const colors = REPORT_STATUS_META.map((s) => s.color);
 
-  if (pieChartInstance) {
-    pieChartInstance.destroy();
-    pieChartInstance = null;
-  }
-  if (donutChartInstance) {
-    donutChartInstance.destroy();
-    donutChartInstance = null;
-  }
+  destroyReportsCharts();
 
   const commonOptions = {
     responsive: true,
@@ -2196,10 +2285,7 @@ function renderReportsCharts(summary) {
     requestAnimationFrame(() => {
       const pieCtx = document.getElementById("reportsPieChart");
       const donutCtx = document.getElementById("reportsDonutChart");
-
-      if (!pieCtx.clientWidth || !pieCtx.clientHeight) {
-        console.warn("Reports chart canvas still has zero size after layout - the panel may still be hidden.");
-      }
+      const lineCtx = document.getElementById("reportsLineChart");
 
       pieChartInstance = new Chart(pieCtx, {
         type: "pie",
@@ -2213,35 +2299,34 @@ function renderReportsCharts(summary) {
         options: commonOptions,
       });
 
-      // Belt-and-braces: force a resize pass right after creation too.
+      const lineLabels = timeseries.days.length ? timeseries.days : ["No data yet"];
+      lineChartInstance = new Chart(lineCtx, {
+        type: "line",
+        data: {
+          labels: lineLabels,
+          datasets: REPORT_STATUS_META.map((s) => ({
+            label: s.label,
+            data: timeseries.days.length ? timeseries.series[s.key] : [0],
+            borderColor: s.color,
+            backgroundColor: s.color,
+            tension: 0.3,
+            pointRadius: 3,
+          })),
+        },
+        options: {
+          ...commonOptions,
+          scales: {
+            x: { ticks: { color: "#948d80", font: { size: 10 } }, grid: { color: "rgba(255,255,255,0.05)" } },
+            y: { beginAtZero: true, ticks: { color: "#948d80", precision: 0 }, grid: { color: "rgba(255,255,255,0.05)" } },
+          },
+        },
+      });
+
       pieChartInstance.resize();
       donutChartInstance.resize();
+      lineChartInstance.resize();
     });
   });
-}
-
-function renderReportsTable(byNicheCity) {
-  if (byNicheCity.length === 0) {
-    reportsTableBody.innerHTML = `<tr><td colspan="10" class="empty-cell-row">No data in this range yet.</td></tr>`;
-    return;
-  }
-  reportsTableBody.innerHTML = byNicheCity
-    .map(
-      (row) => `
-    <tr>
-      <td>${row.niche}</td>
-      <td>${row.city}</td>
-      <td class="mono">${row.total}</td>
-      <td class="mono">${row.new}</td>
-      <td class="mono">${row.shortlisted}</td>
-      <td class="mono">${row.contacted}</td>
-      <td class="mono">${row.engaged}</td>
-      <td class="mono">${row.converted}</td>
-      <td class="mono">${row.won}</td>
-      <td class="mono">${row.rejected}</td>
-    </tr>`
-    )
-    .join("");
 }
 
 function renderApiUsageTable(rows) {
@@ -2262,18 +2347,34 @@ function renderApiUsageTable(rows) {
     .join("");
 }
 
+async function loadReportsFilterOptions() {
+  try {
+    const res = await api("/api/reports/niches-cities");
+    reportsNichesCities = await res.json();
+    renderReportsNicheDropdown();
+    renderReportsCityDropdown();
+  } catch (err) {
+    console.error("Failed to load report filter options:", err);
+  }
+}
+
 async function loadReports() {
   try {
-    const [summaryRes, usageRes] = await Promise.all([
-      api(`/api/reports/summary?range=${reportsRange}`),
+    const params = new URLSearchParams({ range: reportsFilters.range });
+    if (reportsFilters.nicheId) params.set("niche", reportsFilters.nicheId);
+    if (reportsFilters.cityId) params.set("city", reportsFilters.cityId);
+
+    const [summaryRes, timeseriesRes, usageRes] = await Promise.all([
+      api(`/api/reports/summary?${params.toString()}`),
+      api(`/api/reports/timeseries?${params.toString()}`),
       api("/api/reports/api-usage"),
     ]);
     const summary = await summaryRes.json();
+    const timeseries = await timeseriesRes.json();
     const usage = await usageRes.json();
 
     renderReportsStatGrid(summary);
-    renderReportsCharts(summary);
-    renderReportsTable(summary.byNicheCity);
+    renderReportsCharts(summary, timeseries);
     renderApiUsageTable(usage);
   } catch (err) {
     console.error("Failed to load reports:", err);
@@ -2291,6 +2392,8 @@ async function loadReports() {
   renderNeedDropdown();
   renderSortDropdown();
   renderReportsRangeDropdown();
+  renderReportsNicheDropdown();
+  renderReportsCityDropdown();
   await loadWhoami();
   const failures = [];
 

@@ -6,11 +6,20 @@
 <title>Xeven Leads</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=11" />
+<link rel="stylesheet" href="style.css?v=111" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 </head>
 <body>
+
+  <div id="mobileBlockOverlay">
+    <div class="mobile-block-message">
+      <i class="bi bi-laptop"></i>
+      <p>The WebApp is not Mobile friendly, kindly use it with laptop or large screen.</p>
+      <span>- Xeven Leads</span>
+    </div>
+  </div>
+
 
   <header class="topbar">
     <div class="brand">
@@ -281,17 +290,38 @@
             <h2>Reports</h2>
             <div class="scope-line">Overall pipeline summary, across every niche and city</div>
           </div>
-          <div class="theme-dropdown filter-dropdown icon-filter" id="reportsRangeDropdown" title="Date range">
-            <button type="button" class="theme-dropdown-trigger" id="reportsRangeDropdownTrigger">
-              <span id="reportsRangeDropdownLabel">Last 30 days</span>
-              <span class="theme-dropdown-caret">▾</span>
-            </button>
-            <div class="theme-dropdown-panel" id="reportsRangeDropdownPanel"></div>
+          <div class="reports-filter-group">
+            <div class="theme-dropdown filter-dropdown icon-filter" id="reportsRangeDropdown" title="Date range">
+              <button type="button" class="theme-dropdown-trigger" id="reportsRangeDropdownTrigger">
+                <span id="reportsRangeDropdownLabel">Last 24 hours</span>
+                <span class="theme-dropdown-caret">▾</span>
+              </button>
+              <div class="theme-dropdown-panel" id="reportsRangeDropdownPanel"></div>
+            </div>
+            <div class="theme-dropdown filter-dropdown icon-filter" id="reportsNicheDropdown" title="Niche">
+              <button type="button" class="theme-dropdown-trigger" id="reportsNicheDropdownTrigger">
+                <span id="reportsNicheDropdownLabel">All niches</span>
+                <span class="theme-dropdown-caret">▾</span>
+              </button>
+              <div class="theme-dropdown-panel" id="reportsNicheDropdownPanel"></div>
+            </div>
+            <div class="theme-dropdown filter-dropdown icon-filter" id="reportsCityDropdown" title="City">
+              <button type="button" class="theme-dropdown-trigger" id="reportsCityDropdownTrigger">
+                <span id="reportsCityDropdownLabel">All cities</span>
+                <span class="theme-dropdown-caret">▾</span>
+              </button>
+              <div class="theme-dropdown-panel" id="reportsCityDropdownPanel"></div>
+            </div>
           </div>
         </div>
 
         <div class="reports-body">
           <div class="reports-stat-grid" id="reportsStatGrid"></div>
+
+          <div class="reports-chart-card reports-line-card">
+            <h3>Status trend over time</h3>
+            <canvas id="reportsLineChart"></canvas>
+          </div>
 
           <div class="reports-charts-row">
             <div class="reports-chart-card">
@@ -305,22 +335,7 @@
           </div>
 
           <div class="reports-table-card">
-            <h3>By niche &amp; city</h3>
-            <div class="table-scroll-wrap">
-              <table class="reports-table" id="reportsTable">
-                <thead>
-                  <tr>
-                    <th>Niche</th><th>City</th><th>Total</th><th>New</th><th>Shortlisted</th>
-                    <th>Contacted</th><th>Engaged</th><th>Converted</th><th>Won</th><th>Rejected</th>
-                  </tr>
-                </thead>
-                <tbody id="reportsTableBody"></tbody>
-              </table>
-            </div>
-          </div>
-
-          <div class="reports-table-card">
-            <h3>API key usage</h3>
+            <h3>API key usage — today</h3>
             <div class="table-scroll-wrap">
               <table class="reports-table" id="apiUsageTable">
                 <thead><tr><th>Key</th><th>Status</th><th>Requests made</th><th>Leads caught</th></tr></thead>
@@ -445,6 +460,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=11"></script>
+  <script src="app.js?v=111"></script>
 </body>
 </html>
