@@ -6,11 +6,13 @@
 <title>Xeven Leads</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=119" />
+<link rel="stylesheet" href="style.css?v=120" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
 <body>
+
+  <div id="toastContainer" class="toast-container"></div>
 
   <div id="mobileBlockOverlay">
     <div class="mobile-block-message">
@@ -340,6 +342,22 @@
               </table>
             </div>
           </div>
+
+          <div class="reports-table-card">
+            <h3>API key usage — history (all time)</h3>
+            <p class="hint">Accurate across redeploys and backup restores - built from usage recorded on every hunt, not recalculated.</p>
+            <div class="table-scroll-wrap">
+              <table class="reports-table" id="apiUsageHistoryTable">
+                <thead><tr><th>Key</th><th>Total requests (all time)</th><th>Total leads caught (all time)</th></tr></thead>
+                <tbody id="apiUsageHistoryTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="reports-chart-card reports-line-card">
+            <h3>API usage over time</h3>
+            <canvas id="apiUsageLineChart"></canvas>
+          </div>
         </div>
       </section>
 
@@ -487,6 +505,6 @@
 
 
 
-  <script src="app.js?v=119"></script>
+  <script src="app.js?v=120"></script>
 </body>
 </html>

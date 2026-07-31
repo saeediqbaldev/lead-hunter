@@ -6,6 +6,36 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V12.0
+- **Business name column**: location/maps icon moved out of the name
+  column into the Social column (always shown by default, clickable to the
+  Maps listing). City column narrowed and that space handed to Status,
+  which was getting tight. Contact column's icon changed from an
+  "unverified WhatsApp" claim to an honest phone/call icon.
+- **API usage History section** in Reports: all-time totals per key plus a
+  real line chart of usage over time, built on the existing accurate daily
+  tracking. Also found and fixed a real gap in backup/restore - it wasn't
+  carrying this history at all. Verified with a full wipe-and-restore test:
+  seeded 2 days of usage, exported, wiped everything, imported, and
+  confirmed the exact numbers came back correctly mapped to the restored
+  key.
+- **Toast notifications**: bottom-right, fade in/out, auto-dismiss after
+  5 seconds. Wired into hunting, delete, status changes, exports, niche/
+  catch-log rename & delete, API key save/test/delete, theme save/reset,
+  team member create/delete, and backup export/import.
+- **Accessibility pass, backed by real WCAG contrast math** (not visual
+  guessing): found that in light mode, `accent`/`good`/`warn` only passed
+  the relaxed large-text threshold (as low as 3.66:1) - darkened them
+  slightly to properly clear 4.5:1 for normal text. Separately found status
+  pill colors (New/Shortlisted/etc.) were catastrophically low contrast in
+  light mode (as low as 1.68:1, since they were tuned only for dark
+  backgrounds) and gave them proper light-mode-specific variants (4.5:1+).
+  Also found Reports charts had hardcoded dark-mode-only text and grid
+  colors that would have been unreadable in light mode - made them
+  theme-aware. All fixes verified by computing actual contrast ratios
+  against the real rendered colors, and confirmed via live evaluation that
+  switching modes produces the correct accessible values.
+
 ## What's in this V11.9
 All verified with real headless-browser rendering.
 

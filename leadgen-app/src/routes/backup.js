@@ -34,8 +34,14 @@ router.get("/export", (req, res) => {
 
   const seenPlaces = db.prepare("SELECT niche_id, location_key, place_id, first_seen_at FROM seen_places WHERE user_id = ?").all(userId);
   const apiKeys = db
-    .prepare("SELECT label, key_value, is_active, requests_made, leads_caught FROM api_keys WHERE user_id = ?")
+    .prepare("SELECT id, label, key_value, is_active, requests_made, leads_caught FROM api_keys WHERE user_id = ?")
     .all(userId);
+  const apiKeyIds = apiKeys.map((k) => k.id);
+  const apiKeyDailyUsage = apiKeyIds.length
+    ? db
+        .prepare(`SELECT api_key_id, usage_date, requests_made, leads_caught FROM api_key_daily_usage WHERE api_key_id IN (${apiKeyIds.map(() => "?").join(",")})`)
+        .all(...apiKeyIds)
+    : [];
 
   const backup = {
     formatVersion: BACKUP_FORMAT_VERSION,
@@ -48,6 +54,7 @@ router.get("/export", (req, res) => {
     leads,
     seenPlaces,
     apiKeys,
+    apiKeyDailyUsage,
   };
 
   const filename = `xeven-leads-backup-${user.username}-${new Date().toISOString().slice(0, 10)}.json`;
@@ -155,15 +162,33 @@ router.post("/import", (req, res) => {
       insertSeen.run(userId, realNicheId, seen.location_key, seen.place_id);
     }
 
+    const apiKeyIdMap = new Map(); // backup api_key id -> real api_key id
     for (const key of backup.apiKeys || []) {
-      const already = db
-        .prepare("SELECT 1 FROM api_keys WHERE user_id = ? AND key_value = ?")
-        .get(userId, key.key_value);
-      if (already) continue;
-      db.prepare(
-        "INSERT INTO api_keys (user_id, label, key_value, is_active, requests_made, leads_caught) VALUES (?, ?, ?, 0, ?, ?)"
-      ).run(userId, key.label || "Imported key", key.key_value, key.requests_made || 0, key.leads_caught || 0);
-      stats.apiKeys++;
+      let existing = db.prepare("SELECT id FROM api_keys WHERE user_id = ? AND key_value = ?").get(userId, key.key_value);
+      if (!existing) {
+        const info = db
+          .prepare(
+            "INSERT INTO api_keys (user_id, label, key_value, is_active, requests_made, leads_caught) VALUES (?, ?, ?, 0, ?, ?)"
+          )
+          .run(userId, key.label || "Imported key", key.key_value, key.requests_made || 0, key.leads_caught || 0);
+        existing = { id: info.lastInsertRowid };
+        stats.apiKeys++;
+      }
+      if (key.id) apiKeyIdMap.set(key.id, existing.id);
+    }
+
+    // Restore per-day usage history for the Reports page's "usage over
+    // time" chart. Matched by (api_key_id, usage_date) - a date that
+    // already has a row locally is left untouched (INSERT OR IGNORE), so
+    // re-importing the same backup twice (or importing after already
+    // hunting today) never double-counts anything.
+    const insertDailyUsage = db.prepare(
+      `INSERT OR IGNORE INTO api_key_daily_usage (api_key_id, usage_date, requests_made, leads_caught) VALUES (?, ?, ?, ?)`
+    );
+    for (const usage of backup.apiKeyDailyUsage || []) {
+      const realKeyId = apiKeyIdMap.get(usage.api_key_id);
+      if (!realKeyId) continue;
+      insertDailyUsage.run(realKeyId, usage.usage_date, usage.requests_made || 0, usage.leads_caught || 0);
     }
 
     if (backup.theme) {

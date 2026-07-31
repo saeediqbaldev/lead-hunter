@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.07.31-11.9";
+const APP_VERSION = "2026.07.31-12.0";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -18,6 +18,25 @@ function showBanner(message) {
 function hideBanner() {
   const banner = document.getElementById("errorBanner");
   if (banner) banner.style.display = "none";
+}
+
+// ---------- Toast notifications (bottom-right, fade in/out after 5s) ----------
+const TOAST_ICONS = { success: "bi-check-circle-fill", error: "bi-x-circle-fill", info: "bi-info-circle-fill" };
+function showToast(message, kind = "info") {
+  const container = document.getElementById("toastContainer");
+  if (!container) return;
+
+  const toast = document.createElement("div");
+  toast.className = `toast ${kind}`;
+  toast.innerHTML = `<i class="bi ${TOAST_ICONS[kind] || TOAST_ICONS.info}"></i><span>${message}</span>`;
+  container.appendChild(toast);
+
+  requestAnimationFrame(() => toast.classList.add("show"));
+
+  setTimeout(() => {
+    toast.classList.remove("show");
+    setTimeout(() => toast.remove(), 300); // matches the CSS transition duration
+  }, 5000);
 }
 
 // ---------- Auth-aware fetch wrapper ----------
@@ -128,9 +147,11 @@ document.getElementById("dailyCapSaveBtn").addEventListener("click", async () =>
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Could not save");
     showSettingsResult("ok", `Daily cap set to ${data.dailyLeadCap}.`);
+    showToast(`Daily lead cap set to ${data.dailyLeadCap}`, "success");
     await refreshQuota();
   } catch (err) {
     showSettingsResult("err", err.message);
+    showToast(`Could not save daily cap: ${err.message}`, "error");
   } finally {
     btn.disabled = false;
   }
@@ -164,8 +185,10 @@ document.getElementById("backupExportBtn").addEventListener("click", async () =>
     a.remove();
     URL.revokeObjectURL(url);
     showBackupResult("ok", "Backup downloaded.");
+    showToast("Backup downloaded", "success");
   } catch (err) {
     showBackupResult("err", err.message);
+    showToast(`Backup export failed: ${err.message}`, "error");
   } finally {
     btn.disabled = false;
   }
@@ -201,6 +224,7 @@ document.getElementById("backupImportInput").addEventListener("change", async (e
       "ok",
       `Imported: ${s.niches} new niche(s), ${s.catchLogs} new catch log(s), ${s.leads} new lead(s), ${s.apiKeys} new API key(s).`
     );
+    showToast(`Backup imported: ${s.leads} new lead(s) added`, "success");
 
     // Refresh everything that could have changed
     await loadNichesAndLogs();
@@ -210,6 +234,7 @@ document.getElementById("backupImportInput").addEventListener("change", async (e
     if (state.contentView === "board") await loadLeads();
   } catch (err) {
     showBackupResult("err", err.message.includes("JSON") ? "That file doesn't look like a valid backup (couldn't parse it)." : err.message);
+    showToast(`Backup import failed: ${err.message}`, "error");
   }
 });
 
@@ -265,10 +290,10 @@ const LIGHT_THEME_DEFAULTS = {
   "--border": "#ddd7cc",
   "--text": "#1c1a17",
   "--text-muted": "#6b6459",
-  "--accent": "#c94f2d",
+  "--accent": "#bd4a2a",
   "--accent-dim": "#f0c4b0",
-  "--good": "#2f8f52",
-  "--warn": "#a8720f",
+  "--good": "#297e48",
+  "--warn": "#94640d",
   "--danger": "#b83b3b",
 };
 
@@ -357,10 +382,12 @@ themeSaveBtn.addEventListener("click", async () => {
     themeResult.style.display = "block";
     themeResult.className = "settings-result ok";
     themeResult.textContent = "Saved.";
+    showToast("Theme saved", "success");
   } catch (err) {
     themeResult.style.display = "block";
     themeResult.className = "settings-result err";
     themeResult.textContent = err.message;
+    showToast(`Could not save theme: ${err.message}`, "error");
   } finally {
     themeSaveBtn.disabled = false;
   }
@@ -374,8 +401,10 @@ themeResetBtn.addEventListener("click", async () => {
     themeResult.style.display = "block";
     themeResult.className = "settings-result ok";
     themeResult.textContent = "Reset to default.";
+    showToast("Theme reset to default", "success");
   } catch (err) {
     console.error("Failed to reset theme:", err);
+    showToast(`Could not reset theme: ${err.message}`, "error");
   }
 });
 
@@ -462,12 +491,14 @@ adminCreateBtn.addEventListener("click", async () => {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Could not create account");
     showAdminResult("ok", `Account "${data.username}" created. They can log in now with the password you set.`);
+    showToast(`Team account "${data.username}" created`, "success");
     newUsername.value = "";
     newUserPassword.value = "";
     newUserIsAdmin.checked = false;
     await loadUsers();
   } catch (err) {
     showAdminResult("err", err.message);
+    showToast(`Could not create account: ${err.message}`, "error");
   } finally {
     adminCreateBtn.disabled = false;
   }
@@ -492,9 +523,11 @@ usersList.addEventListener("click", async (e) => {
     const res = await api(`/api/users/${id}`, { method: "DELETE" });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Could not remove account");
+    showToast(`Account "${username}" removed`, "success");
     await loadUsers();
   } catch (err) {
     showAdminResult("err", err.message);
+    showToast(`Could not remove account: ${err.message}`, "error");
   }
 });
 
@@ -547,11 +580,13 @@ settingsSaveNewBtn.addEventListener("click", async () => {
       return;
     }
     showSettingsResult("ok", `Saved "${data.label}" (${data.masked}).`);
+    showToast(`API key "${data.label}" saved`, "success");
     newKeyLabel.value = "";
     newKeyValue.value = "";
     await loadApiKeys();
   } catch (err) {
     showSettingsResult("bad", err.message || "Could not save this key.");
+    showToast(`Could not save key: ${err.message}`, "error");
   } finally {
     settingsSaveNewBtn.disabled = false;
     settingsSaveNewBtn.textContent = "Test & Save";
@@ -567,6 +602,7 @@ apiKeysList.addEventListener("click", async (e) => {
   if (action === "activate-key") {
     await api(`/api/settings/keys/${id}/activate`, { method: "POST" });
     hideSettingsResult();
+    showToast("Active API key updated", "success");
     await loadApiKeys();
     return;
   }
@@ -579,6 +615,7 @@ apiKeysList.addEventListener("click", async (e) => {
       const res = await api(`/api/settings/keys/${id}/test`, { method: "POST" });
       const data = await res.json();
       showSettingsResult(data.ok ? "ok" : "bad", data.ok ? "Success — this key still works." : data.error || "This key no longer works.");
+      showToast(data.ok ? "Key test succeeded" : `Key test failed: ${data.error || "no longer works"}`, data.ok ? "success" : "error");
     } finally {
       btn.disabled = false;
       btn.textContent = original;
@@ -598,6 +635,7 @@ apiKeysList.addEventListener("click", async (e) => {
     if (!confirmed) return;
     await api(`/api/settings/keys/${id}`, { method: "DELETE" });
     hideSettingsResult();
+    showToast(`API key "${label}" deleted`, "success");
     await loadApiKeys();
     return;
   }
@@ -886,6 +924,7 @@ exportViewMenu.querySelectorAll("[data-export-view]").forEach((link) => {
 
     window.location.href = `/api/leads/export/${format}?${params.toString()}`;
     exportViewMenu.classList.remove("open");
+    showToast(`Exporting current view as ${format.toUpperCase()}…`, "info");
   });
 });
 
@@ -1386,6 +1425,13 @@ function renderNichesTree() {
 
 // toggle export dropdowns, closing others when one opens
 nichesTree.addEventListener("click", (e) => {
+  const exportLink = e.target.closest(".export-list a");
+  if (exportLink) {
+    const format = exportLink.textContent.trim().replace("Export ", "");
+    showToast(`Exporting as ${format}…`, "info");
+    return; // let the anchor's own href navigation proceed normally
+  }
+
   const toggle = e.target.closest('[data-action="toggle-export"]');
   if (toggle) {
     const menu = toggle.closest("[data-export-menu]");
@@ -1446,7 +1492,9 @@ nichesTree.addEventListener("click", async (e) => {
       });
       if (!res.ok) {
         const data = await res.json();
-        alert(data.error || "Rename failed");
+        showToast(data.error || "Rename failed", "error");
+      } else {
+        showToast(`Niche renamed to "${newName}"`, "success");
       }
       await loadNichesAndLogs();
     }
@@ -1463,6 +1511,7 @@ nichesTree.addEventListener("click", async (e) => {
     });
     if (confirmed) {
       await api(`/api/niches/${id}`, { method: "DELETE" });
+      showToast(`Niche "${niche.name}" deleted`, "success");
       if (state.activeCatchLogId && state.catchLogs.some((l) => l.id === state.activeCatchLogId && l.niche_id === Number(id))) {
         state.activeCatchLogId = null;
         updateScopeLine();
@@ -1483,6 +1532,7 @@ nichesTree.addEventListener("click", async (e) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newName }),
       });
+      showToast(`Catch log renamed to "${newName}"`, "success");
       await loadNichesAndLogs();
       if (state.activeCatchLogId === Number(id)) updateScopeLine();
     }
@@ -1499,6 +1549,7 @@ nichesTree.addEventListener("click", async (e) => {
     });
     if (confirmed) {
       await api(`/api/catch-logs/${id}`, { method: "DELETE" });
+      showToast(`Catch log "${log.name}" deleted`, "success");
       if (state.activeCatchLogId === Number(id)) {
         state.activeCatchLogId = null;
         updateScopeLine();
@@ -1805,9 +1856,26 @@ function whatsappLinkFor(phone) {
 
 const WHATSAPP_SVG = `<i class="bi bi-whatsapp"></i>`;
 
+// Light-mode variants of each status color - the dark-mode colors above are
+// tuned to pop against a near-black background and fail real accessibility
+// contrast (as low as 1.68:1) when used as text against a light/white
+// surface. Each of these was verified to reach at least 4.5:1 (WCAG AA for
+// normal text) against a white panel while keeping the same hue.
+const STATUS_COLORS_LIGHT = {
+  new: "#3274c3",
+  shortlisted: "#976d16",
+  contacted: "#e03400",
+  engaged: "#ac47d7",
+  converted: "#1c7d74",
+  won: "#40824d",
+  rejected: "#d83b3b",
+};
+
 function statusColorFor(value) {
   const found = STATUS_COLORS.find((s) => s.value === value);
-  return found ? found.color : "#948d80";
+  if (!found) return "#948d80";
+  if (currentTheme.mode === "light" && STATUS_COLORS_LIGHT[value]) return STATUS_COLORS_LIGHT[value];
+  return found.color;
 }
 
 // Custom themed dropdown for the per-row status cell, same reasoning as the
@@ -1887,6 +1955,7 @@ recordsBody.addEventListener("click", (e) => {
       body: JSON.stringify({ status: value }),
     })
       .then(async () => {
+        showToast(`Status updated to "${value}"`, "success");
         // Still refresh from the server shortly after, to correct S/N
         // numbering and catch any edge case the optimistic update missed -
         // this happens invisibly in the background, not blocking what the
@@ -1897,7 +1966,10 @@ recordsBody.addEventListener("click", (e) => {
           await loadLeads();
         }
       })
-      .catch((err) => console.error("Failed to update lead status:", err));
+      .catch((err) => {
+        console.error("Failed to update lead status:", err);
+        showToast(`Failed to update status: ${err.message}`, "error");
+      });
   }
 });
 
@@ -1911,6 +1983,7 @@ const LOCATION_PIN_SVG = `<i class="bi bi-geo-alt-fill"></i>`;
 
 // Order matches the requested spec: Email, FB, Insta, Phone, LinkedIn, TikTok
 const SOCIAL_ICON_META = {
+  location: { icon: "bi-geo-alt-fill", bg: "#6b6459" },
   email: { icon: "bi-envelope-fill", bg: "#5a5550" },
   facebook: { icon: "bi-facebook", bg: "#3b5998" },
   instagram: { icon: "bi-instagram", bg: "#c8347a" },
@@ -1928,6 +2001,10 @@ function socialLinksHtml(lead) {
   const socials = lead.socials || {};
   const items = [];
 
+  const mapLink = mapsLinkFor(lead);
+  if (mapLink) {
+    items.push(`<a href="${mapLink}" target="_blank" rel="noopener" class="social-icon" title="${lead.address || "View on map"}">${socialBadge("location")}</a>`);
+  }
   if (socials.email) {
     items.push(`<a href="mailto:${socials.email}" class="social-icon" title="Email: ${socials.email}">${socialBadge("email")}</a>`);
   }
@@ -1985,12 +2062,6 @@ function renderLeads(leads) {
     const row = document.createElement("div");
     row.className = "list-row";
 
-    const mapLink = mapsLinkFor(lead);
-    const locationHtml = mapLink
-      ? `<a class="location-pin" href="${mapLink}" target="_blank" rel="noopener" title="${lead.address || "View on map"}">${LOCATION_PIN_SVG}</a>`
-      : "";
-
-    const waLink = whatsappLinkFor(lead.phone);
     const websiteHtml = lead.website
       ? `<a href="${lead.website}" target="_blank" rel="noopener">${(() => {
           try {
@@ -2001,11 +2072,7 @@ function renderLeads(leads) {
         })()}</a>`
       : `<span class="no-website">no website</span>`;
     const phoneHtml = lead.phone
-      ? `<span class="contact-line">${lead.phone}${
-          waLink
-            ? `<a class="whatsapp-icon" href="${waLink}" target="_blank" rel="noopener" title="Message on WhatsApp (unverified - opens chat, WhatsApp confirms on send)">${WHATSAPP_SVG}</a>`
-            : ""
-        }</span>`
+      ? `<span class="contact-line">${lead.phone}<a class="call-icon" href="tel:${lead.phone.replace(/\s+/g, "")}" title="Call ${lead.phone}"><i class="bi bi-telephone-fill"></i></a></span>`
       : `<span class="no-website">no phone listed</span>`;
 
     const ratingHtml = lead.rating
@@ -2016,7 +2083,6 @@ function renderLeads(leads) {
       <div class="col-sn">${startIndex + index + 1}</div>
       <div>
         <div class="lead-name-row">
-          ${locationHtml}
           <span class="lead-name" title="${lead.name}">${lead.name}</span>
         </div>
       </div>
@@ -2051,10 +2117,14 @@ function renderLeads(leads) {
 
       api(`/api/leads/${id}`, { method: "DELETE" })
         .then(() => {
+          showToast("Record removed", "success");
           loadLeads(); // corrects S/N numbering and pagination counts shortly after
           loadNichesAndLogs();
         })
-        .catch((err) => console.error("Failed to delete lead:", err));
+        .catch((err) => {
+          console.error("Failed to delete lead:", err);
+          showToast(`Failed to remove record: ${err.message}`, "error");
+        });
     });
   });
 }
@@ -2154,6 +2224,7 @@ searchForm.addEventListener("submit", async (e) => {
 
     searchStatus.textContent = `Pulled ${data.pulled} distinct leads into "${data.catchLogName}". ${data.remainingToday} left in today's quota.`;
     searchStatus.className = "search-status ok";
+    showToast(`Hunted ${data.pulled} new lead${data.pulled === 1 ? "" : "s"} into "${data.catchLogName}"`, "success");
 
     state.activeCatchLogId = data.catchLogId;
     catchLogNameInput.value = "";
@@ -2167,6 +2238,7 @@ searchForm.addEventListener("submit", async (e) => {
   } catch (err) {
     searchStatus.textContent = err.message;
     searchStatus.className = "search-status error";
+    showToast(`Hunt failed: ${err.message}`, "error");
   } finally {
     huntBtn.disabled = false;
   }
@@ -2343,6 +2415,12 @@ function clearChartsError() {
   });
 }
 
+// Chart grid lines were a fixed light-white tint, invisible against a
+// light-mode chart card - adapt based on the currently active theme.
+function chartGridColor() {
+  return currentTheme.mode === "light" ? "rgba(0,0,0,0.08)" : "rgba(255,255,255,0.05)";
+}
+
 function renderReportsCharts(summary, timeseries) {
   if (typeof Chart === "undefined") {
     showChartsError(
@@ -2363,7 +2441,7 @@ function renderReportsCharts(summary, timeseries) {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: { position: "bottom", labels: { color: "#ece7dd", font: { size: 11 }, boxWidth: 10 } },
+      legend: { position: "bottom", labels: { color: currentTheme.colors["--text"], font: { size: 11 }, boxWidth: 10 } },
     },
   };
 
@@ -2399,13 +2477,13 @@ function renderReportsCharts(summary, timeseries) {
 
         pieChartInstance = new Chart(pieCtx, {
           type: "pie",
-          data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: "#1b1815", borderWidth: 2 }] },
+          data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: currentTheme.colors["--panel"], borderWidth: 2 }] },
           options: pieDonutOptions,
         });
 
         donutChartInstance = new Chart(donutCtx, {
           type: "doughnut",
-          data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: "#1b1815", borderWidth: 2 }] },
+          data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: currentTheme.colors["--panel"], borderWidth: 2 }] },
           options: pieDonutOptions,
         });
 
@@ -2442,8 +2520,8 @@ function renderReportsCharts(summary, timeseries) {
               },
             },
             scales: {
-              x: { ticks: { color: "#948d80", font: { size: 10 } }, grid: { color: "rgba(255,255,255,0.05)" } },
-              y: { beginAtZero: true, ticks: { color: "#948d80", precision: 0 }, grid: { color: "rgba(255,255,255,0.05)" } },
+              x: { ticks: { color: currentTheme.colors["--text-muted"], font: { size: 10 } }, grid: { color: chartGridColor() } },
+              y: { beginAtZero: true, ticks: { color: currentTheme.colors["--text-muted"], precision: 0 }, grid: { color: chartGridColor() } },
             },
           },
         });
@@ -2475,6 +2553,88 @@ function renderApiUsageTable(rows) {
     </tr>`
     )
     .join("");
+}
+
+const API_USAGE_LINE_COLORS = ["#ff6a3d", "#7fa8d9", "#e0b355", "#7fb88a", "#c586e0", "#4fd1c5", "#d95d5d"];
+let apiUsageLineChartInstance = null;
+
+function renderApiUsageHistory(history) {
+  const tbody = document.getElementById("apiUsageHistoryTableBody");
+  if (!history.keys.length) {
+    tbody.innerHTML = `<tr><td colspan="3" class="empty-cell-row">No API keys saved yet.</td></tr>`;
+  } else {
+    tbody.innerHTML = history.keys
+      .map(
+        (k) => `
+      <tr>
+        <td>${k.label}${k.active ? ' <span class="api-key-active-badge">● In use</span>' : ""}</td>
+        <td class="mono">${k.totalRequests}</td>
+        <td class="mono">${k.totalLeads}</td>
+      </tr>`
+      )
+      .join("");
+  }
+
+  if (typeof Chart === "undefined") return;
+  if (apiUsageLineChartInstance) {
+    apiUsageLineChartInstance.destroy();
+    apiUsageLineChartInstance = null;
+  }
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      try {
+        const ctx = document.getElementById("apiUsageLineChart");
+        const labels = history.days.length ? history.days : ["No data yet"];
+        apiUsageLineChartInstance = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels,
+            datasets: history.keys.map((k, i) => ({
+              label: k.label,
+              data: history.days.length ? k.requestsSeries : [0],
+              borderColor: API_USAGE_LINE_COLORS[i % API_USAGE_LINE_COLORS.length],
+              backgroundColor: API_USAGE_LINE_COLORS[i % API_USAGE_LINE_COLORS.length],
+              borderWidth: 1.5,
+              tension: 0.3,
+              pointRadius: 3,
+              pointHoverRadius: 5,
+            })),
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: "index", intersect: false },
+            plugins: {
+              legend: { position: "bottom", labels: { color: currentTheme.colors["--text"], font: { size: 11 }, boxWidth: 10 } },
+              tooltip: {
+                mode: "index",
+                intersect: false,
+                callbacks: { label: (c) => `${c.dataset.label}: ${c.parsed.y} requests` },
+              },
+            },
+            scales: {
+              x: { ticks: { color: currentTheme.colors["--text-muted"], font: { size: 10 } }, grid: { color: chartGridColor() } },
+              y: { beginAtZero: true, ticks: { color: currentTheme.colors["--text-muted"], precision: 0 }, grid: { color: chartGridColor() } },
+            },
+          },
+        });
+        apiUsageLineChartInstance.resize();
+      } catch (err) {
+        console.error("Failed to render API usage history chart:", err);
+      }
+    });
+  });
+}
+
+async function loadApiUsageHistory() {
+  try {
+    const res = await api("/api/reports/api-usage-history");
+    const history = await res.json();
+    renderApiUsageHistory(history);
+  } catch (err) {
+    console.error("Failed to load API usage history:", err);
+  }
 }
 
 async function loadReportsFilterOptions() {
@@ -2511,6 +2671,7 @@ async function loadReports() {
     renderReportsStatGrid(summary);
     renderReportsCharts(summary, timeseries);
     renderApiUsageTable(usage);
+    await loadApiUsageHistory();
   } catch (err) {
     console.error("Failed to load reports:", err);
     showChartsError(`Couldn't load report data: ${err.message}`);
