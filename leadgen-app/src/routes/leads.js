@@ -1,6 +1,7 @@
 const express = require("express");
 const db = require("../db");
 const { buildCatchLogCsv, buildCatchLogPdf, buildNicheXlsx, buildExportFilename } = require("../export");
+const apiKeys = require("../apiKeys");
 
 const router = express.Router();
 
@@ -24,7 +25,7 @@ const SORT_COLUMNS = {
 // user_id, regardless of which other filters are given - "all records"
 // means "all of MY records", never anyone else's.
 function buildLeadsQuery(userId, query) {
-  const { status, need, search, catchLogId, nicheId } = query;
+  const { status, need, search, catchLogId, nicheId, pinned } = query;
 
   const sortBy = SORT_COLUMNS[query.sortBy] ? query.sortBy : "created_at";
   const sortDir = query.sortDir === "asc" ? "ASC" : query.sortDir === "desc" ? "DESC" : null;
@@ -58,6 +59,9 @@ function buildLeadsQuery(userId, query) {
   if (search) {
     baseQuery += " AND (l.name LIKE ? OR l.address LIKE ?)";
     params.push(`%${search}%`, `%${search}%`);
+  }
+  if (pinned) {
+    baseQuery += " AND l.pinned = 1";
   }
 
   return { baseQuery, params, sortBy, direction };
@@ -159,15 +163,16 @@ function getOwnedLead(userId, leadId) {
 // PATCH /api/leads/:id  { status?, notes? }
 router.patch("/:id", (req, res) => {
   const { id } = req.params;
-  const { status, notes } = req.body;
+  const { status, notes, pinned } = req.body;
 
   const existing = getOwnedLead(req.session.userId, id);
   if (!existing) return res.status(404).json({ error: "Lead not found" });
 
   const newStatus = status !== undefined ? status : existing.status;
   const newNotes = notes !== undefined ? notes : existing.notes;
+  const newPinned = pinned !== undefined ? (pinned ? 1 : 0) : existing.pinned;
 
-  db.prepare("UPDATE leads SET status = ?, notes = ? WHERE id = ?").run(newStatus, newNotes, id);
+  db.prepare("UPDATE leads SET status = ?, notes = ?, pinned = ? WHERE id = ?").run(newStatus, newNotes, newPinned, id);
   res.json(rowToLead(db.prepare("SELECT * FROM leads WHERE id = ?").get(id)));
 });
 
@@ -178,6 +183,109 @@ router.delete("/:id", (req, res) => {
 
   db.prepare("DELETE FROM leads WHERE id = ?").run(req.params.id);
   res.json({ deleted: true });
+});
+
+// ---------- Business deep-analysis ("Inspect") ----------
+const analysisJobs = require("../analysisJobs");
+
+function getOwnedLeadWithContext(userId, leadId) {
+  return db
+    .prepare(
+      `SELECT l.*, cl.name AS city_name, n.name AS niche_name FROM leads l
+       JOIN catch_logs cl ON cl.id = l.catch_log_id
+       JOIN niches n ON n.id = cl.niche_id
+       WHERE l.id = ? AND n.user_id = ?`
+    )
+    .get(leadId, userId);
+}
+
+// POST /api/leads/:id/inspect/start
+router.post("/:id/inspect/start", (req, res) => {
+  const lead = getOwnedLeadWithContext(req.session.userId, req.params.id);
+  if (!lead) return res.status(404).json({ error: "Lead not found" });
+
+  const result = analysisJobs.startAnalysis(req.session.userId, lead);
+  if (result.alreadyRunning) {
+    return res.status(409).json({ error: "An inspection is already running for this lead." });
+  }
+  res.json({ ok: true });
+});
+
+// GET /api/leads/:id/inspect/status
+router.get("/:id/inspect/status", (req, res) => {
+  const lead = getOwnedLead(req.session.userId, req.params.id);
+  if (!lead) return res.status(404).json({ error: "Lead not found" });
+
+  const analysis = analysisJobs.getAnalysis(Number(req.params.id));
+  res.json(analysis || { leadId: Number(req.params.id), status: "pending" });
+});
+
+// POST /api/leads/:id/inspect/stop
+router.post("/:id/inspect/stop", (req, res) => {
+  const lead = getOwnedLead(req.session.userId, req.params.id);
+  if (!lead) return res.status(404).json({ error: "Lead not found" });
+
+  const stopped = analysisJobs.stopAnalysis(Number(req.params.id));
+  res.json({ ok: true, stopped });
+});
+
+// ---------- Outreach content generation ----------
+const { generateOutreachContent, TONES } = require("../outreachContent");
+
+// GET /api/leads/:id/outreach-content -> everything already generated+saved for this lead
+router.get("/:id/outreach-content", (req, res) => {
+  const lead = getOwnedLead(req.session.userId, req.params.id);
+  if (!lead) return res.status(404).json({ error: "Lead not found" });
+
+  const rows = db.prepare("SELECT platform, tone, content, generated_at FROM outreach_content WHERE lead_id = ?").all(req.params.id);
+  res.json({ tones: TONES, content: rows });
+});
+
+// POST /api/leads/:id/generate-content { platform, tone } -> generates AND
+// auto-saves (overwriting any previous content for this platform), per the
+// "no need to click Generate again when switching platform tabs" flow.
+router.post("/:id/generate-content", async (req, res) => {
+  const lead = getOwnedLeadWithContext(req.session.userId, req.params.id);
+  if (!lead) return res.status(404).json({ error: "Lead not found" });
+
+  const { platform, tone } = req.body || {};
+  if (!platform || !tone) return res.status(400).json({ error: "platform and tone are required" });
+
+  const geminiKeyRow = apiKeys.getActiveKey(req.session.userId, "gemini");
+  if (!geminiKeyRow) {
+    return res.status(400).json({ error: "No Gemini API key configured - add one in Settings → Gemini AI." });
+  }
+
+  const analysis = analysisJobs.getAnalysis(Number(req.params.id));
+  const result = await generateOutreachContent(geminiKeyRow.key_value, { lead, platform, tone, analysis });
+
+  if (!result.ok) return res.status(502).json({ error: result.error });
+
+  apiKeys.recordUsage(req.session.userId, geminiKeyRow.id, { requests: 1 });
+
+  db.prepare(
+    `INSERT INTO outreach_content (lead_id, platform, tone, content, generated_at) VALUES (?, ?, ?, ?, datetime('now'))
+     ON CONFLICT(lead_id, platform) DO UPDATE SET tone = excluded.tone, content = excluded.content, generated_at = excluded.generated_at`
+  ).run(req.params.id, platform, tone, result.content);
+
+  res.json({ ok: true, platform, tone, content: result.content });
+});
+
+// GET /api/leads/pinned/list -> every pinned lead this user has, with niche
+// and city names attached so the frontend can group them into a
+// Niche -> City -> Leads tree, same shape as Hunt's sidebar.
+router.get("/pinned/list", (req, res) => {
+  const rows = db
+    .prepare(
+      `SELECT l.*, cl.id AS catch_log_id, cl.name AS city_name, n.id AS niche_id, n.name AS niche_name
+       FROM leads l
+       JOIN catch_logs cl ON cl.id = l.catch_log_id
+       JOIN niches n ON n.id = cl.niche_id
+       WHERE n.user_id = ? AND l.pinned = 1
+       ORDER BY n.name COLLATE NOCASE, cl.name COLLATE NOCASE, l.name COLLATE NOCASE`
+    )
+    .all(req.session.userId);
+  res.json(rows.map(rowToLead));
 });
 
 module.exports = router;

@@ -6,7 +6,7 @@
 <title>Xeven Leads</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=121" />
+<link rel="stylesheet" href="style.css?v=122" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -76,6 +76,18 @@
           <div class="nav-section-body">
             <p class="nav-hint">Niche → City → pipeline stage</p>
             <div id="outreachTree" class="niches-tree nav-tree"></div>
+          </div>
+        </div>
+
+        <div class="nav-section" id="navSectionPinned">
+          <button class="nav-section-header" data-section="pinned">
+            <i class="bi bi-pin-angle-fill"></i>
+            <span class="nav-section-label">Pinned</span>
+            <span class="nav-caret">▾</span>
+          </button>
+          <div class="nav-section-body">
+            <p class="nav-hint">Niche → City → pinned leads</p>
+            <div id="pinnedTree" class="niches-tree nav-tree"></div>
           </div>
         </div>
 
@@ -551,6 +563,6 @@
 
 
 
-  <script src="app.js?v=121"></script>
+  <script src="app.js?v=122"></script>
 </body>
 </html>

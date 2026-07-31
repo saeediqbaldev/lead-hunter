@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.07.31-12.1";
+const APP_VERSION = "2026.07.31-12.2";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -910,6 +910,7 @@ const scrapeStopBtn = document.getElementById("scrapeStopBtn");
 const scrapeRefreshBtn = document.getElementById("scrapeRefreshBtn");
 const scrapeStatusLine = document.getElementById("scrapeStatusLine");
 const outreachTree = document.getElementById("outreachTree");
+const pinnedTree = document.getElementById("pinnedTree");
 
 const paginationRow = document.getElementById("paginationRow");
 const pageInfo = document.getElementById("pageInfo");
@@ -994,6 +995,14 @@ const state = {
   outreachOpenNicheIds: new Set(),
   outreachOpenCityIds: new Set(), // "nicheId:catchLogId" -> expanded to show status leaves
   outreachSummaries: new Map(), // nicheId -> [{catchLogId, catchLogName, shortlisted, contacted, won}]
+
+  pinned: {
+    catchLogId: null, // when set, board shows only pinned leads in this catch log
+  },
+  pinnedOpenNicheIds: new Set(),
+
+  expandedLeadId: null, // which lead's Inspect/Generate panel is currently open (Reach Out only)
+  currentLeadsById: new Map(), // id -> full lead object, for the expand panel to reference
 };
 
 function setContentView(view) {
@@ -1276,6 +1285,9 @@ document.querySelectorAll(".nav-section-header").forEach((btn) => {
 
     if (section === "reachout" && navSection.classList.contains("open")) {
       await renderOutreachTree();
+    }
+    if (section === "pinned" && navSection.classList.contains("open")) {
+      await renderPinnedTree();
     }
   });
 });
@@ -1820,6 +1832,77 @@ async function renderOutreachTree() {
   outreachTree.innerHTML = blocks.join("");
 }
 
+// ---------- Pinned tree (Niche -> City -> pinned leads) ----------
+async function renderPinnedTree() {
+  try {
+    const res = await api("/api/leads/pinned/list");
+    const leads = await res.json();
+
+    if (leads.length === 0) {
+      pinnedTree.innerHTML = `<div class="empty-state">No pinned leads yet. Pin a lead from its Inspect panel in Reach Out.</div>`;
+      return;
+    }
+
+    // Group client-side: niche_id -> { name, cities: { catch_log_id -> { name, count } } }
+    const nicheMap = new Map();
+    for (const lead of leads) {
+      if (!nicheMap.has(lead.niche_id)) nicheMap.set(lead.niche_id, { name: lead.niche_name, cities: new Map() });
+      const niche = nicheMap.get(lead.niche_id);
+      if (!niche.cities.has(lead.catch_log_id)) niche.cities.set(lead.catch_log_id, { name: lead.city_name, count: 0 });
+      niche.cities.get(lead.catch_log_id).count++;
+    }
+
+    pinnedTree.innerHTML = Array.from(nicheMap.entries())
+      .map(([nicheId, niche]) => {
+        const isOpen = state.pinnedOpenNicheIds.has(nicheId);
+        const citiesHtml = Array.from(niche.cities.entries())
+          .map(
+            ([catchLogId, city]) => `
+            <div class="catchlog-row ${state.mode === "pinned" && state.pinned.catchLogId === catchLogId ? "active" : ""}" data-action="toggle-pinned-city" data-log-id="${catchLogId}">
+              <div class="catchlog-name">${city.name}</div>
+              <span class="catchlog-meta">${city.count} pinned</span>
+            </div>`
+          )
+          .join("");
+
+        return `
+          <div class="niche-block ${isOpen ? "open" : ""}" data-niche-id="${nicheId}">
+            <div class="niche-row" data-action="toggle-pinned-niche" data-id="${nicheId}">
+              <span class="niche-caret">▶</span>
+              <span class="niche-name">${niche.name}</span>
+              <span class="niche-count">${niche.cities.size} cit${niche.cities.size === 1 ? "y" : "ies"}</span>
+            </div>
+            <div class="catchlog-list">${citiesHtml}</div>
+          </div>`;
+      })
+      .join("");
+  } catch (err) {
+    pinnedTree.innerHTML = `<div class="empty-state">Could not load pinned leads.</div>`;
+  }
+}
+
+pinnedTree.addEventListener("click", async (e) => {
+  const nicheToggle = e.target.closest('[data-action="toggle-pinned-niche"]');
+  if (nicheToggle) {
+    const id = Number(nicheToggle.dataset.id);
+    if (state.pinnedOpenNicheIds.has(id)) state.pinnedOpenNicheIds.delete(id);
+    else state.pinnedOpenNicheIds.add(id);
+    await renderPinnedTree();
+    return;
+  }
+
+  const cityRow = e.target.closest('[data-action="toggle-pinned-city"]');
+  if (cityRow) {
+    state.pinned.catchLogId = Number(cityRow.dataset.logId);
+    state.mode = "pinned";
+    state.page = 1;
+    await renderPinnedTree();
+    setContentView("board");
+    updateScopeLine();
+    await loadLeads();
+  }
+});
+
 outreachTree.addEventListener("click", async (e) => {
   const toggleNiche = e.target.closest('[data-action="toggle-outreach-niche"]');
   if (toggleNiche) {
@@ -1894,6 +1977,11 @@ function updateScrapeButtonVisibility() {
 
 function updateScopeLine() {
   updateScrapeButtonVisibility();
+
+  if (state.mode === "pinned") {
+    scopeLine.innerHTML = state.pinned.catchLogId ? `<strong>Pinned</strong> — showing pinned leads for this city` : `<strong>Pinned</strong> — pick a city from the sidebar`;
+    return;
+  }
 
   if (state.mode === "outreach") {
     const log = state.outreach.catchLogId ? findOutreachCatchLog(state.outreach.catchLogId) : null;
@@ -2007,6 +2095,349 @@ const WHATSAPP_SVG = `<i class="bi bi-whatsapp"></i>`;
 // contrast (as low as 1.68:1) when used as text against a light/white
 // surface. Each of these was verified to reach at least 4.5:1 (WCAG AA for
 // normal text) against a white panel while keeping the same hue.
+// ========== Lead expand panel: Inspect + Generate content (Reach Out only) ==========
+let inspectPollTimer = null;
+const CHECK_ICONS = { pass: "bi-check-circle-fill", fail: "bi-x-circle-fill", warn: "bi-exclamation-circle-fill" };
+const PLATFORMS = [
+  { key: "email", icon: "bi-envelope-fill" },
+  { key: "facebook", icon: "bi-facebook" },
+  { key: "instagram", icon: "bi-instagram" },
+  { key: "linkedin", icon: "bi-linkedin" },
+  { key: "tiktok", icon: "bi-tiktok" },
+  { key: "whatsapp", icon: "bi-whatsapp" },
+];
+const CONTENT_TONES = [
+  "Personalized Observation",
+  "Problem → Solution",
+  "Compliment + Opportunity",
+  "Curiosity / Pattern Interrupt",
+  "Case Study / Social Proof",
+  "Value-First / Free Audit",
+  "Question-Based Conversation",
+];
+
+function closeAllLeadExpansions() {
+  if (inspectPollTimer) {
+    clearInterval(inspectPollTimer);
+    inspectPollTimer = null;
+  }
+  document.querySelectorAll(".lead-expand-row").forEach((el) => el.remove());
+  state.expandedLeadId = null;
+}
+
+function scoreColor(score) {
+  if (score >= 70) return "var(--good)";
+  if (score >= 40) return "var(--warn)";
+  return "var(--danger)";
+}
+
+function scoreRingSvg(score, size) {
+  const r = (size - 8) / 2;
+  const circumference = 2 * Math.PI * r;
+  const offset = circumference * (1 - score / 100);
+  return `
+    <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+      <circle class="score-ring-mini-bg" cx="${size / 2}" cy="${size / 2}" r="${r}"></circle>
+      <circle class="score-ring-mini-fill" cx="${size / 2}" cy="${size / 2}" r="${r}" stroke="${scoreColor(score)}" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}"></circle>
+    </svg>`;
+}
+
+function checklistItemHtml(c) {
+  return `<div class="check-item-mini ${c.status}"><i class="bi ${CHECK_ICONS[c.status] || CHECK_ICONS.warn}"></i><div>${c.label}${c.detail ? `<span class="check-detail-mini">${c.detail}</span>` : ""}</div></div>`;
+}
+
+function renderInspectSectionBody(analysis, lead) {
+  if (!analysis || analysis.status === "pending") {
+    return `<div class="inspect-empty">No inspection has been run yet for this business. Click the search icon above to start.</div>`;
+  }
+
+  if (analysis.status === "running") {
+    return `<div class="inspect-progress"><span class="inspect-spinner"></span> ${analysis.currentStep || "Working…"}</div>`;
+  }
+
+  if (analysis.status === "failed") {
+    return `<div class="inspect-empty" style="color:var(--danger);">Inspection failed: ${analysis.error || "unknown error"}</div>`;
+  }
+
+  if (analysis.status === "stopped") {
+    return `<div class="inspect-empty">Inspection was stopped before completing. Click the search icon to try again.</div>`;
+  }
+
+  // status === "done"
+  const categories = [
+    { label: "Website Health", score: analysis.websiteScore },
+    { label: "GMB & Local SEO", score: analysis.gmbScore },
+    { label: "Social Presence", score: analysis.socialScore },
+    { label: "Reputation", score: analysis.reputationScore },
+  ];
+
+  return `
+    <div class="score-header-mini">
+      <div class="score-ring-mini">${scoreRingSvg(analysis.overallScore, 60)}<div class="score-ring-mini-text">${analysis.overallScore}</div></div>
+      <div>
+        <div style="font-family:var(--font-display); font-weight:600; font-size:13px;">Overall score: ${analysis.overallScore}/100</div>
+        <div style="font-size:11.5px; color:var(--text-muted);">Last checked ${analysis.updatedAt || ""}</div>
+      </div>
+    </div>
+    <div class="category-grid-mini">
+      ${categories
+        .map(
+          (c) => `
+        <div>
+          <div class="category-item-mini-head"><span>${c.label}</span><b style="color:${scoreColor(c.score ?? 0)}">${c.score ?? 0}/100</b></div>
+          <div class="category-bar-track-mini"><div class="category-bar-fill-mini" style="width:${c.score ?? 0}%; background:${scoreColor(c.score ?? 0)};"></div></div>
+        </div>`
+        )
+        .join("")}
+    </div>
+    <div class="checklist-mini">${analysis.checklist.map(checklistItemHtml).join("")}</div>
+    ${
+      analysis.strengths.length || analysis.weaknesses.length
+        ? `
+    <div class="sw-grid-mini">
+      <div class="sw-col-mini strengths"><h4><i class="bi bi-arrow-up-circle-fill"></i> Strengths</h4><ul class="sw-list-mini">${analysis.strengths.map((s) => `<li>${s}</li>`).join("")}</ul></div>
+      <div class="sw-col-mini weaknesses"><h4><i class="bi bi-arrow-down-circle-fill"></i> Weaknesses</h4><ul class="sw-list-mini">${analysis.weaknesses.map((s) => `<li>${s}</li>`).join("")}</ul></div>
+    </div>`
+        : `<div class="inspect-empty">No Gemini key configured, so the AI writeup (strengths/weaknesses/suggested services) was skipped - the checklist and scores above are still fully accurate.</div>`
+    }
+    ${
+      analysis.suggestedServices.length
+        ? `<div class="service-chip-row-mini">${analysis.suggestedServices.map((s) => `<span class="service-chip-mini">${s}</span>`).join("")}</div>`
+        : ""
+    }
+  `;
+}
+
+async function loadAndRenderInspect(leadId, bodyEl) {
+  try {
+    const res = await api(`/api/leads/${leadId}/inspect/status`);
+    const analysis = await res.json();
+    bodyEl.innerHTML = renderInspectSectionBody(analysis);
+
+    if (analysis.status === "running") {
+      if (!inspectPollTimer) {
+        inspectPollTimer = setInterval(() => loadAndRenderInspect(leadId, bodyEl), 1500);
+      }
+    } else if (inspectPollTimer) {
+      clearInterval(inspectPollTimer);
+      inspectPollTimer = null;
+    }
+  } catch (err) {
+    bodyEl.innerHTML = `<div class="inspect-empty" style="color:var(--danger);">Could not load inspection status.</div>`;
+  }
+}
+
+async function generateContentForPlatform(leadId, platform, tone, outputEl) {
+  outputEl.innerHTML = `<div class="inspect-progress"><span class="inspect-spinner"></span> Generating ${platform} content…</div>`;
+  try {
+    const res = await api(`/api/leads/${leadId}/generate-content`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ platform, tone }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      outputEl.innerHTML = `<div style="color:var(--danger);">${data.error || "Generation failed."}</div>`;
+      showToast(`Content generation failed: ${data.error || "unknown error"}`, "error");
+      return;
+    }
+    outputEl.textContent = data.content;
+    showToast(`${platform.charAt(0).toUpperCase() + platform.slice(1)} content generated`, "success");
+  } catch (err) {
+    outputEl.innerHTML = `<div style="color:var(--danger);">Could not reach the server.</div>`;
+  }
+}
+
+function buildExpandPanelHtml(lead) {
+  return `
+    <div class="expand-section" data-inspect-section>
+      <div class="expand-section-head">
+        <span class="expand-section-title"><i class="bi bi-clipboard-data"></i> Business Inspection</span>
+        <div class="expand-actions">
+          <button type="button" data-action="pin-lead" class="pin-btn ${lead.pinned ? "pinned" : ""}" title="${lead.pinned ? "Unpin" : "Pin"} this lead">
+            <i class="bi ${lead.pinned ? "bi-pin-angle-fill" : "bi-pin-angle"}"></i> ${lead.pinned ? "Pinned" : "Pin"}
+          </button>
+          <button type="button" data-action="inspect-start" title="Start inspection"><i class="bi bi-search"></i> Inspect</button>
+          <button type="button" data-action="inspect-refresh" title="Refresh"><i class="bi bi-arrow-clockwise"></i></button>
+          <button type="button" data-action="inspect-stop" title="Stop"><i class="bi bi-stop-circle"></i></button>
+        </div>
+      </div>
+      <div data-inspect-body></div>
+    </div>
+
+    <div class="expand-section" data-generate-section>
+      <div class="expand-section-head">
+        <span class="expand-section-title"><i class="bi bi-chat-left-text"></i> Generate Outreach Content</span>
+      </div>
+      <div class="gen-controls-mini">
+        <select class="gen-tone-select" data-tone-select>
+          <option value="">Select a tone/format…</option>
+          ${CONTENT_TONES.map((t) => `<option value="${t}">${t}</option>`).join("")}
+        </select>
+        <button type="button" class="expand-actions-btn" data-action="generate-email" style="background:var(--accent); color:#1a1310; border:none; border-radius:6px; padding:7px 14px; font-size:12px; font-weight:600; cursor:pointer;">
+          <i class="bi bi-stars"></i> Generate Content
+        </button>
+      </div>
+      <div class="platform-tabs">
+        ${PLATFORMS.map((p) => `<button type="button" class="platform-tab ${p.key === "email" ? "active" : ""}" data-platform="${p.key}" title="${p.key}"><i class="bi ${p.icon}"></i></button>`).join("")}
+      </div>
+      <div class="gen-output-mini" data-gen-output>Select a tone, then click "Generate Content" (starts with Email). Switching platform tabs afterward will auto-generate for that platform using the same tone.</div>
+      <div class="gen-actions-mini">
+        <button type="button" data-action="copy-content"><i class="bi bi-clipboard"></i> Copy</button>
+        <button type="button" data-action="regenerate-content"><i class="bi bi-arrow-repeat"></i> Regenerate</button>
+      </div>
+    </div>
+  `;
+}
+
+async function toggleLeadExpand(leadId) {
+  if (state.mode !== "outreach") return; // Inspect/Generate only applies in Reach Out, per spec
+
+  const row = recordsBody.querySelector(`.list-row[data-lead-row-id="${leadId}"]`);
+  if (!row) return;
+
+  if (state.expandedLeadId === leadId) {
+    closeAllLeadExpansions();
+    return;
+  }
+  closeAllLeadExpansions();
+  state.expandedLeadId = leadId;
+
+  const lead = state.currentLeadsById.get(leadId);
+  const expandRow = document.createElement("div");
+  expandRow.className = "list-row lead-expand-row";
+  expandRow.dataset.expandForLead = leadId;
+  expandRow.innerHTML = buildExpandPanelHtml(lead);
+  row.after(expandRow);
+
+  let currentPlatform = "email";
+  let currentTone = "";
+
+  const inspectBody = expandRow.querySelector("[data-inspect-body]");
+  await loadAndRenderInspect(leadId, inspectBody);
+
+  const outreachContentRes = await api(`/api/leads/${leadId}/outreach-content`).catch(() => null);
+  const savedContent = outreachContentRes && outreachContentRes.ok ? (await outreachContentRes.json()).content : [];
+  const outputEl = expandRow.querySelector("[data-gen-output]");
+  const toneSelect = expandRow.querySelector("[data-tone-select]");
+
+  function showSavedOrPlaceholder(platform) {
+    const saved = savedContent.find((c) => c.platform === platform);
+    if (saved) {
+      outputEl.textContent = saved.content;
+      if (saved.tone) {
+        toneSelect.value = saved.tone;
+        currentTone = saved.tone;
+      }
+    } else {
+      outputEl.innerHTML = `Select a tone, then click "Generate Content" (starts with Email). Switching platform tabs afterward will auto-generate for that platform using the same tone.`;
+    }
+  }
+  showSavedOrPlaceholder("email");
+
+  expandRow.addEventListener("click", async (e) => {
+    const action = e.target.closest("[data-action]")?.dataset.action;
+
+    if (action === "pin-lead") {
+      const btn = e.target.closest("[data-action]");
+      const newPinned = !lead.pinned;
+      await api(`/api/leads/${leadId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pinned: newPinned }),
+      });
+      lead.pinned = newPinned;
+      btn.classList.toggle("pinned", newPinned);
+      btn.innerHTML = `<i class="bi ${newPinned ? "bi-pin-angle-fill" : "bi-pin-angle"}"></i> ${newPinned ? "Pinned" : "Pin"}`;
+      showToast(newPinned ? "Lead pinned" : "Lead unpinned", "success");
+      return;
+    }
+
+    if (action === "inspect-start") {
+      try {
+        const res = await api(`/api/leads/${leadId}/inspect/start`, { method: "POST" });
+        if (!res.ok) {
+          const data = await res.json();
+          showToast(data.error || "Could not start inspection", "error");
+          return;
+        }
+        showToast("Inspection started", "info");
+        await loadAndRenderInspect(leadId, inspectBody);
+      } catch (err) {
+        showToast("Could not start inspection", "error");
+      }
+      return;
+    }
+
+    if (action === "inspect-refresh") {
+      await loadAndRenderInspect(leadId, inspectBody);
+      return;
+    }
+
+    if (action === "inspect-stop") {
+      await api(`/api/leads/${leadId}/inspect/stop`, { method: "POST" });
+      showToast("Inspection stopped", "info");
+      await loadAndRenderInspect(leadId, inspectBody);
+      return;
+    }
+
+    if (action === "generate-email") {
+      currentTone = toneSelect.value;
+      if (!currentTone) {
+        showToast("Pick a tone/format first", "error");
+        return;
+      }
+      currentPlatform = "email";
+      expandRow.querySelectorAll(".platform-tab").forEach((t) => t.classList.toggle("active", t.dataset.platform === "email"));
+      await generateContentForPlatform(leadId, "email", currentTone, outputEl);
+      return;
+    }
+
+    if (action === "copy-content") {
+      navigator.clipboard?.writeText(outputEl.textContent || "");
+      showToast("Copied to clipboard", "success");
+      return;
+    }
+
+    if (action === "regenerate-content") {
+      if (!currentTone) {
+        showToast("Pick a tone/format first", "error");
+        return;
+      }
+      await generateContentForPlatform(leadId, currentPlatform, currentTone, outputEl);
+      return;
+    }
+
+    const platformTab = e.target.closest(".platform-tab");
+    if (platformTab) {
+      const platform = platformTab.dataset.platform;
+      expandRow.querySelectorAll(".platform-tab").forEach((t) => t.classList.toggle("active", t === platformTab));
+      currentPlatform = platform;
+
+      if (!currentTone) {
+        currentTone = toneSelect.value;
+      }
+      if (!currentTone) {
+        showToast("Pick a tone/format first", "error");
+        outputEl.innerHTML = `Select a tone/format above first, then this platform will generate automatically.`;
+        return;
+      }
+      // Per spec: switching platform tabs auto-generates for that platform
+      // using the currently-selected tone - no need to click Generate again.
+      await generateContentForPlatform(leadId, platform, currentTone, outputEl);
+    }
+  });
+}
+
+recordsBody.addEventListener("click", (e) => {
+  if (state.mode !== "outreach") return;
+  if (e.target.closest(".lead-expand-row")) return; // clicks inside the expand panel itself are handled separately
+  if (e.target.closest(".row-status-dropdown, .row-actions, a, button")) return; // don't hijack interactive elements
+  const row = e.target.closest(".list-row[data-lead-row-id]");
+  if (!row) return;
+  toggleLeadExpand(Number(row.dataset.leadRowId));
+});
+
 const STATUS_COLORS_LIGHT = {
   new: "#3274c3",
   shortlisted: "#976d16",
@@ -2202,6 +2633,8 @@ function needsDotsHtml(lead) {
 
 function renderLeads(leads) {
   recordsBody.innerHTML = "";
+  state.currentLeadsById = new Map(leads.map((l) => [l.id, l]));
+  closeAllLeadExpansions();
 
   if (leads.length === 0) {
     emptyState.style.display = "block";
@@ -2214,6 +2647,7 @@ function renderLeads(leads) {
   leads.forEach((lead, index) => {
     const row = document.createElement("div");
     row.className = "list-row";
+    row.dataset.leadRowId = lead.id;
 
     const websiteHtml = lead.website
       ? `<a href="${lead.website}" target="_blank" rel="noopener">${(() => {
@@ -2319,6 +2753,14 @@ async function loadLeads() {
     }
     params.set("catchLogId", state.outreach.catchLogId);
     params.set("status", state.outreach.status);
+  } else if (state.mode === "pinned") {
+    if (!state.pinned.catchLogId) {
+      renderLeads([]);
+      updatePaginationControls(0, 1);
+      return;
+    }
+    params.set("catchLogId", state.pinned.catchLogId);
+    params.set("pinned", "1");
   } else {
     // Hunt only ever shows fresh, untouched leads - the moment a status
     // changes away from "new" (via Reach Out), it should disappear from

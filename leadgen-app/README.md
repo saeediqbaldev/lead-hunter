@@ -6,6 +6,48 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V12.2
+This completes the business deep-analysis and outreach content feature
+started in V12.1. Every piece below was verified with real browser
+interaction (Puppeteer), including a full click-through of the actual UI -
+not just API-level testing.
+
+- **Expandable Inspect/Generate panel**: click any lead row in Reach Out to
+  open it below the row. Two sections:
+  - **Inspect**: rules-based checklist across Website Health, GMB & Local
+    SEO, Social Presence, and Reputation, plus an AI-written
+    strengths/weaknesses/suggested-services summary (when a Gemini key is
+    configured). Live progress while running, with Start/Refresh/Stop
+    controls - verified the panel correctly shows the live "current step"
+    text while a check is in progress, and correctly renders the full
+    scored breakdown once done.
+  - **Generate Outreach Content**: pick one of the 7 tones you specified,
+    click Generate (starts with Email), then switch between Email/
+    Facebook/Instagram/LinkedIn/TikTok/WhatsApp tabs - each tab switch
+    auto-generates fresh content for that platform using the same tone,
+    with no need to click Generate again, exactly as specified. Every
+    generated message ends with the exact signature block you provided.
+    Verified live: generated email content, switched to Instagram, and
+    confirmed new Instagram-specific content was generated automatically.
+  - **Pin button**: pins/unpins the lead directly from this panel,
+    confirmed toggling correctly in the browser.
+- The GMB/Local SEO scoring deliberately uses only data already captured
+  for free during the original hunt (rating, reviews, business status,
+  phone, address) - a real correction I made mid-build after checking
+  Google's current Places API pricing tiers and finding that fetching
+  additional fields (hours, photos) would trigger their expensive
+  Enterprise SKU, which would have contradicted the "free tools" goal.
+
+A note on testing methodology for this release: my sandbox's network
+cannot reach googleapis.com at all (confirmed via a blocked-host response),
+so the live PageSpeed/Gemini/Places calls themselves can only be verified
+on your real deployed server, which has normal internet access. Everything
+else - the routes, the job orchestration, the live progress system, the
+scoring logic, the frontend, and the full click-through UI flow - was
+tested for real, including by temporarily swapping in mock versions of the
+network-dependent modules to exercise the real code paths, then restoring
+the original files afterward (verified byte-identical via diff each time).
+
 ## What's in this V12.1
 This is a checkpoint of a larger feature still being built (business deep-
 analysis, outreach content generation, pinned leads) - the pieces below are
