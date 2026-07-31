@@ -6,6 +6,40 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V11.4
+- **Business names and city names no longer get truncated with "..."** in
+  the records list - they now wrap onto multiple lines instead, so nothing
+  is ever cut off/hidden. This was implemented on my best interpretation of
+  a screenshot showing truncated names (e.g. "Sydney Premium De...") - if
+  that wasn't what "hidden data" meant, flag it and I'll address the actual
+  issue specifically.
+
+## What's in this V11.3
+- **Legend moved to an (i) popup**: the always-visible color-key column is
+  gone; click the (i) icon in the Catch Log header for a popup with
+  Status/Needs colors plus a new "RNP" (Rating Not Pulled) definition.
+- **Sidebar is now responsive width**: 20vw by default, clamped between a
+  220px minimum and 25vw maximum, with the content area auto-filling
+  whatever's left - replacing the old fixed 320px.
+- **Settings is now three real pages, not modals**: API Keys, Colors, and
+  Team live under a new Settings section in the sidebar (Team only shows
+  for admins), navigated exactly like Hunt/Reach Out/Reports.
+- **Sidebar tree scrolling reworked**: Hunt's niche list and Reach Out's
+  city list now flexibly fill available sidebar space and scroll properly,
+  matching how Reports and the New Hunt page already behave, instead of a
+  fixed-height cap.
+- **Reach Out badge counts update instantly**: changing a lead's status
+  now nudges the sidebar's pipeline-stage counts in the DOM immediately
+  instead of waiting on a full re-fetch. Each pipeline-stage view also gets
+  a thin top border in that status's color.
+- **"not pulled" → "RNP"** in the Rating column, with a hover tooltip and a
+  definition in the new legend popup.
+- **Chart tooltips improved**: pie and donut charts now show both the count
+  and percentage share on hover, not just the raw value.
+- **Mobile block message hardened**: explicit sizing (accounts for mobile
+  browser toolbar height via `100dvh`), a tighter breakpoint for very
+  narrow phones, and guaranteed centering regardless of viewport quirks.
+
 ## What's in this V11.2
 - **Fixed the Reports charts for real this time**: confirmed via direct
   testing that Chart.js's CDN (cdnjs.cloudflare.com) was being blocked

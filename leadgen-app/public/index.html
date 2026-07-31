@@ -6,7 +6,7 @@
 <title>Xeven Leads</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=112" />
+<link rel="stylesheet" href="style.css?v=114" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -40,9 +40,6 @@
         </div>
       </div>
       <span class="username-tag" id="usernameTag"></span>
-      <button id="adminBtn" class="small-btn icon-btn-labeled" title="Manage team accounts" style="display:none;"><i class="bi bi-people"></i> Team</button>
-      <button id="themeBtn" class="small-btn icon-btn-labeled" title="Colors & light/dark mode"><i class="bi bi-palette"></i></button>
-      <button id="settingsBtn" class="small-btn icon-btn-labeled" title="Google API key settings"><i class="bi bi-gear"></i></button>
       <button id="logoutBtn" class="small-btn icon-btn-labeled" title="Log out"><i class="bi bi-power"></i></button>
     </div>
   </header>
@@ -84,6 +81,19 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/></svg>
           <span class="nav-section-label">Reports</span>
         </button>
+
+        <div class="nav-section" id="navSectionSettings">
+          <button class="nav-section-header" data-section="settings">
+            <i class="bi bi-gear"></i>
+            <span class="nav-section-label">Settings</span>
+            <span class="nav-caret">▾</span>
+          </button>
+          <div class="nav-section-body">
+            <button class="nav-leaf nav-leaf-action" data-goto="settings-api" id="navSettingsApi"><i class="bi bi-key"></i> API Keys</button>
+            <button class="nav-leaf nav-leaf-action" data-goto="settings-colors" id="navSettingsColors"><i class="bi bi-palette"></i> Colors</button>
+            <button class="nav-leaf nav-leaf-action" data-goto="settings-team" id="navSettingsTeam" style="display:none;"><i class="bi bi-people"></i> Team</button>
+          </div>
+        </div>
       </nav>
     </aside>
 
@@ -133,30 +143,6 @@
 
       <!-- ---------- Records board (Hunt cities and Reach Out statuses both render here) ---------- -->
       <section class="panel board-panel" id="boardPanel" style="display:none;">
-        <div class="catchlog-split">
-
-          <aside class="legend-col" id="legendPanel">
-            <div>
-              <div class="legend-col-group-title">Status</div>
-              <div class="legend-col-item"><span class="legend-col-dot" style="background:#7fa8d9"></span>New</div>
-              <div class="legend-col-item"><span class="legend-col-dot" style="background:#e0b355"></span>Shortlisted</div>
-              <div class="legend-col-item"><span class="legend-col-dot" style="background:#ff6a3d"></span>Contacted</div>
-              <div class="legend-col-item"><span class="legend-col-dot" style="background:#c586e0"></span>Engaged</div>
-              <div class="legend-col-item"><span class="legend-col-dot" style="background:#4fd1c5"></span>Converted</div>
-              <div class="legend-col-item"><span class="legend-col-dot" style="background:#7fb88a"></span>Won</div>
-              <div class="legend-col-item"><span class="legend-col-dot" style="background:#d95d5d"></span>Rejected</div>
-            </div>
-            <div>
-              <div class="legend-col-group-title">Needs</div>
-              <div class="legend-col-item"><span class="legend-col-dot" style="background:#d95d5d"></span>Website Design</div>
-              <div class="legend-col-item"><span class="legend-col-dot" style="background:#e0b355"></span>GMB Optimization</div>
-              <div class="legend-col-item"><span class="legend-col-dot" style="background:#7fa8d9"></span>Local SEO</div>
-              <div class="legend-col-item"><span class="legend-col-dot" style="background:#7fb88a"></span>Review Generation</div>
-              <div class="legend-col-item"><span class="legend-col-dot" style="background:#ff6a3d"></span>Reputation Management</div>
-            </div>
-          </aside>
-
-          <div class="content-col">
 
         <div class="board-header">
           <div>
@@ -165,6 +151,10 @@
           </div>
 
           <div class="board-header-actions">
+            <button id="legendInfoBtn" class="icon-toggle-btn" title="What do the status and needs colors mean?">
+              <i class="bi bi-info-circle"></i>
+            </button>
+
             <button id="scrapeBtn" class="icon-toggle-btn" title="Scrape contact info (email, social links) for this catch log" style="display:none;">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
             </button>
@@ -288,9 +278,6 @@
             <button id="nextPageBtn" class="small-btn">Next ›</button>
           </div>
         </div>
-
-          </div>
-        </div>
       </section>
 
       <!-- ---------- Reports page ---------- -->
@@ -356,11 +343,132 @@
         </div>
       </section>
 
+      <!-- ---------- Settings: API Keys page ---------- -->
+      <section class="panel settings-view" id="settingsApiView" style="display:none;">
+        <div class="board-header">
+          <div>
+            <h2>API Keys &amp; hunting limits</h2>
+            <div class="scope-line">Add one or more keys, test them, and pick which one is active</div>
+          </div>
+        </div>
+        <div class="settings-body">
+          <div id="apiKeysList" class="api-keys-list"></div>
+
+          <div class="api-key-add-row">
+            <input type="text" id="newKeyLabel" placeholder="Label (e.g. Personal, Client A)" autocomplete="off" />
+            <input type="text" id="newKeyValue" placeholder="AIza… paste new key here" autocomplete="off" spellcheck="false" />
+            <button id="settingsTestNewBtn" class="small-btn">Test</button>
+            <button id="settingsSaveNewBtn" class="primary-btn">Test &amp; Save</button>
+          </div>
+          <div class="settings-result" id="settingsResult" style="display:none;"></div>
+
+          <div class="settings-divider"></div>
+
+          <h3 class="settings-subheading">Daily lead cap</h3>
+          <p class="hint">How many new leads you can hunt per day (default 300). This is per-account.</p>
+          <div class="daily-cap-row">
+            <input type="number" id="dailyCapInput" min="1" max="5000" />
+            <button id="dailyCapSaveBtn" class="small-btn">Save</button>
+          </div>
+
+          <div class="settings-divider"></div>
+
+          <h3 class="settings-subheading">Backup &amp; restore</h3>
+          <p class="hint">Download everything in your account - niches, catch logs, leads, saved API keys, theme, and daily cap - as one file. Re-importing merges into whatever's already there: it never deletes or overwrites your existing records, only adds what's new. <strong>The download includes your API keys in plain text</strong>, so store the file somewhere private.</p>
+          <div class="backup-restore-row">
+            <button id="backupExportBtn" class="small-btn"><i class="bi bi-download"></i> Export backup</button>
+            <label class="small-btn backup-import-label">
+              <i class="bi bi-upload"></i> Import backup
+              <input type="file" id="backupImportInput" accept="application/json" style="display:none;" />
+            </label>
+          </div>
+          <div class="settings-result" id="backupResult" style="display:none;"></div>
+        </div>
+      </section>
+
+      <!-- ---------- Settings: Colors page ---------- -->
+      <section class="panel settings-view" id="settingsColorsView" style="display:none;">
+        <div class="board-header">
+          <div>
+            <h2>Colors &amp; theme</h2>
+            <div class="scope-line">Changes preview instantly - click Save to keep them on your account</div>
+          </div>
+        </div>
+        <div class="settings-body">
+          <div class="theme-mode-switch">
+            <button type="button" class="theme-mode-btn" data-mode="dark"><i class="bi bi-moon-stars"></i> Dark</button>
+            <button type="button" class="theme-mode-btn" data-mode="light"><i class="bi bi-sun"></i> Light</button>
+          </div>
+          <div class="theme-color-grid" id="themeColorGrid"></div>
+          <div class="settings-result" id="themeResult" style="display:none;"></div>
+          <div class="modal-actions settings-actions" style="justify-content:flex-start;">
+            <button id="themeResetBtn" class="small-btn danger-btn">Reset to default</button>
+            <button id="themeSaveBtn" class="primary-btn">Save</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- Settings: Team page (admin only) ---------- -->
+      <section class="panel settings-view" id="settingsTeamView" style="display:none;">
+        <div class="board-header">
+          <div>
+            <h2>Team accounts</h2>
+            <div class="scope-line">Each member gets their own private workspace - niches, catch logs, leads, API keys</div>
+          </div>
+        </div>
+        <div class="settings-body">
+          <div id="usersList" class="api-keys-list"></div>
+
+          <div class="api-key-add-row">
+            <input type="text" id="newUsername" placeholder="Username" autocomplete="off" />
+            <input type="password" id="newUserPassword" placeholder="Password (6+ characters)" autocomplete="off" />
+            <button id="adminCreateBtn" class="primary-btn">Create account</button>
+          </div>
+          <label class="checkbox-row" style="margin-top:8px;">
+            <input type="checkbox" id="newUserIsAdmin" />
+            Make this account an admin too
+          </label>
+          <div class="settings-result" id="adminResult" style="display:none;"></div>
+        </div>
+      </section>
+
     </section>
 
   </main>
 
   <!-- Generic modal, reused for create/rename/delete-confirm across niches and catch logs -->
+  <!-- Status/Needs color-key popup, opened via the (i) icon in the Catch Log header -->
+  <div class="modal-overlay" id="legendOverlay" style="display:none;">
+    <div class="modal-box legend-modal-box">
+      <h3>What the colors mean</h3>
+      <div class="legend-modal-group">
+        <div class="legend-modal-group-title">Status</div>
+        <div class="legend-modal-item"><span class="legend-col-dot" style="background:#7fa8d9"></span>New</div>
+        <div class="legend-modal-item"><span class="legend-col-dot" style="background:#e0b355"></span>Shortlisted</div>
+        <div class="legend-modal-item"><span class="legend-col-dot" style="background:#ff6a3d"></span>Contacted</div>
+        <div class="legend-modal-item"><span class="legend-col-dot" style="background:#c586e0"></span>Engaged</div>
+        <div class="legend-modal-item"><span class="legend-col-dot" style="background:#4fd1c5"></span>Converted</div>
+        <div class="legend-modal-item"><span class="legend-col-dot" style="background:#7fb88a"></span>Won</div>
+        <div class="legend-modal-item"><span class="legend-col-dot" style="background:#d95d5d"></span>Rejected</div>
+      </div>
+      <div class="legend-modal-group">
+        <div class="legend-modal-group-title">Needs</div>
+        <div class="legend-modal-item"><span class="legend-col-dot" style="background:#d95d5d"></span>Website Design</div>
+        <div class="legend-modal-item"><span class="legend-col-dot" style="background:#e0b355"></span>GMB Optimization</div>
+        <div class="legend-modal-item"><span class="legend-col-dot" style="background:#7fa8d9"></span>Local SEO</div>
+        <div class="legend-modal-item"><span class="legend-col-dot" style="background:#7fb88a"></span>Review Generation</div>
+        <div class="legend-modal-item"><span class="legend-col-dot" style="background:#ff6a3d"></span>Reputation Management</div>
+      </div>
+      <div class="legend-modal-group">
+        <div class="legend-modal-group-title">Other abbreviations</div>
+        <div class="legend-modal-item"><strong>RNP</strong>&nbsp;— Rating Not Pulled (ratings cost extra API quota, only fetched when "Include ratings" is checked on a hunt)</div>
+      </div>
+      <div class="modal-actions">
+        <button id="legendCloseBtn" class="small-btn">Close</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="modalOverlay" style="display:none;">
     <div class="modal-box">
       <h3 id="modalTitle"></h3>
@@ -376,100 +484,8 @@
     </div>
   </div>
 
-  <!-- Settings modal: Google Places API keys + daily lead cap -->
-  <div class="modal-overlay" id="settingsOverlay" style="display:none;">
-    <div class="modal-box settings-box settings-box-wide">
-      <h3>Google API keys &amp; hunting limits</h3>
-      <p>Add one or more keys, test them, and pick which one is active. Saved keys live in the app's database, so no server restart or .env edit is needed to switch.</p>
 
-      <div id="apiKeysList" class="api-keys-list"></div>
 
-      <div class="api-key-add-row">
-        <input type="text" id="newKeyLabel" placeholder="Label (e.g. Personal, Client A)" autocomplete="off" />
-        <input type="text" id="newKeyValue" placeholder="AIza… paste new key here" autocomplete="off" spellcheck="false" />
-      </div>
-
-      <div class="settings-divider"></div>
-
-      <h3 class="settings-subheading">Daily lead cap</h3>
-      <p>How many new leads you can hunt per day (default 300). This is per-account.</p>
-      <div class="daily-cap-row">
-        <input type="number" id="dailyCapInput" min="1" max="5000" />
-        <button id="dailyCapSaveBtn" class="small-btn">Save</button>
-      </div>
-
-      <div class="settings-divider"></div>
-
-      <h3 class="settings-subheading">Backup &amp; restore</h3>
-      <p>Download everything in your account - niches, catch logs, leads, saved API keys, theme, and daily cap - as one file. Re-importing merges into whatever's already there: it never deletes or overwrites your existing records, only adds what's new. <strong>The download includes your API keys in plain text</strong>, so store the file somewhere private.</p>
-      <div class="backup-restore-row">
-        <button id="backupExportBtn" class="small-btn"><i class="bi bi-download"></i> Export backup</button>
-        <label class="small-btn backup-import-label">
-          <i class="bi bi-upload"></i> Import backup
-          <input type="file" id="backupImportInput" accept="application/json" style="display:none;" />
-        </label>
-      </div>
-      <div class="settings-result" id="backupResult" style="display:none;"></div>
-
-      <div class="settings-result" id="settingsResult" style="display:none;"></div>
-
-      <div class="modal-actions settings-actions">
-        <button id="settingsCancelBtn" class="small-btn">Close</button>
-        <button id="settingsTestNewBtn" class="small-btn">Test</button>
-        <button id="settingsSaveNewBtn" class="primary-btn">Test &amp; Save</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Admin-only: create/manage team member accounts -->
-  <div class="modal-overlay" id="adminOverlay" style="display:none;">
-    <div class="modal-box settings-box settings-box-wide">
-      <h3>Team accounts</h3>
-      <p>Each member gets their own private workspace (niches, catch logs, leads) and must add their own Google Places API key - nothing here is shared between accounts.</p>
-
-      <div id="usersList" class="api-keys-list"></div>
-
-      <div class="api-key-add-row">
-        <input type="text" id="newUsername" placeholder="Username" autocomplete="off" />
-        <input type="password" id="newUserPassword" placeholder="Password (6+ characters)" autocomplete="off" />
-      </div>
-      <label class="checkbox-row" style="margin-top:8px;">
-        <input type="checkbox" id="newUserIsAdmin" />
-        Make this account an admin too
-      </label>
-
-      <div class="settings-result" id="adminResult" style="display:none;"></div>
-
-      <div class="modal-actions settings-actions">
-        <button id="adminCancelBtn" class="small-btn">Close</button>
-        <button id="adminCreateBtn" class="primary-btn">Create account</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Theme editor: light/dark mode + per-color custom overrides, saved per-account -->
-  <div class="modal-overlay" id="themeOverlay" style="display:none;">
-    <div class="modal-box settings-box settings-box-wide">
-      <h3>Colors &amp; theme</h3>
-      <p>Changes preview instantly. Click Save to keep them - they're stored on your account, so they follow you across devices.</p>
-
-      <div class="theme-mode-switch">
-        <button type="button" class="theme-mode-btn" data-mode="dark"><i class="bi bi-moon-stars"></i> Dark</button>
-        <button type="button" class="theme-mode-btn" data-mode="light"><i class="bi bi-sun"></i> Light</button>
-      </div>
-
-      <div class="theme-color-grid" id="themeColorGrid"></div>
-
-      <div class="settings-result" id="themeResult" style="display:none;"></div>
-
-      <div class="modal-actions settings-actions">
-        <button id="themeResetBtn" class="small-btn danger-btn">Reset to default</button>
-        <button id="themeCancelBtn" class="small-btn">Close</button>
-        <button id="themeSaveBtn" class="primary-btn">Save</button>
-      </div>
-    </div>
-  </div>
-
-  <script src="app.js?v=112"></script>
+  <script src="app.js?v=114"></script>
 </body>
 </html>

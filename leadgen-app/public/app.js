@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.07.31-11.2";
+const APP_VERSION = "2026.07.31-11.4";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -41,13 +41,11 @@ document.getElementById("logoutBtn").addEventListener("click", async () => {
 });
 
 // ---------- Settings modal (Google Places API keys, set from the UI) ----------
-const settingsBtn = document.getElementById("settingsBtn");
-const settingsOverlay = document.getElementById("settingsOverlay");
+const navSettingsApi = document.getElementById("navSettingsApi");
 const apiKeysList = document.getElementById("apiKeysList");
 const newKeyLabel = document.getElementById("newKeyLabel");
 const newKeyValue = document.getElementById("newKeyValue");
 const settingsResult = document.getElementById("settingsResult");
-const settingsCancelBtn = document.getElementById("settingsCancelBtn");
 const settingsTestNewBtn = document.getElementById("settingsTestNewBtn");
 const settingsSaveNewBtn = document.getElementById("settingsSaveNewBtn");
 
@@ -97,11 +95,12 @@ async function loadApiKeys() {
   }
 }
 
-settingsBtn.addEventListener("click", async () => {
+navSettingsApi.addEventListener("click", async () => {
   newKeyLabel.value = "";
   newKeyValue.value = "";
   hideSettingsResult();
-  settingsOverlay.style.display = "flex";
+  state.lastNavSection = "settings";
+  setContentView("settings-api");
   await loadApiKeys();
   await loadDailyCap();
 });
@@ -214,13 +213,20 @@ document.getElementById("backupImportInput").addEventListener("change", async (e
   }
 });
 
-function closeSettingsModal() {
-  settingsOverlay.style.display = "none";
-}
+// ---------- Legend info popup (Status/Needs color key) ----------
+const legendInfoBtn = document.getElementById("legendInfoBtn");
+const legendOverlay = document.getElementById("legendOverlay");
+const legendCloseBtn = document.getElementById("legendCloseBtn");
 
-settingsCancelBtn.addEventListener("click", closeSettingsModal);
-settingsOverlay.addEventListener("click", (e) => {
-  if (e.target === settingsOverlay) closeSettingsModal();
+legendInfoBtn.addEventListener("click", () => {
+  legendOverlay.style.display = "flex";
+});
+function closeLegendModal() {
+  legendOverlay.style.display = "none";
+}
+legendCloseBtn.addEventListener("click", closeLegendModal);
+legendOverlay.addEventListener("click", (e) => {
+  if (e.target === legendOverlay) closeLegendModal();
 });
 
 // ---------- Theme system (light/dark + per-color overrides, per-account) ----------
@@ -291,11 +297,9 @@ async function loadTheme() {
   }
 }
 
-const themeBtn = document.getElementById("themeBtn");
-const themeOverlay = document.getElementById("themeOverlay");
+const navSettingsColors = document.getElementById("navSettingsColors");
 const themeColorGrid = document.getElementById("themeColorGrid");
 const themeResult = document.getElementById("themeResult");
-const themeCancelBtn = document.getElementById("themeCancelBtn");
 const themeSaveBtn = document.getElementById("themeSaveBtn");
 const themeResetBtn = document.getElementById("themeResetBtn");
 
@@ -333,24 +337,12 @@ document.querySelectorAll(".theme-mode-btn").forEach((btn) => {
   });
 });
 
-themeBtn.addEventListener("click", () => {
+navSettingsColors.addEventListener("click", async () => {
   themeResult.style.display = "none";
-  themeOverlay.style.display = "flex";
+  state.lastNavSection = "settings";
+  setContentView("settings-colors");
+  await loadTheme();
   renderThemeEditor();
-});
-
-function closeThemeModal() {
-  themeOverlay.style.display = "none";
-}
-themeCancelBtn.addEventListener("click", async () => {
-  await loadTheme(); // revert any unsaved live-preview changes
-  closeThemeModal();
-});
-themeOverlay.addEventListener("click", async (e) => {
-  if (e.target === themeOverlay) {
-    await loadTheme();
-    closeThemeModal();
-  }
 });
 
 themeSaveBtn.addEventListener("click", async () => {
@@ -389,14 +381,12 @@ themeResetBtn.addEventListener("click", async () => {
 
 // ---------- Current user + admin team panel ----------
 const usernameTag = document.getElementById("usernameTag");
-const adminBtn = document.getElementById("adminBtn");
-const adminOverlay = document.getElementById("adminOverlay");
+const navSettingsTeam = document.getElementById("navSettingsTeam");
 const usersList = document.getElementById("usersList");
 const newUsername = document.getElementById("newUsername");
 const newUserPassword = document.getElementById("newUserPassword");
 const newUserIsAdmin = document.getElementById("newUserIsAdmin");
 const adminResult = document.getElementById("adminResult");
-const adminCancelBtn = document.getElementById("adminCancelBtn");
 const adminCreateBtn = document.getElementById("adminCreateBtn");
 
 let currentUserId = null;
@@ -439,27 +429,20 @@ async function loadWhoami() {
     const data = await res.json();
     currentUserId = data.userId;
     usernameTag.textContent = `${data.username} (${data.role})`;
-    adminBtn.style.display = data.role === "admin" ? "inline-block" : "none";
+    navSettingsTeam.style.display = data.role === "admin" ? "flex" : "none";
   } catch (err) {
     console.error("Failed to load current user:", err);
   }
 }
 
-adminBtn.addEventListener("click", async () => {
+navSettingsTeam.addEventListener("click", async () => {
   newUsername.value = "";
   newUserPassword.value = "";
   newUserIsAdmin.checked = false;
   hideAdminResult();
-  adminOverlay.style.display = "flex";
+  state.lastNavSection = "settings";
+  setContentView("settings-team");
   await loadUsers();
-});
-
-function closeAdminModal() {
-  adminOverlay.style.display = "none";
-}
-adminCancelBtn.addEventListener("click", closeAdminModal);
-adminOverlay.addEventListener("click", (e) => {
-  if (e.target === adminOverlay) closeAdminModal();
 });
 
 adminCreateBtn.addEventListener("click", async () => {
@@ -817,12 +800,23 @@ const state = {
 
 function setContentView(view) {
   state.contentView = view;
-  huntFormPanel.style.display = view === "huntForm" ? "block" : "none";
-  boardPanel.style.display = view === "board" ? "block" : "none";
-  reportsPanel.style.display = view === "reports" ? "block" : "none";
+  const ALL_VIEWS = {
+    huntForm: huntFormPanel,
+    board: boardPanel,
+    reports: reportsPanel,
+    "settings-api": document.getElementById("settingsApiView"),
+    "settings-colors": document.getElementById("settingsColorsView"),
+    "settings-team": document.getElementById("settingsTeamView"),
+  };
+  Object.entries(ALL_VIEWS).forEach(([name, el]) => {
+    if (el) el.style.display = name === view ? "block" : "none";
+  });
 
   document.querySelectorAll(".nav-section-header").forEach((btn) => {
     btn.classList.toggle("active-view", btn.dataset.section === view || (view === "board" && btn.dataset.section === state.lastNavSection));
+  });
+  document.querySelectorAll(".nav-leaf[data-goto]").forEach((leaf) => {
+    leaf.classList.toggle("active", leaf.dataset.goto === view);
   });
 
   if (view === "reports") {
@@ -1082,8 +1076,10 @@ function setBoardMode(mode) {
   state.page = 1;
   if (mode === "outreach") {
     boardFilters.style.display = "none"; // irrelevant in outreach mode - scope is already fixed by the tree click
+    boardPanel.style.borderTop = `3px solid ${statusColorFor(state.outreach.status)}`;
   } else {
     boardFilters.style.removeProperty("display"); // let the .collapsed class (toggled by the funnel button) govern visibility
+    boardPanel.style.borderTop = "";
   }
   updateScopeLine();
   loadLeads();
@@ -1505,6 +1501,21 @@ const OUTREACH_STATUS_LIST = [
   { key: "won", label: "Won" },
 ];
 
+// Instantly nudges a status-leaf's badge count in the currently-rendered
+// Reach Out tree (if that city happens to be expanded/visible right now) -
+// avoids waiting on a full tree re-fetch just to reflect a count that
+// changed by exactly one.
+function adjustOutreachBadgeCount(nicheId, catchLogId, status, delta) {
+  const leaf = outreachTree.querySelector(
+    `.status-leaf-row[data-niche-id="${nicheId}"][data-log-id="${catchLogId}"][data-status="${status}"]`
+  );
+  if (!leaf) return;
+  const badge = leaf.querySelector(".outreach-badge");
+  if (!badge) return;
+  const current = parseInt(badge.textContent, 10) || 0;
+  badge.textContent = Math.max(current + delta, 0);
+}
+
 async function renderOutreachTree() {
   if (state.niches.length === 0) {
     outreachTree.innerHTML = `<div class="empty-state">No niches yet. Create one under Hunt first.</div>`;
@@ -1799,6 +1810,7 @@ recordsBody.addEventListener("click", (e) => {
     const leadId = dd.dataset.leadId;
     const value = item.dataset.value;
     const color = statusColorFor(value);
+    const oldValue = dd.querySelector(".row-status-label").textContent;
 
     // Update in place immediately - snappier than a full re-render, and the
     // rest of the row (needs/rating/etc.) doesn't depend on status anyway.
@@ -1810,11 +1822,19 @@ recordsBody.addEventListener("click", (e) => {
     // In Reach Out mode, a status change away from the currently-viewed
     // pipeline stage should make the row vanish from this list right away,
     // not after a network round-trip - remove it instantly, let the
-    // background refresh below correct S/N numbering and badge counts.
+    // background refresh below correct S/N numbering.
     if (state.mode === "outreach" && value !== state.outreach.status) {
       const row = dd.closest(".list-row");
       if (row) row.remove();
       if (!recordsBody.querySelector(".list-row")) emptyState.style.display = "block";
+    }
+
+    // Badge counts in the sidebar tree also update instantly instead of
+    // waiting on a full re-fetch - decrement the old status's badge,
+    // increment the new one's, right in the currently-rendered DOM.
+    if (state.mode === "outreach") {
+      adjustOutreachBadgeCount(state.outreach.nicheId, state.outreach.catchLogId, oldValue, -1);
+      adjustOutreachBadgeCount(state.outreach.nicheId, state.outreach.catchLogId, value, 1);
     }
 
     api(`/api/leads/${leadId}`, {
@@ -1823,10 +1843,10 @@ recordsBody.addEventListener("click", (e) => {
       body: JSON.stringify({ status: value }),
     })
       .then(async () => {
-        // Outreach Report badge counts and the currently-viewed list both
-        // depend on status, so refresh them - a lead moving from
-        // "shortlisted" to "contacted" should vanish from the Shortlisted
-        // tab and the badge counts should update next time the tree opens.
+        // Still refresh from the server shortly after, to correct S/N
+        // numbering and catch any edge case the optimistic update missed -
+        // this happens invisibly in the background, not blocking what the
+        // user already sees.
         if (state.mode === "outreach") {
           state.outreachSummaries.clear();
           await renderOutreachTree();
@@ -1946,7 +1966,7 @@ function renderLeads(leads) {
 
     const ratingHtml = lead.rating
       ? `<span class="rating-val">${lead.rating.toFixed(1)} <small>(${lead.review_count ?? 0})</small></span>`
-      : `<span class="rating-val"><small>not pulled</small></span>`;
+      : `<span class="rating-val" title="Rating Not Pulled — ratings cost extra API quota, so they're only fetched when 'Include ratings' is checked on a hunt"><small>RNP</small></span>`;
 
     row.innerHTML = `
       <div class="col-sn">${startIndex + index + 1}</div>
@@ -2291,6 +2311,7 @@ function renderReportsCharts(summary, timeseries) {
   const labels = REPORT_STATUS_META.map((s) => s.label);
   const data = REPORT_STATUS_META.map((s) => summary.byStatus[s.key] || 0);
   const colors = REPORT_STATUS_META.map((s) => s.color);
+  const dataTotal = data.reduce((a, b) => a + b, 0);
 
   destroyReportsCharts();
 
@@ -2299,6 +2320,24 @@ function renderReportsCharts(summary, timeseries) {
     maintainAspectRatio: false,
     plugins: {
       legend: { position: "bottom", labels: { color: "#ece7dd", font: { size: 11 }, boxWidth: 10 } },
+    },
+  };
+
+  // Pie/donut tooltips show both the raw count and the % share of the
+  // total, not just the raw value Chart.js shows by default.
+  const pieDonutOptions = {
+    ...commonOptions,
+    plugins: {
+      ...commonOptions.plugins,
+      tooltip: {
+        callbacks: {
+          label: (ctx) => {
+            const value = ctx.parsed;
+            const pct = dataTotal > 0 ? ((value / dataTotal) * 100).toFixed(1) : "0.0";
+            return `${ctx.label}: ${value} (${pct}%)`;
+          },
+        },
+      },
     },
   };
 
@@ -2317,13 +2356,13 @@ function renderReportsCharts(summary, timeseries) {
         pieChartInstance = new Chart(pieCtx, {
           type: "pie",
           data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: "#1b1815", borderWidth: 2 }] },
-          options: commonOptions,
+          options: pieDonutOptions,
         });
 
         donutChartInstance = new Chart(donutCtx, {
           type: "doughnut",
           data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: "#1b1815", borderWidth: 2 }] },
-          options: commonOptions,
+          options: pieDonutOptions,
         });
 
         const safeDays = timeseries && Array.isArray(timeseries.days) ? timeseries.days : [];
