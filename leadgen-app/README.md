@@ -6,6 +6,53 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V11.6
+This is the first release verified with an actual headless browser
+(Puppeteer) rendering the real app, instead of reasoning about CSS in the
+abstract - so the fixes below are confirmed with real measured data, not
+just "should work."
+
+- **Found and fixed the true root cause of the scrolling/overflow bug**,
+  confirmed via real computed styles: `setContentView()` was setting an
+  inline `style.display = "block"` to show each panel. Inline styles always
+  override stylesheet rules regardless of specificity - so `.board-panel`'s
+  CSS `display: flex` (needed for its records list to compute a bounded,
+  scrollable height) was being silently overridden back to `block` every
+  time. Since flex properties do nothing on a non-flex parent,
+  `records-wrap` just grew to fit all content instead of being capped to
+  the viewport - measured at 2628px tall with **zero** scrollable overflow
+  before the fix. Fixed by switching to a CSS class (`view-hidden`) instead
+  of inline styles. Verified in a real browser: `records-wrap` is now
+  correctly bounded (656px, `scrollHeight` 2627 vs `clientHeight` 655,
+  `isScrollable: true`), and a real programmatic scroll actually moved the
+  content.
+- **Business names capped at 2 lines** (with the full name still available
+  via hover tooltip) instead of wrapping unbounded - this was producing
+  wildly inconsistent row heights whenever a business had a very long name,
+  which was the direct cause of "data not visible/scrollable" in two
+  separate screenshots. Verified in a real browser: 40 rows, including one
+  with a 74-character name, all render at an identical 63.375px.
+- **Sidebar accordion**: opening any section (Hunt/Reach Out/Settings) now
+  closes the others automatically - verified in a real browser that only
+  one section is ever open at a time.
+- **Sidebar tree redesign**: nested Niches/Cities (Hunt), Niches/Cities/
+  pipeline-stages (Reach Out), and Settings sub-pages no longer render as
+  individually bordered/boxed cards - now a tree with indent connector
+  lines, matching the confirmed preview.
+- Business name font is now weight 500 / 13px.
+- Line chart: added explicit hover tooltips (shows every status's value
+  for the hovered date at once) and thinner lines (1.5px, down from
+  Chart.js's default 3px).
+
+## What's in this V11.5
+- **Fixed a real bug in the new Settings pages**: when API Keys/Colors/Team
+  were converted from modals to pages, the `.settings-view`/`.settings-body`
+  classes were used in the HTML but I never actually wrote CSS for them -
+  meaning the pages had no scroll behavior at all, trapping content like
+  Backup & Restore below the visible area with no way to reach it. Added
+  the missing `overflow-y: auto` and layout rules; verified the CSS is now
+  actually served and the backup endpoint is reachable again.
+
 ## What's in this V11.4
 - **Business names and city names no longer get truncated with "..."** in
   the records list - they now wrap onto multiple lines instead, so nothing

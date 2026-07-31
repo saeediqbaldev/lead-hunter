@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.07.31-11.4";
+const APP_VERSION = "2026.07.31-11.6";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -809,7 +809,14 @@ function setContentView(view) {
     "settings-team": document.getElementById("settingsTeamView"),
   };
   Object.entries(ALL_VIEWS).forEach(([name, el]) => {
-    if (el) el.style.display = name === view ? "block" : "none";
+    if (!el) return;
+    // Toggle a class instead of setting inline style.display - an inline
+    // style always overrides the stylesheet regardless of specificity, so
+    // forcing display:block here was silently breaking board-panel's own
+    // "display: flex" CSS (needed for its records-wrap to correctly
+    // compute a bounded, scrollable height instead of growing to fit all
+    // content unboundedly).
+    el.classList.toggle("view-hidden", name !== view);
   });
 
   document.querySelectorAll(".nav-section-header").forEach((btn) => {
@@ -1058,7 +1065,14 @@ document.querySelectorAll(".nav-section-header").forEach((btn) => {
     // Hunt / Reach Out headers toggle their section open/closed (sidebar
     // accordion), independent of which content view is currently showing.
     const navSection = btn.closest(".nav-section");
-    navSection.classList.toggle("open");
+    const willOpen = !navSection.classList.contains("open");
+
+    // Accordion behavior: only one section (Hunt / Reach Out / Settings)
+    // stays open at a time - opening one closes the others automatically.
+    document.querySelectorAll(".nav-section.open").forEach((s) => {
+      if (s !== navSection) s.classList.remove("open");
+    });
+    navSection.classList.toggle("open", willOpen);
 
     if (section === "reachout" && navSection.classList.contains("open")) {
       await renderOutreachTree();
@@ -2377,12 +2391,26 @@ function renderReportsCharts(summary, timeseries) {
               data: safeDays.length ? safeSeries[s.key] || safeDays.map(() => 0) : [0],
               borderColor: s.color,
               backgroundColor: s.color,
+              borderWidth: 1.5,
               tension: 0.3,
               pointRadius: 3,
+              pointHoverRadius: 5,
             })),
           },
           options: {
             ...commonOptions,
+            interaction: { mode: "index", intersect: false },
+            plugins: {
+              ...commonOptions.plugins,
+              tooltip: {
+                mode: "index",
+                intersect: false,
+                callbacks: {
+                  title: (items) => items[0]?.label || "",
+                  label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y}`,
+                },
+              },
+            },
             scales: {
               x: { ticks: { color: "#948d80", font: { size: 10 } }, grid: { color: "rgba(255,255,255,0.05)" } },
               y: { beginAtZero: true, ticks: { color: "#948d80", precision: 0 }, grid: { color: "rgba(255,255,255,0.05)" } },

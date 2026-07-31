@@ -6,7 +6,7 @@
 <title>Xeven Leads</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=114" />
+<link rel="stylesheet" href="style.css?v=116" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -100,7 +100,7 @@
     <section class="content-area">
 
       <!-- ---------- Hunt form (shown for "+ New Hunt") ---------- -->
-      <section class="panel hunt-form-panel" id="huntFormPanel" style="display:none;">
+      <section class="panel hunt-form-panel view-hidden" id="huntFormPanel">
         <h2>Load a search</h2>
         <form id="searchForm">
           <label>Niche / category</label>
@@ -142,7 +142,7 @@
       </section>
 
       <!-- ---------- Records board (Hunt cities and Reach Out statuses both render here) ---------- -->
-      <section class="panel board-panel" id="boardPanel" style="display:none;">
+      <section class="panel board-panel view-hidden" id="boardPanel">
 
         <div class="board-header">
           <div>
@@ -281,7 +281,7 @@
       </section>
 
       <!-- ---------- Reports page ---------- -->
-      <section class="panel reports-panel" id="reportsPanel" style="display:none;">
+      <section class="panel reports-panel view-hidden" id="reportsPanel">
         <div class="board-header">
           <div>
             <h2>Reports</h2>
@@ -344,7 +344,7 @@
       </section>
 
       <!-- ---------- Settings: API Keys page ---------- -->
-      <section class="panel settings-view" id="settingsApiView" style="display:none;">
+      <section class="panel settings-view view-hidden" id="settingsApiView">
         <div class="board-header">
           <div>
             <h2>API Keys &amp; hunting limits</h2>
@@ -387,7 +387,7 @@
       </section>
 
       <!-- ---------- Settings: Colors page ---------- -->
-      <section class="panel settings-view" id="settingsColorsView" style="display:none;">
+      <section class="panel settings-view view-hidden" id="settingsColorsView">
         <div class="board-header">
           <div>
             <h2>Colors &amp; theme</h2>
@@ -409,7 +409,7 @@
       </section>
 
       <!-- ---------- Settings: Team page (admin only) ---------- -->
-      <section class="panel settings-view" id="settingsTeamView" style="display:none;">
+      <section class="panel settings-view view-hidden" id="settingsTeamView">
         <div class="board-header">
           <div>
             <h2>Team accounts</h2>
@@ -486,6 +486,6 @@
 
 
 
-  <script src="app.js?v=114"></script>
+  <script src="app.js?v=116"></script>
 </body>
 </html>
