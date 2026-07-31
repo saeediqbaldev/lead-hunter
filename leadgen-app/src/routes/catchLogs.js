@@ -1,6 +1,6 @@
 const express = require("express");
 const db = require("../db");
-const { buildCatchLogCsv, buildCatchLogPdf, sanitizeFilename } = require("../export");
+const { buildCatchLogCsv, buildCatchLogPdf, sanitizeFilename, buildExportFilename } = require("../export");
 const scraperService = require("../scraperService");
 
 const router = express.Router();
@@ -18,7 +18,7 @@ function parseLeadRow(row) {
 function getOwnedCatchLog(userId, catchLogId) {
   return db
     .prepare(
-      `SELECT cl.* FROM catch_logs cl
+      `SELECT cl.*, n.name AS niche_name FROM catch_logs cl
        JOIN niches n ON n.id = cl.niche_id
        WHERE cl.id = ? AND n.user_id = ?`
     )
@@ -112,8 +112,9 @@ router.get("/:id/export/csv", (req, res) => {
     .map((lead) => ({ ...lead, city_name: log.name }));
 
   const csv = buildCatchLogCsv(log.name, leads);
+  const filename = buildExportFilename({ niche: log.niche_name, city: log.name });
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
-  res.setHeader("Content-Disposition", `attachment; filename="${sanitizeFilename(log.name)}.csv"`);
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}.csv"`);
   res.send(csv);
 });
 
@@ -129,7 +130,8 @@ router.get("/:id/export/pdf", (req, res) => {
     .map((lead) => ({ ...lead, city_name: log.name }));
 
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `attachment; filename="${sanitizeFilename(log.name)}.pdf"`);
+  const filename = buildExportFilename({ niche: log.niche_name, city: log.name });
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}.pdf"`);
   const doc = buildCatchLogPdf(log.name, leads);
   doc.pipe(res);
 });

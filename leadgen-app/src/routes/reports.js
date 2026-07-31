@@ -124,4 +124,35 @@ router.get("/api-usage", (req, res) => {
   );
 });
 
+// GET /api/reports/api-usage-history -> all-time totals per key + a daily
+// timeseries (last 90 days) for the "usage over time" line chart.
+router.get("/api-usage-history", (req, res) => {
+  const allTime = apiKeys.allTimeUsage(req.session.userId);
+  const daily = apiKeys.dailyUsageHistory(req.session.userId, 90);
+
+  const days = Array.from(new Set(daily.map((d) => d.usage_date))).sort();
+  const byKey = {};
+  for (const row of allTime) {
+    byKey[row.id] = {
+      id: row.id,
+      label: row.label,
+      active: !!row.is_active,
+      totalRequests: row.requests_made || 0,
+      totalLeads: row.leads_caught || 0,
+      requestsSeries: days.map(() => 0),
+      leadsSeries: days.map(() => 0),
+    };
+  }
+  daily.forEach((row) => {
+    const entry = byKey[row.api_key_id];
+    if (!entry) return;
+    const dayIndex = days.indexOf(row.usage_date);
+    if (dayIndex === -1) return;
+    entry.requestsSeries[dayIndex] = row.requests_made || 0;
+    entry.leadsSeries[dayIndex] = row.leads_caught || 0;
+  });
+
+  res.json({ days, keys: Object.values(byKey) });
+});
+
 module.exports = router;

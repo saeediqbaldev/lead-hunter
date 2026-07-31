@@ -1,6 +1,6 @@
 const express = require("express");
 const db = require("../db");
-const { buildNicheCsv, buildNichePdf, buildNicheXlsx, sanitizeFilename } = require("../export");
+const { buildNicheCsv, buildNichePdf, buildNicheXlsx, buildExportFilename } = require("../export");
 
 const router = express.Router();
 
@@ -117,7 +117,7 @@ router.get("/:id/export/csv", (req, res) => {
   const csv = buildNicheCsv(niche.name, catchLogsWithLeads);
 
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
-  res.setHeader("Content-Disposition", `attachment; filename="${sanitizeFilename(niche.name)}.csv"`);
+  res.setHeader("Content-Disposition", `attachment; filename="${buildExportFilename({ niche: niche.name })}.csv"`);
   res.send(csv);
 });
 
@@ -130,7 +130,7 @@ router.get("/:id/export/xlsx", async (req, res) => {
   const buffer = await buildNicheXlsx(niche.name, catchLogsWithLeads);
 
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  res.setHeader("Content-Disposition", `attachment; filename="${sanitizeFilename(niche.name)}.xlsx"`);
+  res.setHeader("Content-Disposition", `attachment; filename="${buildExportFilename({ niche: niche.name })}.xlsx"`);
   res.send(buffer);
 });
 
@@ -142,7 +142,7 @@ router.get("/:id/export/pdf", (req, res) => {
   const catchLogsWithLeads = getCatchLogsWithLeads(req.params.id);
 
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `attachment; filename="${sanitizeFilename(niche.name)}.pdf"`);
+  res.setHeader("Content-Disposition", `attachment; filename="${buildExportFilename({ niche: niche.name })}.pdf"`);
   const doc = buildNichePdf(niche.name, catchLogsWithLeads);
   doc.pipe(res);
 });

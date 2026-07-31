@@ -1,6 +1,6 @@
 const express = require("express");
 const db = require("../db");
-const { buildCatchLogCsv, buildCatchLogPdf, buildNicheXlsx, sanitizeFilename } = require("../export");
+const { buildCatchLogCsv, buildCatchLogPdf, buildNicheXlsx, buildExportFilename } = require("../export");
 
 const router = express.Router();
 
@@ -99,7 +99,27 @@ router.get("/export/:format", (req, res) => {
   const leads = rows.map(rowToLead);
 
   const title = "Current View";
-  const filename = sanitizeFilename(`current-view-${new Date().toISOString().slice(0, 10)}`);
+  // Resolve actual names when the view is scoped to a specific niche/city,
+  // so the filename is meaningful rather than always just "current-view".
+  let filenameNiche = null;
+  let filenameCity = null;
+  if (req.query.catchLogId) {
+    const row = db
+      .prepare(
+        `SELECT cl.name AS city_name, n.name AS niche_name FROM catch_logs cl
+         JOIN niches n ON n.id = cl.niche_id
+         WHERE cl.id = ? AND n.user_id = ?`
+      )
+      .get(req.query.catchLogId, req.session.userId);
+    if (row) {
+      filenameNiche = row.niche_name;
+      filenameCity = row.city_name;
+    }
+  } else if (req.query.nicheId) {
+    const row = db.prepare("SELECT name FROM niches WHERE id = ? AND user_id = ?").get(req.query.nicheId, req.session.userId);
+    if (row) filenameNiche = row.name;
+  }
+  const filename = buildExportFilename({ niche: filenameNiche || "AllNiches", city: filenameCity });
 
   if (format === "csv") {
     res.setHeader("Content-Type", "text/csv; charset=utf-8");

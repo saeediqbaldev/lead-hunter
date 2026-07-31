@@ -631,7 +631,7 @@ body {
 .sn-cell { color: var(--text-muted); font-family: var(--font-mono); font-size: 12px; }
 
 /* ---------- Per-row status dropdown (colored, replaces native <select>) ---------- */
-.row-status-dropdown { min-width: 132px; }
+.row-status-dropdown { min-width: 108px; }
 .row-status-trigger {
   width: 100%;
   display: flex;
@@ -919,7 +919,7 @@ button#huntBtn:disabled, .primary-btn:disabled { background: var(--border); colo
 
 /* ---------- Records list (custom grid rows, no <table>) ---------- */
 :root {
-  --list-cols: 32px minmax(130px, 1.3fr) 76px minmax(120px, 1.2fr) 116px 96px 60px 122px 34px;
+  --list-cols: 32px minmax(130px, 1.3fr) 76px minmax(120px, 1.2fr) 116px 92px 60px 118px 34px;
 }
 
 .records-wrap {
@@ -1009,23 +1009,16 @@ button#huntBtn:disabled, .primary-btn:disabled { background: var(--border); colo
 .no-website { color: var(--text-muted); font-family: var(--font-mono); font-size: 12px; }
 
 /* ---------- Needs as colored dots (active = filled/colored, inactive = dim) ---------- */
-.needs-dots { display: flex; gap: 6px; }
-.need-dot {
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  border: 1.5px solid var(--border);
-  background: transparent;
-  cursor: default;
-}
-.need-dot.active.website { background: var(--danger); border-color: var(--danger); }
-.need-dot.active.gmb { background: var(--warn); border-color: var(--warn); }
-.need-dot.active.seo { background: #7fa8d9; border-color: #7fa8d9; }
-.need-dot.active.review { background: var(--good); border-color: var(--good); }
-.need-dot.active.rep { background: var(--accent); border-color: var(--accent); }
+.needs-dots { display: flex; gap: 7px; align-items: center; }
+.need-icon { font-size: 12px; color: var(--border); }
+.need-icon.active.website { color: var(--danger); }
+.need-icon.active.gmb { color: var(--warn); }
+.need-icon.active.seo { color: #7fa8d9; }
+.need-icon.active.review { color: var(--good); }
+.need-icon.active.rep { color: var(--accent); }
 
 .rating-val { font-family: var(--font-mono); }
-.rating-val small { color: var(--text-muted); }
+.rating-val small { color: var(--text-muted); font-size: 10px; }
 
 .row-actions { display: flex; gap: 6px; }
 .row-actions button {
@@ -1055,11 +1048,11 @@ button#huntBtn:disabled, .primary-btn:disabled { background: var(--border); colo
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 5px;
+  width: 17px;
+  height: 17px;
+  border-radius: 4px;
   color: #fff;
-  font-size: 11px;
+  font-size: 9.5px;
 }
 
 /* ---------- Contact scrape progress panel ---------- */

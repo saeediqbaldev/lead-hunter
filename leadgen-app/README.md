@@ -6,6 +6,41 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V11.9
+All verified with real headless-browser rendering.
+
+- **Fixed the edit-menu popover being invisible/clipped**: the popover used
+  `position: absolute`, and its ancestor (the scrollable sidebar tree,
+  `overflow-y: auto`) clips absolutely-positioned descendants regardless of
+  z-index - a common CSS trap. Switched to `position: fixed` with
+  coordinates calculated from the button's real screen position, which
+  escapes the clipping entirely. Verified: with 15 niches forcing the tree
+  to scroll, the last niche's popover opens fully visible and within the
+  viewport.
+- **Fixed the status dropdown overlapping the delete/trash icon**: found
+  the actual cause - the dropdown had `min-width: 132px` but its grid
+  column was only 122px wide. Matched the widths properly. Verified: clean
+  6px gap between them now, zero overlap.
+- **Social icons** shrunk slightly (20px → 17px) for more breathing room.
+- **Needs indicators**: replaced the plain colored dots with actual icons
+  (globe for no-website, location pin for GMB, magnifying glass for Local
+  SEO, star for Reviews, shield for Reputation) in the same colors as
+  before. Legend popup updated to match.
+- **Export filenames** now follow "Niche-City-Date-AppVersion" across every
+  export (catch log, niche, and current-view) - tested live, e.g.
+  `Car_Wash-Bali-2026-07-31-2026.07.31-11.9.csv`.
+- Reduced the review-count font size slightly per request.
+
+**Not included this release, by request:**
+- The all-time API usage + history line chart (item #7) - explicitly
+  skipped for now. Some inert backend groundwork (an unused endpoint) was
+  left in place since removing it added no value, but nothing in the UI
+  changed.
+- The WhatsApp-registration check (item #6) - no official API exists for
+  this; only unofficial third-party services that carry real ban risk to
+  whatever number is used to check. Awaiting a decision on how to proceed
+  before any code is written for it.
+
 ## What's in this V11.8
 - **Niche row redesign** (implemented from the confirmed preview): niche
   name now grows to fill available width (bold, 14px), log/lead counts

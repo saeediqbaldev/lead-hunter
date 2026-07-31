@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.07.31-11.8";
+const APP_VERSION = "2026.07.31-11.9";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -1389,15 +1389,35 @@ nichesTree.addEventListener("click", (e) => {
   const toggle = e.target.closest('[data-action="toggle-export"]');
   if (toggle) {
     const menu = toggle.closest("[data-export-menu]");
+    const list = menu.querySelector(".export-list");
     const wasOpen = menu.classList.contains("open");
-    document.querySelectorAll("[data-export-menu].open").forEach((m) => m.classList.remove("open"));
-    if (!wasOpen) menu.classList.add("open");
+    document.querySelectorAll("[data-export-menu].open").forEach((m) => {
+      m.classList.remove("open");
+      m.querySelector(".export-list").style.cssText = ""; // clear any fixed-position override
+    });
+    if (!wasOpen) {
+      // Position as fixed (viewport-relative) instead of relying on the
+      // default CSS absolute positioning - an absolutely-positioned popover
+      // gets visually clipped by the scrollable sidebar tree's
+      // "overflow-y: auto" regardless of z-index, since ancestor overflow
+      // clips descendants no matter how high their z-index is. Fixed
+      // positioning, calculated from the button's real screen coordinates,
+      // escapes that clipping entirely.
+      const rect = toggle.getBoundingClientRect();
+      list.style.position = "fixed";
+      list.style.top = `${rect.bottom + 4}px`;
+      list.style.right = `${window.innerWidth - rect.right}px`;
+      menu.classList.add("open");
+    }
     e.stopPropagation();
   }
 });
 document.addEventListener("click", (e) => {
   if (!e.target.closest("[data-export-menu]")) {
-    document.querySelectorAll("[data-export-menu].open").forEach((m) => m.classList.remove("open"));
+    document.querySelectorAll("[data-export-menu].open").forEach((m) => {
+      m.classList.remove("open");
+      m.querySelector(".export-list").style.cssText = "";
+    });
   }
 });
 
@@ -1936,17 +1956,17 @@ function socialLinksHtml(lead) {
 // Fixed set of need categories, always rendered as dots - "active" (colored)
 // if this lead has that tag, dim/outline if not. Order matches tagClass().
 const NEED_DOT_TYPES = [
-  { label: "Website Design", cssClass: "website" },
-  { label: "GMB Optimization", cssClass: "gmb" },
-  { label: "Local SEO", cssClass: "seo" },
-  { label: "Review Generation", cssClass: "review" },
-  { label: "Reputation Management", cssClass: "rep" },
+  { label: "Website Design", cssClass: "website", icon: "bi-globe" },
+  { label: "GMB Optimization", cssClass: "gmb", icon: "bi-geo-alt-fill" },
+  { label: "Local SEO", cssClass: "seo", icon: "bi-search" },
+  { label: "Review Generation", cssClass: "review", icon: "bi-star-fill" },
+  { label: "Reputation Management", cssClass: "rep", icon: "bi-shield-check" },
 ];
 
 function needsDotsHtml(lead) {
   return `<div class="needs-dots">${NEED_DOT_TYPES.map(
-    ({ label, cssClass }) =>
-      `<span class="need-dot ${lead.needs.includes(label) ? "active " + cssClass : ""}" title="${label}${lead.needs.includes(label) ? "" : " (not applicable)"}"></span>`
+    ({ label, cssClass, icon }) =>
+      `<i class="bi ${icon} need-icon ${lead.needs.includes(label) ? "active " + cssClass : ""}" title="${label}${lead.needs.includes(label) ? "" : " (not applicable)"}"></i>`
   ).join("")}</div>`;
 }
 

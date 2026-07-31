@@ -66,6 +66,22 @@ function sanitizeFilename(name) {
   return String(name).replace(/[^a-z0-9\-_ ]/gi, "").trim().replace(/\s+/g, "_").slice(0, 80) || "export";
 }
 
+// Keep in sync with public/app.js's APP_VERSION - used in export filenames
+// per the requested "Niche-City-Date-AppVersion" naming convention.
+const APP_VERSION = "2026.07.31-11.9";
+
+// Builds a filename like "CarWash-Bali-2026-07-31-11.9" (niche and/or city
+// are omitted from the name if not applicable, e.g. a "current view" export
+// spanning multiple niches/cities).
+function buildExportFilename({ niche, city } = {}) {
+  const parts = [];
+  if (niche) parts.push(sanitizeFilename(niche));
+  if (city) parts.push(sanitizeFilename(city));
+  parts.push(new Date().toISOString().slice(0, 10));
+  parts.push(APP_VERSION);
+  return parts.join("-");
+}
+
 // ---------- CSV ----------
 // Plain http(s) URLs in a CSV cell are auto-recognized as clickable links by
 // Excel and Google Sheets when opened - that's the extent "clickable" can
@@ -320,4 +336,5 @@ module.exports = {
   buildCatchLogPdf,
   buildNichePdf,
   sanitizeFilename,
+  buildExportFilename,
 };
