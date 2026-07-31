@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.07.31-12.0";
+const APP_VERSION = "2026.07.31-12.1";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -96,6 +96,171 @@ function apiKeyRowHtml(k) {
       </div>
     </div>`;
 }
+
+// ---------- Gemini key management (mirrors the Google Places pattern above) ----------
+const geminiKeysList = document.getElementById("geminiKeysList");
+const newGeminiKeyLabel = document.getElementById("newGeminiKeyLabel");
+const newGeminiKeyValue = document.getElementById("newGeminiKeyValue");
+const geminiSettingsResult = document.getElementById("geminiSettingsResult");
+const geminiTestNewBtn = document.getElementById("geminiTestNewBtn");
+const geminiSaveNewBtn = document.getElementById("geminiSaveNewBtn");
+const navSettingsGemini = document.getElementById("navSettingsGemini");
+
+function showGeminiResult(kind, text) {
+  geminiSettingsResult.style.display = "block";
+  geminiSettingsResult.className = `settings-result ${kind}`;
+  geminiSettingsResult.textContent = text;
+}
+function hideGeminiResult() {
+  geminiSettingsResult.style.display = "none";
+}
+
+function geminiKeyRowHtml(k) {
+  return `
+    <div class="api-key-row ${k.active ? "active" : ""}" data-key-id="${k.id}">
+      <div class="api-key-info">
+        <span class="api-key-label">${k.label}</span>
+        <span class="api-key-masked">${k.masked}</span>
+        ${k.active ? '<span class="api-key-active-badge">● In use</span>' : ""}
+        <span class="api-key-usage" title="Gemini requests made with this key">
+          ${k.requestsMade} req
+        </span>
+      </div>
+      <div class="api-key-actions">
+        ${!k.active ? `<button type="button" class="small-btn" data-action="activate-gemini-key" data-id="${k.id}">Use this</button>` : ""}
+        <button type="button" class="small-btn" data-action="test-gemini-key" data-id="${k.id}">Test</button>
+        <button type="button" class="small-btn danger-btn" data-action="delete-gemini-key" data-id="${k.id}">Delete</button>
+      </div>
+    </div>`;
+}
+
+async function loadGeminiKeys() {
+  geminiKeysList.innerHTML = `<div class="api-keys-empty">Loading…</div>`;
+  try {
+    const res = await api("/api/settings/gemini-keys");
+    const data = await res.json();
+    geminiKeysList.innerHTML =
+      data.keys.length === 0
+        ? `<div class="api-keys-empty">No Gemini key saved yet. Add one below - get a free one at aistudio.google.com/apikey.</div>`
+        : data.keys.map(geminiKeyRowHtml).join("");
+  } catch (err) {
+    geminiKeysList.innerHTML = `<div class="api-keys-empty">Could not load saved keys.</div>`;
+  }
+}
+
+navSettingsGemini.addEventListener("click", async () => {
+  newGeminiKeyLabel.value = "";
+  newGeminiKeyValue.value = "";
+  hideGeminiResult();
+  state.lastNavSection = "settings";
+  setContentView("settings-gemini");
+  await loadGeminiKeys();
+});
+
+geminiSaveNewBtn.addEventListener("click", async () => {
+  const label = newGeminiKeyLabel.value.trim() || "Untitled key";
+  const apiKey = newGeminiKeyValue.value.trim();
+  if (!apiKey) {
+    showGeminiResult("bad", "Paste a Gemini API key first.");
+    return;
+  }
+  geminiSaveNewBtn.disabled = true;
+  geminiSaveNewBtn.textContent = "Saving…";
+  try {
+    const res = await api("/api/settings/gemini-keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label, apiKey }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      showGeminiResult("bad", data.error || "Could not save this key.");
+      showToast(`Could not save Gemini key: ${data.error || "test failed"}`, "error");
+      return;
+    }
+    showGeminiResult("ok", `Saved "${data.label}" (${data.masked}).`);
+    showToast(`Gemini key "${data.label}" saved`, "success");
+    newGeminiKeyLabel.value = "";
+    newGeminiKeyValue.value = "";
+    await loadGeminiKeys();
+  } catch (err) {
+    showGeminiResult("bad", err.message || "Could not save this key.");
+    showToast(`Could not save Gemini key: ${err.message}`, "error");
+  } finally {
+    geminiSaveNewBtn.disabled = false;
+    geminiSaveNewBtn.textContent = "Test & Save";
+  }
+});
+
+geminiTestNewBtn.addEventListener("click", async () => {
+  const apiKey = newGeminiKeyValue.value.trim();
+  if (!apiKey) {
+    showGeminiResult("bad", "Paste a Gemini API key first.");
+    return;
+  }
+  geminiTestNewBtn.disabled = true;
+  geminiTestNewBtn.textContent = "Testing…";
+  try {
+    const res = await api("/api/settings/gemini-keys/test-value", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ apiKey }),
+    });
+    const data = await res.json();
+    showGeminiResult(data.ok ? "ok" : "bad", data.ok ? "Success — this key works." : data.error || "This key doesn't work.");
+  } finally {
+    geminiTestNewBtn.disabled = false;
+    geminiTestNewBtn.textContent = "Test";
+  }
+});
+
+geminiKeysList.addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-action]");
+  if (!btn) return;
+  const action = btn.dataset.action;
+  const id = btn.dataset.id;
+
+  if (action === "activate-gemini-key") {
+    await api(`/api/settings/gemini-keys/${id}/activate`, { method: "POST" });
+    hideGeminiResult();
+    showToast("Active Gemini key updated", "success");
+    await loadGeminiKeys();
+    return;
+  }
+
+  if (action === "test-gemini-key") {
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Testing…";
+    try {
+      const res = await api(`/api/settings/gemini-keys/${id}/test`, { method: "POST" });
+      const data = await res.json();
+      showGeminiResult(data.ok ? "ok" : "bad", data.ok ? "Success — this key still works." : data.error || "This key no longer works.");
+      showToast(data.ok ? "Key test succeeded" : `Key test failed: ${data.error || "no longer works"}`, data.ok ? "success" : "error");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+    return;
+  }
+
+  if (action === "delete-gemini-key") {
+    const row = btn.closest(".api-key-row");
+    const label = row.querySelector(".api-key-label").textContent;
+    const confirmed = await openModal({
+      title: `Delete key "${label}"?`,
+      message: "This cannot be undone. If this was the active key, business analysis and content generation will stop working until another key is added or activated.",
+      confirmText: "Delete",
+      danger: true,
+    });
+    if (!confirmed) return;
+    await api(`/api/settings/gemini-keys/${id}`, { method: "DELETE" });
+    hideGeminiResult();
+    showToast(`Gemini key "${label}" deleted`, "success");
+    await loadGeminiKeys();
+    return;
+  }
+});
 
 async function loadApiKeys() {
   apiKeysList.innerHTML = `<div class="api-keys-empty">Loading…</div>`;
@@ -717,11 +882,6 @@ const filterSearch = document.getElementById("filterSearch");
 const clearScopeBtn = document.getElementById("clearScopeBtn");
 const scopeLine = document.getElementById("scopeLine");
 
-const statusDropdown = document.getElementById("statusDropdown");
-const statusDropdownTrigger = document.getElementById("statusDropdownTrigger");
-const statusDropdownPanel = document.getElementById("statusDropdownPanel");
-const statusDropdownLabel = document.getElementById("statusDropdownLabel");
-
 const needDropdown = document.getElementById("needDropdown");
 const needDropdownTrigger = document.getElementById("needDropdownTrigger");
 const needDropdownPanel = document.getElementById("needDropdownPanel");
@@ -843,6 +1003,7 @@ function setContentView(view) {
     board: boardPanel,
     reports: reportsPanel,
     "settings-api": document.getElementById("settingsApiView"),
+    "settings-gemini": document.getElementById("settingsGeminiView"),
     "settings-colors": document.getElementById("settingsColorsView"),
     "settings-team": document.getElementById("settingsTeamView"),
   };
@@ -915,8 +1076,8 @@ exportViewMenu.querySelectorAll("[data-export-view]").forEach((link) => {
         params.set("status", state.outreach.status);
       }
     } else {
+      params.set("status", "new");
       if (filterSearch.value) params.set("search", filterSearch.value);
-      if (filterState.status) params.set("status", filterState.status);
       if (filterState.need) params.set("need", filterState.need);
       if (state.activeCatchLogId) params.set("catchLogId", state.activeCatchLogId);
       else if (state.activeNicheId) params.set("nicheId", state.activeNicheId);
@@ -1150,7 +1311,7 @@ async function refreshQuota() {
 // ---------- Niche dropdown (Hunt form) ----------
 nicheDropdownTrigger.addEventListener("click", () => {
   const wasOpen = nicheDropdown.classList.contains("open");
-  [nicheDropdown, statusDropdown, needDropdown, sortDropdown, quickNicheDropdown, quickCityDropdown].forEach((d) => d.classList.remove("open"));
+  [nicheDropdown, needDropdown, sortDropdown, quickNicheDropdown, quickCityDropdown].forEach((d) => d.classList.remove("open"));
   if (!wasOpen) nicheDropdown.classList.add("open");
 });
 
@@ -1222,21 +1383,6 @@ function buildFilterDropdown({ options, trigger, panel, label, currentValue, onS
       onSelect(el.dataset.value);
       trigger.closest(".theme-dropdown").classList.remove("open");
     });
-  });
-}
-
-function renderStatusDropdown() {
-  buildFilterDropdown({
-    options: STATUS_COLORS,
-    trigger: statusDropdownTrigger,
-    panel: statusDropdownPanel,
-    label: statusDropdownLabel,
-    currentValue: filterState.status,
-    onSelect: (value) => {
-      filterState.status = value;
-      renderStatusDropdown();
-      loadLeads();
-    },
   });
 }
 
@@ -1319,9 +1465,9 @@ function renderQuickCityDropdown() {
   });
 }
 
-const ALL_TOP_DROPDOWNS = [nicheDropdown, statusDropdown, needDropdown, sortDropdown, quickNicheDropdown, quickCityDropdown];
+const ALL_TOP_DROPDOWNS = [nicheDropdown, needDropdown, sortDropdown, quickNicheDropdown, quickCityDropdown];
 
-[statusDropdown, needDropdown, sortDropdown, quickNicheDropdown, quickCityDropdown].forEach((dd) => {
+[needDropdown, sortDropdown, quickNicheDropdown, quickCityDropdown].forEach((dd) => {
   const trigger = dd.querySelector(".theme-dropdown-trigger");
   trigger.addEventListener("click", () => {
     const wasOpen = dd.classList.contains("open");
@@ -1931,11 +2077,15 @@ recordsBody.addEventListener("click", (e) => {
     dd.querySelectorAll("[data-value]").forEach((el) => el.classList.toggle("selected", el.dataset.value === value));
     dd.classList.remove("open");
 
-    // In Reach Out mode, a status change away from the currently-viewed
-    // pipeline stage should make the row vanish from this list right away,
-    // not after a network round-trip - remove it instantly, let the
-    // background refresh below correct S/N numbering.
-    if (state.mode === "outreach" && value !== state.outreach.status) {
+    // A status change that moves a lead out of the currently-viewed scope
+    // should make the row vanish right away, not after a network
+    // round-trip - remove it instantly, let the background refresh below
+    // correct S/N numbering. This applies in Reach Out (moving to a
+    // different pipeline stage) and in Hunt (any status change moves the
+    // lead out of Hunt entirely, since Hunt only ever shows "new" leads).
+    const leavesCurrentView =
+      (state.mode === "outreach" && value !== state.outreach.status) || (state.mode !== "outreach" && value !== "new");
+    if (leavesCurrentView) {
       const row = dd.closest(".list-row");
       if (row) row.remove();
       if (!recordsBody.querySelector(".list-row")) emptyState.style.display = "block";
@@ -1964,6 +2114,9 @@ recordsBody.addEventListener("click", (e) => {
           state.outreachSummaries.clear();
           await renderOutreachTree();
           await loadLeads();
+        } else if (leavesCurrentView) {
+          await loadLeads();
+          await loadNichesAndLogs();
         }
       })
       .catch((err) => {
@@ -2167,8 +2320,11 @@ async function loadLeads() {
     params.set("catchLogId", state.outreach.catchLogId);
     params.set("status", state.outreach.status);
   } else {
+    // Hunt only ever shows fresh, untouched leads - the moment a status
+    // changes away from "new" (via Reach Out), it should disappear from
+    // here permanently and only be reachable from Reach Out going forward.
+    params.set("status", "new");
     if (filterSearch.value) params.set("search", filterSearch.value);
-    if (filterState.status) params.set("status", filterState.status);
     if (filterState.need) params.set("need", filterState.need);
     if (state.activeCatchLogId) {
       params.set("catchLogId", state.activeCatchLogId);
@@ -2537,56 +2693,61 @@ function renderReportsCharts(summary, timeseries) {
   });
 }
 
-function renderApiUsageTable(rows) {
+function renderProviderUsageTable(tbodyEl, rows, hasLeadsColumn) {
   if (rows.length === 0) {
-    apiUsageTableBody.innerHTML = `<tr><td colspan="4" class="empty-cell-row">No API keys saved yet.</td></tr>`;
+    tbodyEl.innerHTML = `<tr><td colspan="${hasLeadsColumn ? 4 : 3}" class="empty-cell-row">No API keys saved yet.</td></tr>`;
     return;
   }
-  apiUsageTableBody.innerHTML = rows
+  tbodyEl.innerHTML = rows
     .map(
       (r) => `
     <tr>
       <td>${r.label}</td>
       <td>${r.active ? '<span class="api-key-active-badge">● In use</span>' : "Inactive"}</td>
       <td class="mono">${r.requestsMade}</td>
-      <td class="mono">${r.leadsCaught}</td>
+      ${hasLeadsColumn ? `<td class="mono">${r.leadsCaught}</td>` : ""}
     </tr>`
     )
     .join("");
 }
+function renderApiUsageTable(rows) {
+  renderProviderUsageTable(apiUsageTableBody, rows, true);
+}
+function renderGeminiUsageTable(rows) {
+  renderProviderUsageTable(document.getElementById("geminiUsageTableBody"), rows, false);
+}
 
 const API_USAGE_LINE_COLORS = ["#ff6a3d", "#7fa8d9", "#e0b355", "#7fb88a", "#c586e0", "#4fd1c5", "#d95d5d"];
-let apiUsageLineChartInstance = null;
+const providerChartInstances = { places: null, gemini: null };
 
-function renderApiUsageHistory(history) {
-  const tbody = document.getElementById("apiUsageHistoryTableBody");
+function renderProviderUsageHistory(history, { tbodyEl, canvasId, chartKey, hasLeadsColumn }) {
   if (!history.keys.length) {
-    tbody.innerHTML = `<tr><td colspan="3" class="empty-cell-row">No API keys saved yet.</td></tr>`;
+    tbodyEl.innerHTML = `<tr><td colspan="${hasLeadsColumn ? 3 : 2}" class="empty-cell-row">No API keys saved yet.</td></tr>`;
   } else {
-    tbody.innerHTML = history.keys
+    tbodyEl.innerHTML = history.keys
       .map(
         (k) => `
       <tr>
         <td>${k.label}${k.active ? ' <span class="api-key-active-badge">● In use</span>' : ""}</td>
         <td class="mono">${k.totalRequests}</td>
-        <td class="mono">${k.totalLeads}</td>
+        ${hasLeadsColumn ? `<td class="mono">${k.totalLeads}</td>` : ""}
       </tr>`
       )
       .join("");
   }
 
   if (typeof Chart === "undefined") return;
-  if (apiUsageLineChartInstance) {
-    apiUsageLineChartInstance.destroy();
-    apiUsageLineChartInstance = null;
+  if (providerChartInstances[chartKey]) {
+    providerChartInstances[chartKey].destroy();
+    providerChartInstances[chartKey] = null;
   }
 
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       try {
-        const ctx = document.getElementById("apiUsageLineChart");
+        const ctx = document.getElementById(canvasId);
         const labels = history.days.length ? history.days : ["No data yet"];
-        apiUsageLineChartInstance = new Chart(ctx, {
+        providerChartInstances[chartKey] = new Chart(ctx, {
           type: "line",
           data: {
             labels,
@@ -2619,11 +2780,28 @@ function renderApiUsageHistory(history) {
             },
           },
         });
-        apiUsageLineChartInstance.resize();
+        providerChartInstances[chartKey].resize();
       } catch (err) {
-        console.error("Failed to render API usage history chart:", err);
+        console.error("Failed to render usage history chart:", err);
       }
     });
+  });
+}
+
+function renderApiUsageHistory(history) {
+  renderProviderUsageHistory(history, {
+    tbodyEl: document.getElementById("apiUsageHistoryTableBody"),
+    canvasId: "apiUsageLineChart",
+    chartKey: "places",
+    hasLeadsColumn: true,
+  });
+}
+function renderGeminiUsageHistory(history) {
+  renderProviderUsageHistory(history, {
+    tbodyEl: document.getElementById("geminiUsageHistoryTableBody"),
+    canvasId: "geminiUsageLineChart",
+    chartKey: "gemini",
+    hasLeadsColumn: false,
   });
 }
 
@@ -2634,6 +2812,21 @@ async function loadApiUsageHistory() {
     renderApiUsageHistory(history);
   } catch (err) {
     console.error("Failed to load API usage history:", err);
+  }
+}
+
+async function loadGeminiUsageHistory() {
+  try {
+    const [usageRes, historyRes] = await Promise.all([
+      api("/api/reports/api-usage?provider=gemini"),
+      api("/api/reports/api-usage-history?provider=gemini"),
+    ]);
+    const usage = await usageRes.json();
+    const history = await historyRes.json();
+    renderGeminiUsageTable(usage);
+    renderGeminiUsageHistory(history);
+  } catch (err) {
+    console.error("Failed to load Gemini usage:", err);
   }
 }
 
@@ -2672,6 +2865,7 @@ async function loadReports() {
     renderReportsCharts(summary, timeseries);
     renderApiUsageTable(usage);
     await loadApiUsageHistory();
+    await loadGeminiUsageHistory();
   } catch (err) {
     console.error("Failed to load reports:", err);
     showChartsError(`Couldn't load report data: ${err.message}`);
@@ -2685,7 +2879,6 @@ async function loadReports() {
   await loadTheme();
   const versionTag = document.getElementById("versionTag");
   if (versionTag) versionTag.textContent = "build " + APP_VERSION;
-  renderStatusDropdown();
   renderNeedDropdown();
   renderSortDropdown();
   renderReportsRangeDropdown();

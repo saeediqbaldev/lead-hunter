@@ -1,39 +1,43 @@
 const db = require("./db");
 
-function listKeys(userId) {
+const DEFAULT_PROVIDER = "google_places";
+
+function listKeys(userId, provider = DEFAULT_PROVIDER) {
   return db
-    .prepare("SELECT * FROM api_keys WHERE user_id = ? ORDER BY created_at ASC, id ASC")
-    .all(userId);
+    .prepare("SELECT * FROM api_keys WHERE user_id = ? AND provider = ? ORDER BY created_at ASC, id ASC")
+    .all(userId, provider);
 }
 
 function getKeyById(userId, id) {
   return db.prepare("SELECT * FROM api_keys WHERE user_id = ? AND id = ?").get(userId, id);
 }
 
-function getActiveKey(userId) {
-  return db.prepare("SELECT * FROM api_keys WHERE user_id = ? AND is_active = 1").get(userId);
+function getActiveKey(userId, provider = DEFAULT_PROVIDER) {
+  return db.prepare("SELECT * FROM api_keys WHERE user_id = ? AND provider = ? AND is_active = 1").get(userId, provider);
 }
 
-function getActiveKeyValue(userId) {
-  const row = getActiveKey(userId);
+function getActiveKeyValue(userId, provider = DEFAULT_PROVIDER) {
+  const row = getActiveKey(userId, provider);
   return row ? row.key_value : null;
 }
 
-function setActive(userId, id) {
+// Only deactivates other keys of the SAME provider - activating a Gemini
+// key must never touch which Google Places key is active, and vice versa.
+function setActive(userId, id, provider = DEFAULT_PROVIDER) {
   const tx = db.transaction(() => {
-    db.prepare("UPDATE api_keys SET is_active = 0 WHERE user_id = ?").run(userId);
-    db.prepare("UPDATE api_keys SET is_active = 1 WHERE user_id = ? AND id = ?").run(userId, id);
+    db.prepare("UPDATE api_keys SET is_active = 0 WHERE user_id = ? AND provider = ?").run(userId, provider);
+    db.prepare("UPDATE api_keys SET is_active = 1 WHERE user_id = ? AND id = ? AND provider = ?").run(userId, id, provider);
   });
   tx();
 }
 
-function insertKey(userId, label, keyValue) {
-  const wasEmpty = db.prepare("SELECT COUNT(*) AS c FROM api_keys WHERE user_id = ?").get(userId).c === 0;
+function insertKey(userId, label, keyValue, provider = DEFAULT_PROVIDER) {
+  const wasEmpty = db.prepare("SELECT COUNT(*) AS c FROM api_keys WHERE user_id = ? AND provider = ?").get(userId, provider).c === 0;
   const info = db
-    .prepare("INSERT INTO api_keys (user_id, label, key_value, is_active) VALUES (?, ?, ?, 0)")
-    .run(userId, label, keyValue);
-  // First key this user ever saves becomes active automatically.
-  if (wasEmpty) setActive(userId, info.lastInsertRowid);
+    .prepare("INSERT INTO api_keys (user_id, label, key_value, is_active, provider) VALUES (?, ?, ?, 0, ?)")
+    .run(userId, label, keyValue, provider);
+  // First key this user ever saves for this provider becomes active automatically.
+  if (wasEmpty) setActive(userId, info.lastInsertRowid, provider);
   return getKeyById(userId, info.lastInsertRowid);
 }
 
@@ -41,7 +45,7 @@ function deleteKey(userId, id) {
   db.prepare("DELETE FROM api_keys WHERE user_id = ? AND id = ?").run(userId, id);
 }
 
-// Called after every Places API call this key was used for, so usage is
+// Called after every Places/Gemini API call this key was used for, so usage is
 // visible per-key in Settings ("how much has each key actually been used").
 function recordUsage(userId, keyId, { requests = 0, leadsCaught = 0 } = {}) {
   if (!keyId) return;
@@ -58,7 +62,7 @@ function recordUsage(userId, keyId, { requests = 0, leadsCaught = 0 } = {}) {
   ).run(keyId, today, requests, leadsCaught);
 }
 
-function todaysUsage(userId) {
+function todaysUsage(userId, provider = DEFAULT_PROVIDER) {
   const today = new Date().toISOString().slice(0, 10);
   return db
     .prepare(
@@ -67,10 +71,10 @@ function todaysUsage(userId) {
               COALESCE(d.leads_caught, 0) AS leads_caught
        FROM api_keys k
        LEFT JOIN api_key_daily_usage d ON d.api_key_id = k.id AND d.usage_date = ?
-       WHERE k.user_id = ?
+       WHERE k.user_id = ? AND k.provider = ?
        ORDER BY k.created_at ASC`
     )
-    .all(today, userId);
+    .all(today, userId, provider);
 }
 
 // All-time cumulative usage per key - reads directly off api_keys' running
@@ -78,13 +82,13 @@ function todaysUsage(userId) {
 // regardless of when the key was created or how it's been used across
 // redeploys - it's not derived from summing daily rows, so nothing about a
 // server restart or a backup import could make it drift out of sync.
-function allTimeUsage(userId) {
+function allTimeUsage(userId, provider = DEFAULT_PROVIDER) {
   return db
     .prepare(
       `SELECT id, label, is_active, requests_made, leads_caught, created_at
-       FROM api_keys WHERE user_id = ? ORDER BY created_at ASC`
+       FROM api_keys WHERE user_id = ? AND provider = ? ORDER BY created_at ASC`
     )
-    .all(userId);
+    .all(userId, provider);
 }
 
 // Daily usage history per key, for the "usage over time" line chart.
@@ -93,7 +97,7 @@ function allTimeUsage(userId) {
 // so it stays accurate across redeploys. A backup restore also carries
 // this table's rows along (see src/routes/backup.js), so importing an
 // older backup doesn't lose or duplicate history either.
-function dailyUsageHistory(userId, days = 90) {
+function dailyUsageHistory(userId, days = 90, provider = DEFAULT_PROVIDER) {
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
   const startStr = startDate.toISOString().slice(0, 10);
@@ -103,10 +107,10 @@ function dailyUsageHistory(userId, days = 90) {
       `SELECT d.usage_date, k.id AS api_key_id, k.label, d.requests_made, d.leads_caught
        FROM api_key_daily_usage d
        JOIN api_keys k ON k.id = d.api_key_id
-       WHERE k.user_id = ? AND d.usage_date >= ?
+       WHERE k.user_id = ? AND k.provider = ? AND d.usage_date >= ?
        ORDER BY d.usage_date ASC`
     )
-    .all(userId, startStr);
+    .all(userId, provider, startStr);
 }
 
 module.exports = {

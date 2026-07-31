@@ -6,7 +6,7 @@
 <title>Xeven Leads</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=120" />
+<link rel="stylesheet" href="style.css?v=121" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -92,6 +92,7 @@
           </button>
           <div class="nav-section-body">
             <button class="nav-leaf nav-leaf-action" data-goto="settings-api" id="navSettingsApi"><i class="bi bi-key"></i> API Keys</button>
+            <button class="nav-leaf nav-leaf-action" data-goto="settings-gemini" id="navSettingsGemini"><i class="bi bi-stars"></i> Gemini AI</button>
             <button class="nav-leaf nav-leaf-action" data-goto="settings-colors" id="navSettingsColors"><i class="bi bi-palette"></i> Colors</button>
             <button class="nav-leaf nav-leaf-action" data-goto="settings-team" id="navSettingsTeam" style="display:none;"><i class="bi bi-people"></i> Team</button>
           </div>
@@ -228,15 +229,6 @@
             <div class="theme-dropdown-panel" id="quickCityDropdownPanel"></div>
           </div>
 
-          <div class="theme-dropdown filter-dropdown icon-filter" id="statusDropdown" title="Status">
-            <button type="button" class="theme-dropdown-trigger" id="statusDropdownTrigger">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="trigger-icon"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="3"/></svg>
-              <span id="statusDropdownLabel">Status</span>
-              <span class="theme-dropdown-caret">▾</span>
-            </button>
-            <div class="theme-dropdown-panel" id="statusDropdownPanel"></div>
-          </div>
-
           <div class="theme-dropdown filter-dropdown icon-filter" id="needDropdown" title="Need">
             <button type="button" class="theme-dropdown-trigger" id="needDropdownTrigger">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="trigger-icon"><path d="m20.59 13.41-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82Z"/><circle cx="7" cy="7" r="1.2" fill="currentColor" stroke="none"/></svg>
@@ -358,6 +350,36 @@
             <h3>API usage over time</h3>
             <canvas id="apiUsageLineChart"></canvas>
           </div>
+
+          <div class="settings-divider" style="margin: 24px 0;"></div>
+          <h3 style="font-family:var(--font-display); font-size:15px; margin:0 0 4px 0;">Gemini AI usage</h3>
+          <p class="hint">Business analysis and outreach content generation</p>
+
+          <div class="reports-table-card">
+            <h3>Gemini key usage — today</h3>
+            <div class="table-scroll-wrap">
+              <table class="reports-table" id="geminiUsageTable">
+                <thead><tr><th>Key</th><th>Status</th><th>Requests made</th></tr></thead>
+                <tbody id="geminiUsageTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="reports-table-card">
+            <h3>Gemini key usage — history (all time)</h3>
+            <p class="hint">Accurate across redeploys and backup restores.</p>
+            <div class="table-scroll-wrap">
+              <table class="reports-table" id="geminiUsageHistoryTable">
+                <thead><tr><th>Key</th><th>Total requests (all time)</th></tr></thead>
+                <tbody id="geminiUsageHistoryTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="reports-chart-card reports-line-card">
+            <h3>Gemini usage over time</h3>
+            <canvas id="geminiUsageLineChart"></canvas>
+          </div>
         </div>
       </section>
 
@@ -401,6 +423,30 @@
             </label>
           </div>
           <div class="settings-result" id="backupResult" style="display:none;"></div>
+        </div>
+      </section>
+
+      <!-- ---------- Settings: Gemini AI Keys page ---------- -->
+      <section class="panel settings-view view-hidden" id="settingsGeminiView">
+        <div class="board-header">
+          <div>
+            <h2>Gemini AI Keys</h2>
+            <div class="scope-line">Used for business deep-analysis and outreach content generation. Free tier available via Google AI Studio.</div>
+          </div>
+        </div>
+        <div class="settings-body">
+          <div id="geminiKeysList" class="api-keys-list"></div>
+
+          <div class="api-key-add-row">
+            <input type="text" id="newGeminiKeyLabel" placeholder="Label (e.g. Personal, Client A)" autocomplete="off" />
+            <input type="text" id="newGeminiKeyValue" placeholder="AIza… paste new Gemini key here" autocomplete="off" spellcheck="false" />
+            <button id="geminiTestNewBtn" class="small-btn">Test</button>
+            <button id="geminiSaveNewBtn" class="primary-btn">Test &amp; Save</button>
+          </div>
+          <div class="settings-result" id="geminiSettingsResult" style="display:none;"></div>
+
+          <div class="settings-divider"></div>
+          <p class="hint">Don't have a key yet? Get one free at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> - no credit card required.</p>
         </div>
       </section>
 
@@ -505,6 +551,6 @@
 
 
 
-  <script src="app.js?v=120"></script>
+  <script src="app.js?v=121"></script>
 </body>
 </html>

@@ -110,9 +110,12 @@ router.get("/niches-cities", (req, res) => {
   res.json({ niches, cities });
 });
 
-// GET /api/reports/api-usage -> TODAY's usage specifically (not all-time totals)
+// GET /api/reports/api-usage?provider=google_places|gemini -> TODAY's usage
+// specifically (not all-time totals). Defaults to google_places for
+// backward compatibility with the existing Reports page call.
 router.get("/api-usage", (req, res) => {
-  const rows = apiKeys.todaysUsage(req.session.userId);
+  const provider = req.query.provider === "gemini" ? "gemini" : "google_places";
+  const rows = apiKeys.todaysUsage(req.session.userId, provider);
   res.json(
     rows.map((r) => ({
       id: r.id,
@@ -124,11 +127,12 @@ router.get("/api-usage", (req, res) => {
   );
 });
 
-// GET /api/reports/api-usage-history -> all-time totals per key + a daily
-// timeseries (last 90 days) for the "usage over time" line chart.
+// GET /api/reports/api-usage-history?provider= -> all-time totals per key +
+// a daily timeseries (last 90 days) for the "usage over time" line chart.
 router.get("/api-usage-history", (req, res) => {
-  const allTime = apiKeys.allTimeUsage(req.session.userId);
-  const daily = apiKeys.dailyUsageHistory(req.session.userId, 90);
+  const provider = req.query.provider === "gemini" ? "gemini" : "google_places";
+  const allTime = apiKeys.allTimeUsage(req.session.userId, provider);
+  const daily = apiKeys.dailyUsageHistory(req.session.userId, 90, provider);
 
   const days = Array.from(new Set(daily.map((d) => d.usage_date))).sort();
   const byKey = {};

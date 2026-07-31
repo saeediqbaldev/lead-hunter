@@ -6,6 +6,29 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V12.1
+This is a checkpoint of a larger feature still being built (business deep-
+analysis, outreach content generation, pinned leads) - the pieces below are
+complete and independently verified; the rest is still in progress.
+
+- **Gemini AI key management**: new "Gemini AI" page under Settings, same
+  save/test/activate/delete flow as Google Places keys, backed by a shared,
+  non-duplicated route factory. Get a free key at aistudio.google.com/apikey.
+- **Gemini usage in Reports**: today's usage, all-time history, and a usage
+  -over-time chart, mirroring the Places section exactly. Verified both
+  sections render correctly side by side with no interference between them.
+- **Hunt and Reach Out are now mutually exclusive**: Hunt only ever shows
+  leads still at status "new". The moment a status changes to anything
+  else, the lead disappears from Hunt and only appears in Reach Out from
+  then on - nothing is deleted from the database, it's purely a filtering
+  change. Verified end-to-end with real data (a lead moved from "new" to
+  "shortlisted" correctly vanished from Hunt and appeared in Reach Out),
+  and caught + fixed a real bug in the process: Hunt wasn't refreshing its
+  view after a status change since that never used to matter before this
+  release.
+- Removed the now-meaningless "Status" filter dropdown from Hunt (Hunt only
+  ever shows one status now, so filtering by status no longer applies).
+
 ## What's in this V12.0
 - **Business name column**: location/maps icon moved out of the name
   column into the Social column (always shown by default, clickable to the

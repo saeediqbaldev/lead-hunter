@@ -115,6 +115,13 @@ CREATE TABLE IF NOT EXISTS api_keys (
   if (!apiKeyCols.includes("is_active")) db.exec("ALTER TABLE api_keys ADD COLUMN is_active INTEGER DEFAULT 0");
   if (!apiKeyCols.includes("requests_made")) db.exec("ALTER TABLE api_keys ADD COLUMN requests_made INTEGER DEFAULT 0");
   if (!apiKeyCols.includes("leads_caught")) db.exec("ALTER TABLE api_keys ADD COLUMN leads_caught INTEGER DEFAULT 0");
+  // "provider" distinguishes Google Places keys (used for hunting) from
+  // Gemini keys (used for business analysis + outreach content) - existing
+  // rows predate this column and are all Google Places keys.
+  if (!apiKeyCols.includes("provider")) {
+    db.exec("ALTER TABLE api_keys ADD COLUMN provider TEXT DEFAULT 'google_places'");
+    db.exec("UPDATE api_keys SET provider = 'google_places' WHERE provider IS NULL");
+  }
 }
 
 {
@@ -362,6 +369,44 @@ CREATE TABLE IF NOT EXISTS api_key_daily_usage (
   requests_made INTEGER DEFAULT 0,
   leads_caught INTEGER DEFAULT 0,
   PRIMARY KEY (api_key_id, usage_date)
+);
+`);
+
+{
+  const leadCols = db.prepare("PRAGMA table_info(leads)").all().map((c) => c.name);
+  if (!leadCols.includes("pinned")) db.exec("ALTER TABLE leads ADD COLUMN pinned INTEGER DEFAULT 0");
+}
+
+// ---------- Business deep-analysis (Reach Out "Inspect" feature) ----------
+db.exec(`
+CREATE TABLE IF NOT EXISTS business_analysis (
+  lead_id INTEGER PRIMARY KEY,
+  status TEXT DEFAULT 'pending',
+  current_step TEXT,
+  overall_score INTEGER,
+  website_score INTEGER,
+  gmb_score INTEGER,
+  social_score INTEGER,
+  reputation_score INTEGER,
+  checklist TEXT,
+  strengths TEXT,
+  weaknesses TEXT,
+  suggested_services TEXT,
+  raw_data TEXT,
+  error TEXT,
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+`);
+
+// ---------- Generated outreach content, per lead per platform ----------
+db.exec(`
+CREATE TABLE IF NOT EXISTS outreach_content (
+  lead_id INTEGER NOT NULL,
+  platform TEXT NOT NULL,
+  tone TEXT,
+  content TEXT,
+  generated_at TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (lead_id, platform)
 );
 `);
 

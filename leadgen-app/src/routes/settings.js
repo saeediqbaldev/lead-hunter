@@ -1,5 +1,6 @@
 const express = require("express");
-const { testApiKey } = require("../placesApi");
+const { testApiKey: testPlacesKey } = require("../placesApi");
+const { testApiKey: testGeminiKey } = require("../gemini");
 const apiKeys = require("../apiKeys");
 const db = require("../db");
 
@@ -39,68 +40,78 @@ function toPublicRow(row) {
   };
 }
 
-// GET /api/settings/keys -> this user's saved keys (masked), usage stats, and which is active
-router.get("/keys", (req, res) => {
-  const rows = apiKeys.listKeys(req.session.userId).map(toPublicRow);
-  const activeRow = rows.find((r) => r.active);
-  res.json({
-    keys: rows,
-    activeId: activeRow ? activeRow.id : null,
-    envFallbackAvailable: !!process.env.GOOGLE_PLACES_API_KEY,
+// Shared CRUD logic for a provider's API keys - both Google Places and
+// Gemini keys go through the exact same save/test/activate/delete/list
+// flow, just scoped to their own provider and their own key-testing
+// function. Mounted twice below instead of duplicating this route set.
+function createKeyRoutes(provider, testFn, envFallbackVar) {
+  const sub = express.Router();
+
+  sub.get("/", (req, res) => {
+    const rows = apiKeys.listKeys(req.session.userId, provider).map(toPublicRow);
+    const activeRow = rows.find((r) => r.active);
+    res.json({
+      keys: rows,
+      activeId: activeRow ? activeRow.id : null,
+      envFallbackAvailable: envFallbackVar ? !!process.env[envFallbackVar] : false,
+    });
   });
-});
 
-// POST /api/settings/keys/test-value { apiKey } -> test a key before saving it
-router.post("/keys/test-value", async (req, res) => {
-  const { apiKey } = req.body || {};
-  if (!apiKey || !apiKey.trim()) {
-    return res.status(400).json({ ok: false, error: "Enter an API key first." });
-  }
-  const result = await testApiKey(apiKey.trim());
-  res.json(result);
-});
+  sub.post("/test-value", async (req, res) => {
+    const { apiKey } = req.body || {};
+    if (!apiKey || !apiKey.trim()) {
+      return res.status(400).json({ ok: false, error: "Enter an API key first." });
+    }
+    const result = await testFn(apiKey.trim());
+    res.json(result);
+  });
 
-// POST /api/settings/keys { label, apiKey } -> test, and only save if it works
-router.post("/keys", async (req, res) => {
-  const { label, apiKey } = req.body || {};
-  if (!apiKey || !apiKey.trim()) {
-    return res.status(400).json({ error: "apiKey is required" });
-  }
+  sub.post("/", async (req, res) => {
+    const { label, apiKey } = req.body || {};
+    if (!apiKey || !apiKey.trim()) {
+      return res.status(400).json({ error: "apiKey is required" });
+    }
+    const trimmedKey = apiKey.trim();
+    const trimmedLabel = (label && label.trim()) || "Untitled key";
 
-  const trimmedKey = apiKey.trim();
-  const trimmedLabel = (label && label.trim()) || "Untitled key";
+    const result = await testFn(trimmedKey);
+    if (!result.ok) {
+      return res.status(400).json({ error: result.error || "Key test failed", tested: true });
+    }
 
-  const result = await testApiKey(trimmedKey);
-  if (!result.ok) {
-    return res.status(400).json({ error: result.error || "Key test failed", tested: true });
-  }
+    const row = apiKeys.insertKey(req.session.userId, trimmedLabel, trimmedKey, provider);
+    res.json(toPublicRow(row));
+  });
 
-  const row = apiKeys.insertKey(req.session.userId, trimmedLabel, trimmedKey);
-  res.json(toPublicRow(row));
-});
+  sub.post("/:id/test", async (req, res) => {
+    const row = apiKeys.getKeyById(req.session.userId, req.params.id);
+    if (!row) return res.status(404).json({ ok: false, error: "Key not found" });
+    const result = await testFn(row.key_value);
+    res.json(result);
+  });
 
-// POST /api/settings/keys/:id/test -> re-test a saved key
-router.post("/keys/:id/test", async (req, res) => {
-  const row = apiKeys.getKeyById(req.session.userId, req.params.id);
-  if (!row) return res.status(404).json({ ok: false, error: "Key not found" });
-  const result = await testApiKey(row.key_value);
-  res.json(result);
-});
+  sub.post("/:id/activate", (req, res) => {
+    const row = apiKeys.getKeyById(req.session.userId, req.params.id);
+    if (!row) return res.status(404).json({ error: "Key not found" });
+    apiKeys.setActive(req.session.userId, row.id, provider);
+    res.json({ ok: true, activeId: row.id });
+  });
 
-// POST /api/settings/keys/:id/activate -> make this the key searches use
-router.post("/keys/:id/activate", (req, res) => {
-  const row = apiKeys.getKeyById(req.session.userId, req.params.id);
-  if (!row) return res.status(404).json({ error: "Key not found" });
-  apiKeys.setActive(req.session.userId, row.id);
-  res.json({ ok: true, activeId: row.id });
-});
+  sub.delete("/:id", (req, res) => {
+    const row = apiKeys.getKeyById(req.session.userId, req.params.id);
+    if (!row) return res.status(404).json({ error: "Key not found" });
+    apiKeys.deleteKey(req.session.userId, row.id);
+    res.json({ ok: true });
+  });
 
-// DELETE /api/settings/keys/:id
-router.delete("/keys/:id", (req, res) => {
-  const row = apiKeys.getKeyById(req.session.userId, req.params.id);
-  if (!row) return res.status(404).json({ error: "Key not found" });
-  apiKeys.deleteKey(req.session.userId, row.id);
-  res.json({ ok: true });
-});
+  return sub;
+}
+
+// Google Places keys (existing behavior, paths unchanged: /api/settings/keys/...)
+router.use("/keys", createKeyRoutes("google_places", testPlacesKey, "GOOGLE_PLACES_API_KEY"));
+
+// Gemini keys (new: /api/settings/gemini-keys/...) - used for business
+// deep-analysis and outreach content generation.
+router.use("/gemini-keys", createKeyRoutes("gemini", testGeminiKey, null));
 
 module.exports = router;
