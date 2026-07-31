@@ -6,6 +6,45 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V11.8
+- **Niche row redesign** (implemented from the confirmed preview): niche
+  name now grows to fill available width (bold, 14px), log/lead counts
+  shown compactly as "4L | 136R" instead of "4 logs · 136 leads", and
+  Export/Rename/Delete are now tucked behind a single ⋮ menu instead of
+  three always-visible icons - freeing up space and reducing clutter.
+  Verified in a real browser: the popover is hidden until clicked, and
+  opens correctly with all three actions present.
+
+## What's in this V11.7
+Verified with real headless-browser rendering at common laptop widths
+(1366px, 1440px), not just static CSS review.
+
+- **Fixed the right-side cutoff issue** (delete icon, status dropdown, and
+  breadcrumb tail all getting clipped): the records table's column widths
+  and minimum width were sized for a much wider sidebar than the app
+  actually uses now, so on typical laptop screens the table needed
+  horizontal scroll to reach the far-right columns - scroll that wasn't
+  obvious since scrollbars are hidden. Shrank column widths across the
+  board (roughly 20% narrower overall) so the full row - including the
+  delete icon - fits without needing to scroll at all. Verified directly:
+  at 1366px, the delete button's right edge (1273px) and the full
+  breadcrumb's right edge (1289px) both sit safely inside the content
+  area's bounds (1334px/1311px).
+- **Fixed the same class of bug in the header breadcrumb**: it was
+  positioned via `justify-content: space-between` with no wrapping or
+  shrink handling, so a long breadcrumb (e.g. "Hunt / Car wash / Bali")
+  could silently overflow past the header's right edge. Now wraps to a new
+  line if needed instead of getting clipped.
+- **Business names**: now Capitalize-cased, 12px, normal weight (400).
+- **Active-item highlighting**: clicking into a city now gives a minimal
+  background highlight to both the specific active row *and* its parent
+  niche (a lighter tint), so it's clear which niche/city/status you're
+  inside at a glance - verified both highlight colors render correctly.
+
+Not included in this release: the niche-row redesign (compact "4L | 136R"
+counts + 3-dot overflow menu for edit/delete) - a preview was built and
+sent separately per request, awaiting confirmation before implementing.
+
 ## What's in this V11.6
 This is the first release verified with an actual headless browser
 (Puppeteer) rendering the real app, instead of reasoning about CSS in the

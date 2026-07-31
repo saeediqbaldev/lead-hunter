@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.07.31-11.6";
+const APP_VERSION = "2026.07.31-11.8";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -1328,6 +1328,26 @@ function exportMenuHtml(kind, id) {
     </div>`;
 }
 
+function actionsMenuHtml(kind, id) {
+  // kind: "niche" -> csv/xlsx/pdf export options ; "log" -> csv/pdf
+  const base = kind === "niche" ? `/api/niches/${id}/export` : `/api/catch-logs/${id}/export`;
+  const exportLinks =
+    kind === "niche"
+      ? `<a href="${base}/csv">Export CSV</a><a href="${base}/xlsx">Export XLSX</a><a href="${base}/pdf">Export PDF</a>`
+      : `<a href="${base}/csv">Export CSV</a><a href="${base}/pdf">Export PDF</a>`;
+  const renameAction = kind === "niche" ? "rename-niche" : "rename-log";
+  const deleteAction = kind === "niche" ? "delete-niche" : "delete-log";
+  return `
+    <div class="export-menu actions-menu" data-export-menu>
+      <button class="icon-btn" data-action="toggle-export" title="Actions"><i class="bi bi-three-dots-vertical"></i></button>
+      <div class="export-list actions-list">
+        ${exportLinks}
+        <button type="button" data-action="${renameAction}" data-id="${id}"><i class="bi bi-pencil"></i> Rename</button>
+        <button type="button" data-action="${deleteAction}" data-id="${id}" class="danger-item"><i class="bi bi-trash"></i> Delete</button>
+      </div>
+    </div>`;
+}
+
 function renderNichesTree() {
   if (state.niches.length === 0) {
     nichesTree.innerHTML = `<div class="empty-state">No niches yet. Create one with "+ New" or by running a search.</div>`;
@@ -1342,32 +1362,21 @@ function renderNichesTree() {
         .map(
           (log) => `
         <div class="catchlog-row ${log.id === state.activeCatchLogId ? "active" : ""}" data-log-id="${log.id}">
-          <div>
-            <div class="catchlog-name">${log.name}</div>
-            <div class="catchlog-meta">${log.lead_count} record${log.lead_count === 1 ? "" : "s"}</div>
-          </div>
-          <div class="niche-actions">
-            ${exportMenuHtml("log", log.id)}
-            <button class="icon-btn" data-action="rename-log" data-id="${log.id}" title="Rename"><i class="bi bi-pencil"></i></button>
-            <button class="icon-btn" data-action="delete-log" data-id="${log.id}" title="Delete"><i class="bi bi-trash"></i></button>
-          </div>
+          <div class="catchlog-name">${log.name}</div>
+          <span class="catchlog-meta">${log.lead_count}R</span>
+          ${actionsMenuHtml("log", log.id)}
         </div>`
         )
         .join("");
 
+      const isActiveParent = logs.some((l) => l.id === state.activeCatchLogId) || niche.id === state.activeNicheId;
       return `
-      <div class="niche-block ${isOpen ? "open" : ""}" data-niche-id="${niche.id}">
+      <div class="niche-block ${isOpen ? "open" : ""} ${isActiveParent ? "active-parent" : ""}" data-niche-id="${niche.id}">
         <div class="niche-row" data-action="toggle-niche" data-id="${niche.id}">
-          <div class="niche-row-main">
-            <span class="niche-caret">▶</span>
-            <span class="niche-name">${niche.name}</span>
-            <span class="niche-count">${logs.length} log${logs.length === 1 ? "" : "s"} · ${niche.lead_count} leads</span>
-          </div>
-          <div class="niche-actions">
-            ${exportMenuHtml("niche", niche.id)}
-            <button class="icon-btn" data-action="rename-niche" data-id="${niche.id}" title="Rename"><i class="bi bi-pencil"></i></button>
-            <button class="icon-btn" data-action="delete-niche" data-id="${niche.id}" title="Delete"><i class="bi bi-trash"></i></button>
-          </div>
+          <span class="niche-caret">▶</span>
+          <span class="niche-name">${niche.name}</span>
+          <span class="niche-count">${logs.length}L | ${niche.lead_count}R</span>
+          ${actionsMenuHtml("niche", niche.id)}
         </div>
         <div class="catchlog-list">${logsHtml || '<div class="catchlog-row"><span class="catchlog-meta">No catch logs yet</span></div>'}</div>
       </div>`;
@@ -1562,9 +1571,10 @@ async function renderOutreachTree() {
                   </div>`
                 ).join("");
 
+                const isCityActiveParent = state.mode === "outreach" && state.outreach.catchLogId === city.catchLogId;
                 return `
                 <div class="catchlog-block ${cityOpen ? "open" : ""}">
-                  <div class="catchlog-row outreach-city-row" data-action="toggle-outreach-city" data-niche-id="${niche.id}" data-log-id="${city.catchLogId}">
+                  <div class="catchlog-row outreach-city-row ${isCityActiveParent ? "active-parent" : ""}" data-action="toggle-outreach-city" data-niche-id="${niche.id}" data-log-id="${city.catchLogId}">
                     <span class="niche-caret small">▶</span>
                     <div class="catchlog-name">${city.catchLogName}</div>
                     <div class="catchlog-meta">${cityTotal} total</div>
@@ -1577,7 +1587,7 @@ async function renderOutreachTree() {
       }
 
       return `
-        <div class="niche-block ${isOpen ? "open" : ""}" data-niche-id="${niche.id}">
+        <div class="niche-block ${isOpen ? "open" : ""} ${state.mode === "outreach" && state.outreach.nicheId === niche.id ? "active-parent" : ""}" data-niche-id="${niche.id}">
           <div class="niche-row" data-action="toggle-outreach-niche" data-id="${niche.id}">
             <div class="niche-row-main">
               <span class="niche-caret">▶</span>
