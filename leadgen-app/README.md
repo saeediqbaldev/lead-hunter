@@ -6,6 +6,30 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V11
+- **Fixed a real layout bug**: content could overflow past the viewport with
+  no way to scroll to it. Root cause was a broken CSS flex height-cascade
+  introduced in V10's sidebar restructure - fixed properly, not just papered over.
+- **Fixed blank Reports charts**: canvases were being measured before the
+  panel finished its layout pass after switching from hidden to visible.
+- **Fixed the Scrape button auto-starting**: clicking it now only opens/closes
+  the progress panel and shows read-only current status. A separate
+  **"Start scraping"** button actually triggers a scrape. Also fixed a real
+  race condition where double-clicking Start (or reopening the panel and
+  starting again) could reset the scraper mid-job and corrupt its counts -
+  that's now explicitly blocked.
+- **Backup & restore** (Settings → Backup & restore): export your entire
+  account - every niche, catch log, lead, saved API key, theme, and daily
+  cap - as one downloadable file. Re-importing **merges**, never deletes:
+  existing local changes (like a status you've already updated) are never
+  reverted, and re-importing the same file twice never creates duplicates.
+  Tested directly: full wipe-and-restore, and re-import-without-duplicating.
+- Collapsed sidebar now only shows icons; clicking any section icon while
+  collapsed auto-expands the sidebar back out.
+- Legend moved above the "Catch Log" heading (shared by Hunt and Reach Out).
+- Swapped every emoji icon (🎨⚙️👤🌙☀️⏻ and the plain ✎/✕ dingbats) for
+  Bootstrap Icons.
+
 ## What's in this V10 (app renamed to "Xeven Leads")
 - **New SaaS-style navigation**: left sidebar with collapsible sections —
   **Hunt** (Niche → City tree, click a city to see its records; "+ New Hunt"

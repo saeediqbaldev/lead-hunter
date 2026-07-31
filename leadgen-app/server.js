@@ -14,13 +14,14 @@ const settingsRoute = require("./src/routes/settings");
 const usersRoute = require("./src/routes/users");
 const themeRoute = require("./src/routes/theme");
 const reportsRoute = require("./src/routes/reports");
+const backupRoute = require("./src/routes/backup");
 
 const app = express();
 
 // Behind Coolify/Traefik's reverse proxy - needed for correct protocol/IP detection
 app.set("trust proxy", 1);
 
-app.use(express.json());
+app.use(express.json({ limit: "25mb" })); // backup imports can be large for accounts with lots of leads
 
 const dataDir = path.join(__dirname, "data");
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
@@ -72,6 +73,7 @@ app.use("/api/settings", requireAuth, settingsRoute);
 app.use("/api/users", requireAuth, requireAdmin, usersRoute);
 app.use("/api/theme", requireAuth, themeRoute);
 app.use("/api/reports", requireAuth, reportsRoute);
+app.use("/api/backup", requireAuth, backupRoute);
 
 app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
 

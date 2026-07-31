@@ -150,6 +150,30 @@ router.post("/:id/scrape/start", async (req, res) => {
     });
   }
 
+  // Same catch log already holds the lock - could mean a prior job is still
+  // actively running (double-click, or reopening the panel and clicking
+  // Start again). Check the scraper's own live status before allowing a
+  // reset+reimport, since doing that mid-job would corrupt the counts by
+  // wiping out businesses the scraper is still actively processing.
+  const existingLock = scraperService.getLock();
+  if (existingLock && existingLock.userId === userId && existingLock.catchLogId === Number(catchLogId)) {
+    try {
+      const liveStatus = await scraperService.getStatus();
+      if (liveStatus.job_running) {
+        return res.status(409).json({
+          error: "A scrape for this catch log is already running. Wait for it to finish, or use Stop first.",
+        });
+      }
+      // Lock exists but nothing is actually running (e.g. a previous run
+      // finished and just hasn't been polled/released yet) - safe to release
+      // it ourselves and proceed with a fresh start below.
+      scraperService.releaseLock();
+    } catch (err) {
+      // Can't reach the scraper to check - safer to refuse than to guess.
+      return res.status(502).json({ error: `Could not reach the scraper service to check its status: ${err.message}` });
+    }
+  }
+
   const leads = db.prepare("SELECT * FROM leads WHERE catch_log_id = ? AND website IS NOT NULL AND website != ''").all(catchLogId);
   if (leads.length === 0) {
     return res.status(400).json({ error: "No records with a website in this catch log to scrape." });

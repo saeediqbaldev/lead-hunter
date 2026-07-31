@@ -6,7 +6,8 @@
 <title>Xeven Leads</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=10" />
+<link rel="stylesheet" href="style.css?v=11" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 </head>
 <body>
@@ -30,10 +31,10 @@
         </div>
       </div>
       <span class="username-tag" id="usernameTag"></span>
-      <button id="adminBtn" class="small-btn" title="Manage team accounts" style="display:none;">👤 Team</button>
-      <button id="themeBtn" class="small-btn" title="Colors & light/dark mode">🎨</button>
-      <button id="settingsBtn" class="small-btn" title="Google API key settings">⚙</button>
-      <button id="logoutBtn" class="small-btn" title="Log out">⏻</button>
+      <button id="adminBtn" class="small-btn icon-btn-labeled" title="Manage team accounts" style="display:none;"><i class="bi bi-people"></i> Team</button>
+      <button id="themeBtn" class="small-btn icon-btn-labeled" title="Colors & light/dark mode"><i class="bi bi-palette"></i></button>
+      <button id="settingsBtn" class="small-btn icon-btn-labeled" title="Google API key settings"><i class="bi bi-gear"></i></button>
+      <button id="logoutBtn" class="small-btn icon-btn-labeled" title="Log out"><i class="bi bi-power"></i></button>
     </div>
   </header>
 
@@ -123,6 +124,24 @@
 
       <!-- ---------- Records board (Hunt cities and Reach Out statuses both render here) ---------- -->
       <section class="panel board-panel" id="boardPanel" style="display:none;">
+        <div class="legend-panel-compact" id="legendPanel">
+          <span class="legend-group-title">Status</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#7fa8d9"></span>New</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#e0b355"></span>Shortlisted</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#ff6a3d"></span>Contacted</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#c586e0"></span>Engaged</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#4fd1c5"></span>Converted</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#7fb88a"></span>Won</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#d95d5d"></span>Rejected</span>
+          <span class="legend-sep"></span>
+          <span class="legend-group-title">Needs</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#d95d5d"></span>Website</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#e0b355"></span>GMB</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#7fa8d9"></span>SEO</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#7fb88a"></span>Reviews</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#ff6a3d"></span>Reputation</span>
+        </div>
+
         <div class="board-header">
           <div>
             <h2>Catch log</h2>
@@ -151,28 +170,11 @@
           </div>
         </div>
 
-        <div class="legend-panel-compact" id="legendPanel">
-          <span class="legend-group-title">Status</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#7fa8d9"></span>New</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#e0b355"></span>Shortlisted</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#ff6a3d"></span>Contacted</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#c586e0"></span>Engaged</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#4fd1c5"></span>Converted</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#7fb88a"></span>Won</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#d95d5d"></span>Rejected</span>
-          <span class="legend-sep"></span>
-          <span class="legend-group-title">Needs</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#d95d5d"></span>Website</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#e0b355"></span>GMB</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#7fa8d9"></span>SEO</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#7fb88a"></span>Reviews</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#ff6a3d"></span>Reputation</span>
-        </div>
-
         <div class="scrape-panel" id="scrapePanel" style="display:none;">
           <div class="scrape-panel-head">
             <span class="scrape-panel-title">Contact scrape progress</span>
             <div class="scrape-panel-actions">
+              <button id="scrapeStartBtn" class="small-btn primary-btn-outline">Start scraping</button>
               <button id="scrapeRefreshBtn" class="small-btn">Refresh</button>
               <button id="scrapeStopBtn" class="small-btn danger-btn" style="display:none;">Stop</button>
             </div>
@@ -371,6 +373,19 @@
         <button id="dailyCapSaveBtn" class="small-btn">Save</button>
       </div>
 
+      <div class="settings-divider"></div>
+
+      <h3 class="settings-subheading">Backup &amp; restore</h3>
+      <p>Download everything in your account - niches, catch logs, leads, saved API keys, theme, and daily cap - as one file. Re-importing merges into whatever's already there: it never deletes or overwrites your existing records, only adds what's new. <strong>The download includes your API keys in plain text</strong>, so store the file somewhere private.</p>
+      <div class="backup-restore-row">
+        <button id="backupExportBtn" class="small-btn"><i class="bi bi-download"></i> Export backup</button>
+        <label class="small-btn backup-import-label">
+          <i class="bi bi-upload"></i> Import backup
+          <input type="file" id="backupImportInput" accept="application/json" style="display:none;" />
+        </label>
+      </div>
+      <div class="settings-result" id="backupResult" style="display:none;"></div>
+
       <div class="settings-result" id="settingsResult" style="display:none;"></div>
 
       <div class="modal-actions settings-actions">
@@ -414,8 +429,8 @@
       <p>Changes preview instantly. Click Save to keep them - they're stored on your account, so they follow you across devices.</p>
 
       <div class="theme-mode-switch">
-        <button type="button" class="theme-mode-btn" data-mode="dark">🌙 Dark</button>
-        <button type="button" class="theme-mode-btn" data-mode="light">☀️ Light</button>
+        <button type="button" class="theme-mode-btn" data-mode="dark"><i class="bi bi-moon-stars"></i> Dark</button>
+        <button type="button" class="theme-mode-btn" data-mode="light"><i class="bi bi-sun"></i> Light</button>
       </div>
 
       <div class="theme-color-grid" id="themeColorGrid"></div>
@@ -430,6 +445,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=10"></script>
+  <script src="app.js?v=11"></script>
 </body>
 </html>

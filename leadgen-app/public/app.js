@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.07.30-9";
+const APP_VERSION = "2026.07.31-11";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -134,6 +134,83 @@ document.getElementById("dailyCapSaveBtn").addEventListener("click", async () =>
     showSettingsResult("err", err.message);
   } finally {
     btn.disabled = false;
+  }
+});
+
+// ---------- Backup & restore ----------
+const backupResult = document.getElementById("backupResult");
+function showBackupResult(kind, text) {
+  backupResult.style.display = "block";
+  backupResult.className = `settings-result ${kind}`;
+  backupResult.textContent = text;
+}
+
+document.getElementById("backupExportBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("backupExportBtn");
+  btn.disabled = true;
+  try {
+    const res = await api("/api/backup/export");
+    if (!res.ok) throw new Error("Export failed");
+    const blob = await res.blob();
+    const disposition = res.headers.get("Content-Disposition") || "";
+    const match = disposition.match(/filename="([^"]+)"/);
+    const filename = match ? match[1] : "xeven-leads-backup.json";
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    showBackupResult("ok", "Backup downloaded.");
+  } catch (err) {
+    showBackupResult("err", err.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+document.getElementById("backupImportInput").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const confirmed = await openModal({
+    title: "Import this backup?",
+    message: `Importing "${file.name}" will merge its niches, catch logs, and leads into your account. Nothing already here gets deleted or overwritten - only new records get added.`,
+    confirmText: "Import",
+  });
+  e.target.value = ""; // reset the file input regardless of the choice
+  if (!confirmed) return;
+
+  showBackupResult("ok", "Reading file…");
+  try {
+    const text = await file.text();
+    const backup = JSON.parse(text);
+
+    const res = await api("/api/backup/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(backup),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Import failed");
+
+    const s = data.stats;
+    showBackupResult(
+      "ok",
+      `Imported: ${s.niches} new niche(s), ${s.catchLogs} new catch log(s), ${s.leads} new lead(s), ${s.apiKeys} new API key(s).`
+    );
+
+    // Refresh everything that could have changed
+    await loadNichesAndLogs();
+    await loadDailyCap();
+    await loadTheme();
+    await refreshQuota();
+    if (state.contentView === "board") await loadLeads();
+  } catch (err) {
+    showBackupResult("err", err.message.includes("JSON") ? "That file doesn't look like a valid backup (couldn't parse it)." : err.message);
   }
 });
 
@@ -883,13 +960,51 @@ async function pollScrapeStatus() {
   }
 }
 
+const scrapeStartBtn = document.getElementById("scrapeStartBtn");
+
+// Clicking the icon only shows/hides the panel and checks the CURRENT
+// status (read-only) - it never starts a scrape on its own. This also
+// means switching between catch logs and reopening the panel always shows
+// that specific catch log's real state instead of stale numbers left over
+// from whatever was viewed before.
 scrapeBtn.addEventListener("click", async () => {
+  const isOpen = scrapePanel.style.display !== "none";
+  if (isOpen) {
+    scrapePanel.style.display = "none";
+    if (scrapePollTimer) {
+      clearInterval(scrapePollTimer);
+      scrapePollTimer = null;
+    }
+    return;
+  }
+
+  scrapePanel.style.display = "block";
+  scrapeStatusLine.textContent = "Checking current status…";
+  await pollScrapeStatus();
+  // If a job is already running for this catch log (e.g. the panel was
+  // closed and reopened, or another tab started it), resume live polling.
+  if (scrapePollTimer === null) {
+    const catchLogId = scrapeBtn.dataset.catchLogId;
+    if (catchLogId) {
+      try {
+        const res = await api(`/api/catch-logs/${catchLogId}/scrape/status`);
+        const status = await res.json();
+        if (status.active && status.jobRunning) {
+          scrapePollTimer = setInterval(pollScrapeStatus, 2500);
+        }
+      } catch (err) {
+        console.error("Failed to check scrape status on open:", err);
+      }
+    }
+  }
+});
+
+scrapeStartBtn.addEventListener("click", async () => {
   const catchLogId = scrapeBtn.dataset.catchLogId;
   if (!catchLogId) return;
 
-  scrapePanel.style.display = "block";
   scrapeStatusLine.textContent = "Starting…";
-  scrapeBtn.disabled = true;
+  scrapeStartBtn.disabled = true;
 
   try {
     const res = await api(`/api/catch-logs/${catchLogId}/scrape/start`, { method: "POST" });
@@ -903,7 +1018,7 @@ scrapeBtn.addEventListener("click", async () => {
   } catch (err) {
     scrapeStatusLine.textContent = err.message;
   } finally {
-    scrapeBtn.disabled = false;
+    scrapeStartBtn.disabled = false;
   }
 });
 
@@ -926,6 +1041,16 @@ scrapeRefreshBtn.addEventListener("click", pollScrapeStatus);
 document.querySelectorAll(".nav-section-header").forEach((btn) => {
   btn.addEventListener("click", async () => {
     const section = btn.dataset.section;
+
+    // If the sidebar itself is collapsed to icon-only, clicking any section
+    // icon expands it back out first - a collapsed sidebar can't usefully
+    // show a nested Niche/City tree, so there's no reason to click an icon
+    // there except to want the full panel back.
+    if (leftCol.classList.contains("collapsed")) {
+      leftCol.classList.remove("collapsed");
+      layoutEl.classList.remove("panel-collapsed");
+      collapseToggleBtn.title = "Collapse panel";
+    }
 
     if (section === "reports") {
       state.lastNavSection = "reports";
@@ -1210,8 +1335,8 @@ function renderNichesTree() {
           </div>
           <div class="niche-actions">
             ${exportMenuHtml("log", log.id)}
-            <button class="icon-btn" data-action="rename-log" data-id="${log.id}" title="Rename">✎</button>
-            <button class="icon-btn" data-action="delete-log" data-id="${log.id}" title="Delete">✕</button>
+            <button class="icon-btn" data-action="rename-log" data-id="${log.id}" title="Rename"><i class="bi bi-pencil"></i></button>
+            <button class="icon-btn" data-action="delete-log" data-id="${log.id}" title="Delete"><i class="bi bi-trash"></i></button>
           </div>
         </div>`
         )
@@ -1227,8 +1352,8 @@ function renderNichesTree() {
           </div>
           <div class="niche-actions">
             ${exportMenuHtml("niche", niche.id)}
-            <button class="icon-btn" data-action="rename-niche" data-id="${niche.id}" title="Rename">✎</button>
-            <button class="icon-btn" data-action="delete-niche" data-id="${niche.id}" title="Delete">✕</button>
+            <button class="icon-btn" data-action="rename-niche" data-id="${niche.id}" title="Rename"><i class="bi bi-pencil"></i></button>
+            <button class="icon-btn" data-action="delete-niche" data-id="${niche.id}" title="Delete"><i class="bi bi-trash"></i></button>
           </div>
         </div>
         <div class="catchlog-list">${logsHtml || '<div class="catchlog-row"><span class="catchlog-meta">No catch logs yet</span></div>'}</div>
@@ -1496,8 +1621,20 @@ function currentScrapeCatchLogId() {
 
 function updateScrapeButtonVisibility() {
   const id = currentScrapeCatchLogId();
+  const previousId = scrapeBtn.dataset.catchLogId;
+
   scrapeBtn.style.display = id ? "inline-flex" : "none";
   scrapeBtn.dataset.catchLogId = id || "";
+
+  // Switched to a different catch log (or none) - close the panel and stop
+  // polling so we never show one city's counts while looking at another.
+  if (String(previousId || "") !== String(id || "")) {
+    scrapePanel.style.display = "none";
+    if (scrapePollTimer) {
+      clearInterval(scrapePollTimer);
+      scrapePollTimer = null;
+    }
+  }
 }
 
 function updateScopeLine() {
@@ -1807,7 +1944,7 @@ function renderLeads(leads) {
       <div><div class="social-row">${socialLinksHtml(lead)}</div></div>
       <div>${ratingHtml}</div>
       <div>${rowStatusDropdownHtml(lead)}</div>
-      <div class="row-actions"><button data-action="delete" data-id="${lead.id}" title="Remove">✕</button></div>
+      <div class="row-actions"><button data-action="delete" data-id="${lead.id}" title="Remove"><i class="bi bi-trash"></i></button></div>
     `;
     recordsBody.appendChild(row);
   });
@@ -2024,14 +2161,23 @@ function renderReportsStatGrid(summary) {
 }
 
 function renderReportsCharts(summary) {
-  if (typeof Chart === "undefined") return; // CDN failed to load - fail quietly, tables still work
+  if (typeof Chart === "undefined") {
+    console.error("Chart.js did not load from the CDN - charts will stay blank, but the tables below still work.");
+    return;
+  }
 
   const labels = REPORT_STATUS_META.map((s) => s.label);
   const data = REPORT_STATUS_META.map((s) => summary.byStatus[s.key] || 0);
   const colors = REPORT_STATUS_META.map((s) => s.color);
 
-  if (pieChartInstance) pieChartInstance.destroy();
-  if (donutChartInstance) donutChartInstance.destroy();
+  if (pieChartInstance) {
+    pieChartInstance.destroy();
+    pieChartInstance = null;
+  }
+  if (donutChartInstance) {
+    donutChartInstance.destroy();
+    donutChartInstance = null;
+  }
 
   const commonOptions = {
     responsive: true,
@@ -2041,18 +2187,36 @@ function renderReportsCharts(summary) {
     },
   };
 
-  const pieCtx = document.getElementById("reportsPieChart");
-  pieChartInstance = new Chart(pieCtx, {
-    type: "pie",
-    data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: "#1b1815", borderWidth: 2 }] },
-    options: commonOptions,
-  });
+  // The reports panel may have just been switched from display:none to
+  // visible in this same tick - a canvas measured before the browser has
+  // actually laid out its now-visible container comes back as 0x0, and
+  // Chart.js silently renders nothing. Two nested requestAnimationFrame
+  // calls guarantee at least one full layout+paint has happened first.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const pieCtx = document.getElementById("reportsPieChart");
+      const donutCtx = document.getElementById("reportsDonutChart");
 
-  const donutCtx = document.getElementById("reportsDonutChart");
-  donutChartInstance = new Chart(donutCtx, {
-    type: "doughnut",
-    data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: "#1b1815", borderWidth: 2 }] },
-    options: commonOptions,
+      if (!pieCtx.clientWidth || !pieCtx.clientHeight) {
+        console.warn("Reports chart canvas still has zero size after layout - the panel may still be hidden.");
+      }
+
+      pieChartInstance = new Chart(pieCtx, {
+        type: "pie",
+        data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: "#1b1815", borderWidth: 2 }] },
+        options: commonOptions,
+      });
+
+      donutChartInstance = new Chart(donutCtx, {
+        type: "doughnut",
+        data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: "#1b1815", borderWidth: 2 }] },
+        options: commonOptions,
+      });
+
+      // Belt-and-braces: force a resize pass right after creation too.
+      pieChartInstance.resize();
+      donutChartInstance.resize();
+    });
   });
 }
 

@@ -102,7 +102,7 @@ body {
   height: 100%;
   min-height: 0;
 }
-.content-area > .panel { height: 100%; }
+.content-area > .panel { flex: 1; min-height: 0; }
 
 /* ---------- Responsive: below this width, the fixed-viewport-height,
    two-independently-scrolling-panes desktop layout doesn't work - switch to
@@ -271,6 +271,8 @@ body {
   cursor: pointer;
 }
 .small-btn:hover { color: var(--text); border-color: var(--text-muted); }
+.primary-btn-outline { color: var(--accent) !important; border-color: var(--accent) !important; font-weight: 600; }
+.primary-btn-outline:hover { background: rgba(255,106,61,0.1); }
 
 .niches-header {
   display: flex;
@@ -306,6 +308,7 @@ body {
   padding: 3px 5px;
 }
 .icon-btn:hover { color: var(--accent); }
+.icon-btn-labeled { display: inline-flex; align-items: center; gap: 5px; }
 
 .catchlog-list { display: none; }
 .niche-block.open .catchlog-list { display: block; }
@@ -473,6 +476,14 @@ body {
   padding: 8px 10px;
   color: var(--text);
   font-family: var(--font-mono);
+}
+
+.backup-restore-row { display: flex; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.backup-import-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
 }
 .api-keys-list {
   display: flex;
@@ -723,6 +734,7 @@ body {
   margin: 0 0 16px 0;
 }
 
+.hunt-form-panel { overflow-y: auto; }
 .hunt-form-panel form, .login-panel form { display: flex; flex-direction: column; gap: 14px; }
 .hunt-form-panel label, .login-panel label {
   display: flex;
@@ -788,7 +800,6 @@ button#huntBtn:disabled, .primary-btn:disabled { background: var(--border); colo
 .board-panel {
   display: flex;
   flex-direction: column;
-  height: 100%;
   min-height: 0;
   padding-bottom: 0;
   overflow: hidden;
