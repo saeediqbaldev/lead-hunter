@@ -1,6 +1,7 @@
 const express = require("express");
 const db = require("../db");
 const { buildNicheCsv, buildNichePdf, buildNicheXlsx, buildExportFilename } = require("../export");
+const { capitalizeWords } = require("../textUtils");
 
 const router = express.Router();
 
@@ -54,10 +55,11 @@ router.get("/", (req, res) => {
 router.post("/", (req, res) => {
   const { name } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: "name is required" });
+  const capitalizedName = capitalizeWords(name.trim());
 
   try {
-    const info = db.prepare("INSERT INTO niches (user_id, name) VALUES (?, ?)").run(req.session.userId, name.trim());
-    res.json({ id: info.lastInsertRowid, name: name.trim(), catch_log_count: 0, lead_count: 0 });
+    const info = db.prepare("INSERT INTO niches (user_id, name) VALUES (?, ?)").run(req.session.userId, capitalizedName);
+    res.json({ id: info.lastInsertRowid, name: capitalizedName, catch_log_count: 0, lead_count: 0 });
   } catch (err) {
     if (String(err.message).includes("UNIQUE")) {
       return res.status(409).json({ error: "A niche with this name already exists" });
@@ -70,13 +72,14 @@ router.post("/", (req, res) => {
 router.patch("/:id", (req, res) => {
   const { name } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: "name is required" });
+  const capitalizedName = capitalizeWords(name.trim());
 
   const existing = getOwnedNiche(req.session.userId, req.params.id);
   if (!existing) return res.status(404).json({ error: "Niche not found" });
 
   try {
-    db.prepare("UPDATE niches SET name = ? WHERE id = ?").run(name.trim(), req.params.id);
-    res.json({ ...existing, name: name.trim() });
+    db.prepare("UPDATE niches SET name = ? WHERE id = ?").run(capitalizedName, req.params.id);
+    res.json({ ...existing, name: capitalizedName });
   } catch (err) {
     if (String(err.message).includes("UNIQUE")) {
       return res.status(409).json({ error: "A niche with this name already exists" });

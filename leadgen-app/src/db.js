@@ -301,6 +301,9 @@ if (!leadsTableExists) {
     db.exec("ALTER TABLE users ADD COLUMN daily_lead_cap INTEGER DEFAULT 300");
     console.log('[migration] Added "daily_lead_cap" column to users (default 300).');
   }
+  if (!userCols.includes("page_size")) {
+    db.exec("ALTER TABLE users ADD COLUMN page_size INTEGER DEFAULT 50");
+  }
 }
 
 // ---------- One catch log per (niche, city): merge any existing duplicates ----------

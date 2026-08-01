@@ -2,6 +2,7 @@ const express = require("express");
 const db = require("../db");
 const { buildCatchLogCsv, buildCatchLogPdf, sanitizeFilename, buildExportFilename } = require("../export");
 const scraperService = require("../scraperService");
+const { capitalizeWords } = require("../textUtils");
 
 const router = express.Router();
 
@@ -55,18 +56,19 @@ router.post("/", (req, res) => {
   if (!nicheId || !name || !name.trim()) {
     return res.status(400).json({ error: "nicheId and name are required" });
   }
+  const capitalizedName = capitalizeWords(name.trim());
 
   const niche = db.prepare("SELECT * FROM niches WHERE id = ? AND user_id = ?").get(nicheId, req.session.userId);
   if (!niche) return res.status(404).json({ error: "Niche not found" });
 
   const info = db
     .prepare("INSERT INTO catch_logs (niche_id, name, keyword, location) VALUES (?, ?, ?, ?)")
-    .run(nicheId, name.trim(), keyword || null, location || null);
+    .run(nicheId, capitalizedName, keyword || null, location || null);
 
   res.json({
     id: info.lastInsertRowid,
     niche_id: Number(nicheId),
-    name: name.trim(),
+    name: capitalizedName,
     keyword: keyword || null,
     location: location || null,
     lead_count: 0,
@@ -77,12 +79,13 @@ router.post("/", (req, res) => {
 router.patch("/:id", (req, res) => {
   const { name } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: "name is required" });
+  const capitalizedName = capitalizeWords(name.trim());
 
   const existing = getOwnedCatchLog(req.session.userId, req.params.id);
   if (!existing) return res.status(404).json({ error: "Catch log not found" });
 
-  db.prepare("UPDATE catch_logs SET name = ? WHERE id = ?").run(name.trim(), req.params.id);
-  res.json({ ...existing, name: name.trim() });
+  db.prepare("UPDATE catch_logs SET name = ? WHERE id = ?").run(capitalizedName, req.params.id);
+  res.json({ ...existing, name: capitalizedName });
 });
 
 // DELETE /api/catch-logs/:id -> cascades to its leads

@@ -98,6 +98,19 @@ function allTimeUsage(userId, provider = DEFAULT_PROVIDER) {
 // this table's rows along (see src/routes/backup.js), so importing an
 // older backup doesn't lose or duplicate history either.
 function dailyUsageHistory(userId, days = 90, provider = DEFAULT_PROVIDER) {
+  if (days === null) {
+    // "all time" - no lower bound on date
+    return db
+      .prepare(
+        `SELECT d.usage_date, k.id AS api_key_id, k.label, d.requests_made, d.leads_caught
+         FROM api_key_daily_usage d
+         JOIN api_keys k ON k.id = d.api_key_id
+         WHERE k.user_id = ? AND k.provider = ?
+         ORDER BY d.usage_date ASC`
+      )
+      .all(userId, provider);
+  }
+
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
   const startStr = startDate.toISOString().slice(0, 10);

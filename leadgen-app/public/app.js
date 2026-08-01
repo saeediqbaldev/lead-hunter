@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.01-12.9";
+const APP_VERSION = "2026.08.01-13.0";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -338,6 +338,34 @@ async function loadDailyCap() {
     console.error("Failed to load daily cap:", err);
   }
 }
+
+async function loadPageSizePreference() {
+  try {
+    const res = await api("/api/settings/page-size");
+    const data = await res.json();
+    state.pageSize = data.pageSize;
+    document.getElementById("pageSizeSelect").value = String(data.pageSize);
+  } catch (err) {
+    console.error("Failed to load page size preference:", err);
+  }
+}
+
+document.getElementById("pageSizeSelect").addEventListener("change", async (e) => {
+  const value = Number(e.target.value);
+  state.pageSize = value;
+  state.page = 1;
+  try {
+    await api("/api/settings/page-size", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pageSize: value }),
+    });
+    showToast(`Now showing ${value} records per page`, "success");
+  } catch (err) {
+    console.error("Failed to save page size preference:", err);
+  }
+  await loadLeads();
+});
 
 document.getElementById("dailyCapSaveBtn").addEventListener("click", async () => {
   const input = document.getElementById("dailyCapInput");
@@ -1094,7 +1122,7 @@ const pageInfo = document.getElementById("pageInfo");
 const prevPageBtn = document.getElementById("prevPageBtn");
 const nextPageBtn = document.getElementById("nextPageBtn");
 
-const filterState = { status: "", need: "" };
+const filterState = { status: "", need: "", inspected: false };
 const SORT_OPTIONS = [
   { value: "created_at", label: "Latest first", color: "#948d80" },
   { value: "name", label: "Name (A-Z)", color: "#7fa8d9" },
@@ -2262,9 +2290,41 @@ clearScopeBtn.addEventListener("click", async () => {
 
 document.getElementById("showAllRecordsBtn").addEventListener("click", () => clearScopeBtn.click());
 
+// Refresh buttons on each sidebar section - refetches that section's data
+// without navigating away from wherever the user currently is.
+document.querySelectorAll("[data-refresh-section]").forEach((btn) => {
+  btn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const section = btn.dataset.refreshSection;
+    btn.classList.add("spinning");
+    try {
+      if (section === "hunt") {
+        await loadNichesAndLogs();
+        if (state.mode !== "outreach" && state.mode !== "pinned") await loadLeads();
+      } else if (section === "reachout") {
+        state.outreachSummaries.clear();
+        await renderOutreachTree();
+        if (state.mode === "outreach") await loadLeads();
+      } else if (section === "pinned") {
+        await renderPinnedTree();
+        if (state.mode === "pinned") await loadLeads();
+      } else if (section === "reports") {
+        await loadReports();
+      }
+      showToast("Refreshed", "success");
+    } catch (err) {
+      showToast("Could not refresh", "error");
+    } finally {
+      setTimeout(() => btn.classList.remove("spinning"), 600);
+    }
+  });
+});
+
 document.getElementById("resetFiltersBtn").addEventListener("click", async () => {
   filterSearch.value = "";
   filterState.need = "";
+  filterState.inspected = false;
+  document.getElementById("inspectedFilterBtn").classList.remove("active");
   state.sortBy = "created_at";
   state.sortDir = null;
   state.activeNicheId = null;
@@ -2278,6 +2338,13 @@ document.getElementById("resetFiltersBtn").addEventListener("click", async () =>
   renderSortDropdown();
   await loadLeads();
   showToast("Filters reset", "success");
+});
+
+document.getElementById("inspectedFilterBtn").addEventListener("click", async (e) => {
+  filterState.inspected = !filterState.inspected;
+  e.currentTarget.classList.toggle("active", filterState.inspected);
+  state.page = 1;
+  await loadLeads();
 });
 
 // ---------- Leads board ----------
@@ -2967,7 +3034,7 @@ function renderLeads(leads) {
 
   leads.forEach((lead, index) => {
     const row = document.createElement("div");
-    row.className = "list-row";
+    row.className = "list-row expandable";
     row.dataset.leadRowId = lead.id;
 
     const websiteHtml = lead.website
@@ -3093,6 +3160,7 @@ async function loadLeads() {
     params.set("status", "new");
     if (filterSearch.value) params.set("search", filterSearch.value);
     if (filterState.need) params.set("need", filterState.need);
+    if (filterState.inspected) params.set("inspected", "1");
     if (state.activeCatchLogId) {
       params.set("catchLogId", state.activeCatchLogId);
     } else if (state.activeNicheId) {
@@ -3191,7 +3259,6 @@ const reportsCityDropdownTrigger = document.getElementById("reportsCityDropdownT
 const reportsCityDropdownPanel = document.getElementById("reportsCityDropdownPanel");
 const reportsCityDropdownLabel = document.getElementById("reportsCityDropdownLabel");
 const reportsStatGrid = document.getElementById("reportsStatGrid");
-const apiUsageTableBody = document.getElementById("apiUsageTableBody");
 
 const REPORT_RANGE_OPTIONS = [
   { value: "1d", label: "1D", color: "#948d80" },
@@ -3209,6 +3276,7 @@ let reportsNichesCities = { niches: [], cities: [] };
 let pieChartInstance = null;
 let donutChartInstance = null;
 let lineChartInstance = null;
+let statusComparisonChartInstance = null;
 
 function renderReportsRangeDropdown() {
   buildFilterDropdown({
@@ -3309,14 +3377,15 @@ function renderReportsStatGrid(summary) {
 }
 
 function destroyReportsCharts() {
-  [pieChartInstance, donutChartInstance, lineChartInstance].forEach((c) => c && c.destroy());
+  [pieChartInstance, donutChartInstance, lineChartInstance, statusComparisonChartInstance].forEach((c) => c && c.destroy());
   pieChartInstance = null;
   donutChartInstance = null;
   lineChartInstance = null;
+  statusComparisonChartInstance = null;
 }
 
 function showChartsError(message) {
-  ["reportsPieChart", "reportsDonutChart", "reportsLineChart"].forEach((id) => {
+  ["reportsPieChart", "reportsDonutChart", "reportsLineChart", "reportsStatusComparisonChart"].forEach((id) => {
     const canvas = document.getElementById(id);
     if (!canvas || !canvas.parentElement) return;
     let errorEl = canvas.parentElement.querySelector(".chart-error-msg");
@@ -3452,6 +3521,44 @@ function renderReportsCharts(summary, timeseries) {
         pieChartInstance.resize();
         donutChartInstance.resize();
         lineChartInstance.resize();
+
+        // Status comparison bar chart - "All Hunted" (the grand total) sits
+        // alongside every individual pipeline status so it's easy to see
+        // what fraction made it to each stage at a glance.
+        const comparisonCtx = document.getElementById("reportsStatusComparisonChart");
+        const comparisonLabels = ["All Hunted", ...REPORT_STATUS_META.map((s) => s.label)];
+        const comparisonData = [summary.total, ...data];
+        const comparisonColors = ["#ece7dd", ...colors];
+        const comparisonTotal = summary.total || 1; // percentages are always relative to the grand total, not the tallest bar
+
+        statusComparisonChartInstance = new Chart(comparisonCtx, {
+          type: "bar",
+          data: {
+            labels: comparisonLabels,
+            datasets: [{ data: comparisonData, backgroundColor: comparisonColors, borderRadius: 4, maxBarThickness: 56 }],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: (ctx) => {
+                    const value = ctx.parsed.y;
+                    const pct = ((value / comparisonTotal) * 100).toFixed(1);
+                    return `${value} (${pct}% of all hunted)`;
+                  },
+                },
+              },
+            },
+            scales: {
+              x: { ticks: { color: currentTheme.colors["--text-muted"], font: { size: 11 } }, grid: { display: false } },
+              y: { beginAtZero: true, ticks: { color: currentTheme.colors["--text-muted"], precision: 0 }, grid: { color: chartGridColor() } },
+            },
+          },
+        });
+        statusComparisonChartInstance.resize();
       } catch (err) {
         console.error("Failed to render Reports charts:", err);
         showChartsError(`Charts failed to render: ${err.message}. The numbers above and the table below are unaffected.`);
@@ -3460,41 +3567,32 @@ function renderReportsCharts(summary, timeseries) {
   });
 }
 
-function renderProviderUsageTable(tbodyEl, rows, hasLeadsColumn) {
-  if (rows.length === 0) {
-    tbodyEl.innerHTML = `<tr><td colspan="${hasLeadsColumn ? 4 : 3}" class="empty-cell-row">No API keys saved yet.</td></tr>`;
-    return;
-  }
-  tbodyEl.innerHTML = rows
-    .map(
-      (r) => `
-    <tr>
-      <td>${r.label}</td>
-      <td>${r.active ? '<span class="api-key-active-badge">● In use</span>' : "Inactive"}</td>
-      <td class="mono">${r.requestsMade}</td>
-      ${hasLeadsColumn ? `<td class="mono">${r.leadsCaught}</td>` : ""}
-    </tr>`
-    )
-    .join("");
-}
-function renderApiUsageTable(rows) {
-  renderProviderUsageTable(apiUsageTableBody, rows, true);
-}
-function renderGeminiUsageTable(rows) {
-  renderProviderUsageTable(document.getElementById("geminiUsageTableBody"), rows, false);
-}
-
 const API_USAGE_LINE_COLORS = ["#ff6a3d", "#7fa8d9", "#e0b355", "#7fb88a", "#c586e0", "#4fd1c5", "#d95d5d"];
 const providerChartInstances = { places: null, gemini: null };
 
-// Builds the HTML shell (table + chart canvas) for one provider's usage
-// section - unique IDs per call so the same provider's section can appear
-// in more than one place at once (Limits Usage page AND that provider's
-// own Settings page) without ID collisions.
+const USAGE_RANGE_OPTIONS = [
+  { value: "1d", label: "1D" },
+  { value: "7d", label: "7D" },
+  { value: "30d", label: "30D" },
+  { value: "60d", label: "60D" },
+  { value: "90d", label: "90D" },
+  { value: "1y", label: "1Y" },
+  { value: "all", label: "All Time" },
+];
+
+// Builds the HTML shell (table + chart canvas + duration filter) for one
+// provider's usage section - unique IDs per call so the same provider's
+// section can appear in more than one place at once (Limits Usage page AND
+// that provider's own Settings page) without ID collisions.
 function buildProviderUsageSectionHtml(uniqueSuffix, hasLeadsColumn) {
   return `
     <div class="reports-table-card">
-      <h3>Usage history — all time</h3>
+      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+        <h3 style="margin:0;">Usage history</h3>
+        <select class="gen-tone-select" id="usageRange-${uniqueSuffix}" style="width:auto; padding:5px 8px; font-size:11.5px;">
+          ${USAGE_RANGE_OPTIONS.map((o) => `<option value="${o.value}" ${o.value === "90d" ? "selected" : ""}>${o.label}</option>`).join("")}
+        </select>
+      </div>
       <div class="table-scroll-wrap">
         <table class="reports-table">
           <thead><tr><th>Key</th><th>Total requests${hasLeadsColumn ? "" : " (all time)"}</th>${hasLeadsColumn ? "<th>Leads captured</th>" : ""}</tr></thead>
@@ -3508,9 +3606,11 @@ function buildProviderUsageSectionHtml(uniqueSuffix, hasLeadsColumn) {
     </div>`;
 }
 
-async function loadAndRenderProviderUsage(provider, uniqueSuffix, hasLeadsColumn) {
+async function loadAndRenderProviderUsage(provider, uniqueSuffix, hasLeadsColumn, range) {
   try {
-    const res = await api(`/api/settings/usage-history?provider=${provider}`);
+    const rangeSelect = document.getElementById(`usageRange-${uniqueSuffix}`);
+    const activeRange = range || (rangeSelect ? rangeSelect.value : "90d");
+    const res = await api(`/api/settings/usage-history?provider=${provider}&range=${activeRange}`);
     const history = await res.json();
     renderProviderUsageHistory(history, {
       tbodyEl: document.getElementById(`usageTableBody-${uniqueSuffix}`),
@@ -3518,6 +3618,11 @@ async function loadAndRenderProviderUsage(provider, uniqueSuffix, hasLeadsColumn
       chartKey: `usage-${uniqueSuffix}`,
       hasLeadsColumn,
     });
+
+    if (rangeSelect && !rangeSelect.dataset.wired) {
+      rangeSelect.dataset.wired = "1";
+      rangeSelect.addEventListener("change", () => loadAndRenderProviderUsage(provider, uniqueSuffix, hasLeadsColumn, rangeSelect.value));
+    }
   } catch (err) {
     console.error(`Failed to load usage history for ${provider}:`, err);
   }
@@ -3591,48 +3696,6 @@ function renderProviderUsageHistory(history, { tbodyEl, canvasId, chartKey, hasL
   });
 }
 
-function renderApiUsageHistory(history) {
-  renderProviderUsageHistory(history, {
-    tbodyEl: document.getElementById("apiUsageHistoryTableBody"),
-    canvasId: "apiUsageLineChart",
-    chartKey: "places",
-    hasLeadsColumn: true,
-  });
-}
-function renderGeminiUsageHistory(history) {
-  renderProviderUsageHistory(history, {
-    tbodyEl: document.getElementById("geminiUsageHistoryTableBody"),
-    canvasId: "geminiUsageLineChart",
-    chartKey: "gemini",
-    hasLeadsColumn: false,
-  });
-}
-
-async function loadApiUsageHistory() {
-  try {
-    const res = await api("/api/reports/api-usage-history");
-    const history = await res.json();
-    renderApiUsageHistory(history);
-  } catch (err) {
-    console.error("Failed to load API usage history:", err);
-  }
-}
-
-async function loadGeminiUsageHistory() {
-  try {
-    const [usageRes, historyRes] = await Promise.all([
-      api("/api/reports/api-usage?provider=gemini"),
-      api("/api/reports/api-usage-history?provider=gemini"),
-    ]);
-    const usage = await usageRes.json();
-    const history = await historyRes.json();
-    renderGeminiUsageTable(usage);
-    renderGeminiUsageHistory(history);
-  } catch (err) {
-    console.error("Failed to load Gemini usage:", err);
-  }
-}
-
 async function loadReportsFilterOptions() {
   try {
     const res = await api("/api/reports/niches-cities");
@@ -3650,10 +3713,9 @@ async function loadReports() {
     if (reportsFilters.nicheId) params.set("niche", reportsFilters.nicheId);
     if (reportsFilters.cityId) params.set("city", reportsFilters.cityId);
 
-    const [summaryRes, timeseriesRes, usageRes] = await Promise.all([
+    const [summaryRes, timeseriesRes] = await Promise.all([
       api(`/api/reports/summary?${params.toString()}`),
       api(`/api/reports/timeseries?${params.toString()}`),
-      api("/api/reports/api-usage"),
     ]);
 
     if (!summaryRes.ok || !timeseriesRes.ok) {
@@ -3662,13 +3724,9 @@ async function loadReports() {
 
     const summary = await summaryRes.json();
     const timeseries = await timeseriesRes.json();
-    const usage = usageRes.ok ? await usageRes.json() : [];
 
     renderReportsStatGrid(summary);
     renderReportsCharts(summary, timeseries);
-    renderApiUsageTable(usage);
-    await loadApiUsageHistory();
-    await loadGeminiUsageHistory();
   } catch (err) {
     console.error("Failed to load reports:", err);
     showChartsError(`Couldn't load report data: ${err.message}`);
@@ -3688,6 +3746,7 @@ async function loadReports() {
   renderReportsNicheDropdown();
   renderReportsCityDropdown();
   await loadWhoami();
+  await loadPageSizePreference();
   const failures = [];
 
   setContentView("board");

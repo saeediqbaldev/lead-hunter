@@ -24,6 +24,24 @@ router.put("/daily-cap", (req, res) => {
   res.json({ dailyLeadCap: Math.round(value) });
 });
 
+const ALLOWED_PAGE_SIZES = [50, 100, 150, 200, 250, 300];
+
+// GET /api/settings/page-size -> this user's saved records-per-page preference
+router.get("/page-size", (req, res) => {
+  const row = db.prepare("SELECT page_size FROM users WHERE id = ?").get(req.session.userId);
+  res.json({ pageSize: (row && row.page_size) || 50 });
+});
+
+// PUT /api/settings/page-size { pageSize }
+router.put("/page-size", (req, res) => {
+  const value = Number(req.body.pageSize);
+  if (!ALLOWED_PAGE_SIZES.includes(value)) {
+    return res.status(400).json({ error: `pageSize must be one of ${ALLOWED_PAGE_SIZES.join(", ")}` });
+  }
+  db.prepare("UPDATE users SET page_size = ? WHERE id = ?").run(value, req.session.userId);
+  res.json({ pageSize: value });
+});
+
 function maskKey(key) {
   if (!key) return null;
   if (key.length <= 8) return "•".repeat(key.length);
@@ -137,12 +155,17 @@ router.get("/usage-summary", (req, res) => {
 // -> all-time totals per key + a daily timeseries, same shape the Reports
 // page's chart already uses, reused here for the Limits Usage page's
 // per-provider charts (and embedded on each provider's own Settings page).
+const USAGE_RANGE_DAYS = { "1d": 1, "7d": 7, "30d": 30, "60d": 60, "90d": 90, "1y": 365, all: null };
+
 router.get("/usage-history", (req, res) => {
   const provider = ["google_places", "gemini", "groq", "deepseek"].includes(req.query.provider) ? req.query.provider : "gemini";
-  const allTime = apiKeys.allTimeUsage(req.session.userId, provider);
-  const daily = apiKeys.dailyUsageHistory(req.session.userId, 90, provider);
+  const range = USAGE_RANGE_DAYS.hasOwnProperty(req.query.range) ? req.query.range : "90d";
+  const days = USAGE_RANGE_DAYS[range];
 
-  const days = Array.from(new Set(daily.map((d) => d.usage_date))).sort();
+  const allTime = apiKeys.allTimeUsage(req.session.userId, provider);
+  const daily = apiKeys.dailyUsageHistory(req.session.userId, days, provider);
+
+  const dayLabels = Array.from(new Set(daily.map((d) => d.usage_date))).sort();
   const byKey = {};
   for (const row of allTime) {
     byKey[row.id] = {
@@ -151,18 +174,18 @@ router.get("/usage-history", (req, res) => {
       active: !!row.is_active,
       totalRequests: row.requests_made || 0,
       totalLeads: row.leads_caught || 0,
-      requestsSeries: days.map(() => 0),
+      requestsSeries: dayLabels.map(() => 0),
     };
   }
   daily.forEach((row) => {
     const entry = byKey[row.api_key_id];
     if (!entry) return;
-    const dayIndex = days.indexOf(row.usage_date);
+    const dayIndex = dayLabels.indexOf(row.usage_date);
     if (dayIndex === -1) return;
     entry.requestsSeries[dayIndex] = row.requests_made || 0;
   });
 
-  res.json({ days, keys: Object.values(byKey) });
+  res.json({ days: dayLabels, keys: Object.values(byKey), range });
 });
 
 module.exports = router;

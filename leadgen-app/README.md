@@ -6,6 +6,33 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V13.0
+- **Refresh buttons on all 4 sidebar sections** (Hunt, Reach Out, Pinned,
+  Reports) - honestly, this one had been missed in an earlier round
+  despite being promised; built and verified this time.
+- **Reports page no longer shows API usage** - that content now lives
+  exclusively in Settings/Limits Usage. Cleaned up the dead JS behind it
+  properly rather than just hiding it.
+- **Duration filters (1D/7D/30D/60D/90D/1Y/All Time)** on every provider's
+  usage chart, in both the Limits Usage page and each provider's own
+  Settings page - verified the actual network requests sent on every
+  change, and confirmed real seeded data at different dates gets correctly
+  included/excluded per range.
+- **"Inspected" filter** in Hunt (toggle button, only shows businesses
+  that have been inspected) and a **records-per-page selector**
+  (100/150/200/250/300) that persists per-account - verified by reloading
+  the page and confirming the saved preference survives, not just an
+  in-memory value.
+- **Niche, city, and catch log names now auto-capitalize** on both
+  creation and rename.
+- **New Reports chart**: all pipeline statuses compared side by side
+  ("All Hunted" vs New vs Shortlisted vs Contacted, etc.) over whichever
+  time range is selected, with count and % shown on hover - verified with
+  real varied seeded data that the bar heights exactly match.
+- **Fixed the lead-row cursor**: found the CSS class this depended on was
+  defined but never actually attached to the rows in JS, so the pointer
+  cursor never showed anywhere despite rows always having been clickable.
+
 ## What's in this V12.9
 This completes the full list from the last round - all 9 items plus
 Limits Usage are now done.

@@ -27,7 +27,7 @@ const SORT_COLUMNS = {
 // user_id, regardless of which other filters are given - "all records"
 // means "all of MY records", never anyone else's.
 function buildLeadsQuery(userId, query) {
-  const { status, need, search, catchLogId, nicheId, pinned } = query;
+  const { status, need, search, catchLogId, nicheId, pinned, inspected } = query;
 
   const sortBy = SORT_COLUMNS[query.sortBy] ? query.sortBy : "created_at";
   const sortDir = query.sortDir === "asc" ? "ASC" : query.sortDir === "desc" ? "DESC" : null;
@@ -64,6 +64,9 @@ function buildLeadsQuery(userId, query) {
   }
   if (pinned) {
     baseQuery += " AND l.pinned = 1";
+  }
+  if (inspected) {
+    baseQuery += " AND EXISTS(SELECT 1 FROM business_analysis ba WHERE ba.lead_id = l.id AND ba.status = 'done')";
   }
 
   return { baseQuery, params, sortBy, direction };
