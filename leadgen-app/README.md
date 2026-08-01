@@ -6,6 +6,64 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V13.3
+Item 7, the last one from this round - the app is now a real, installable
+PWA.
+
+- **Web app manifest + service worker + icons** - generated a proper icon
+  (matching the app's existing "◎" brand mark and orange accent color) at
+  every required size, including maskable variants for Android adaptive
+  icons. The service worker is deliberately minimal: it only caches the
+  static app shell (HTML/CSS/JS/icons) for installability and faster
+  repeat loads - it never touches anything under `/api/`, since this
+  app's lead/job data must always be fresh, not served from a stale cache.
+- **Bottom-center install banner** - shows when the browser reports the
+  app can be installed (Chrome/Edge/Android via the real
+  `beforeinstallprompt` event), with an explicit Install button and a
+  dismiss that snoozes the prompt for a week rather than nagging every
+  visit. iOS Safari never fires that event at all, so it's detected
+  directly and shown its own "tap Share, then Add to Home Screen"
+  instructions instead, since there's no programmatic install trigger on
+  iOS to hook into.
+- Verified thoroughly: confirmed the manifest, service worker, and all
+  icon sizes are served correctly: confirmed the banner stays hidden by
+  default, and - notably - confirmed the real headless Chromium browser
+  used for testing genuinely fired its own native `beforeinstallprompt`
+  event once the manifest and service worker were in place, which is real
+  confirmation the setup is actually valid and installable, not just
+  theoretically correct. Also verified dismiss correctly persists (via
+  localStorage) and the banner correctly stays hidden on a fresh reload
+  afterward, respecting the snooze window.
+
+## What's in this V13.2
+Item 6 complete - a new Account Settings page, and a real audit of backup
+&amp; restore that found genuine gaps.
+
+- **New "Account Settings" page** under Settings: Daily Lead Cap and
+  Backup &amp; Restore moved here from the API Keys page, plus a new
+  **Signature** section - a plain-text editor (supports line breaks,
+  links, emoji/icons) that's appended to every generated outreach message,
+  replacing what used to be a hardcoded signature in the code. Verified
+  the API Keys page still works correctly after the move, and that a
+  custom signature actually shows up in generated content instead of the
+  old hardcoded text.
+- **Backup &amp; restore comprehensively audited and fixed** - found real
+  gaps: `api_keys.provider` was silently missing from both export and
+  import, meaning every restored Groq/Gemini/DeepSeek key would have come
+  back mislabeled as a Google Places key. `business_analysis` (Inspect
+  results) and `outreach_content` (generated messages) weren't included
+  in backup at all. Also added the newer `page_size` and `signature`
+  settings. Bumped the backup format to v2 - old (v1) backups still
+  import fine, the newer fields are just treated as absent.
+- **Tested exhaustively with real data**: seeded a full account (keys for
+  all 3 AI providers, pinned leads, business analysis, outreach content,
+  custom settings), exported, completely wiped the database, and
+  restored - confirmed every field came back correctly, including
+  provider labels. Verified **idempotency** (importing the same backup 3
+  times produces zero duplicates) and that importing an **older backup
+  never overwrites fresher local data** (simulated a newer local analysis,
+  re-imported an older backup, confirmed the newer data survived).
+
 ## What's in this V13.1
 - **Reports refresh button** now correctly boxed to match Hunt/Reach Out/
   Pinned - it was missing the same bordered container the other three

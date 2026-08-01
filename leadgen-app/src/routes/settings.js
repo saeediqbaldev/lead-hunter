@@ -42,6 +42,24 @@ router.put("/page-size", (req, res) => {
   res.json({ pageSize: value });
 });
 
+const { DEFAULT_SIGNATURE } = require("../outreachContent");
+
+// GET /api/settings/signature -> this user's saved outreach signature
+router.get("/signature", (req, res) => {
+  const row = db.prepare("SELECT signature FROM users WHERE id = ?").get(req.session.userId);
+  res.json({ signature: row && row.signature != null ? row.signature : DEFAULT_SIGNATURE });
+});
+
+// PUT /api/settings/signature { signature }
+router.put("/signature", (req, res) => {
+  const value = typeof req.body.signature === "string" ? req.body.signature : "";
+  if (value.length > 2000) {
+    return res.status(400).json({ error: "Signature is too long (max 2000 characters)." });
+  }
+  db.prepare("UPDATE users SET signature = ? WHERE id = ?").run(value, req.session.userId);
+  res.json({ signature: value });
+});
+
 function maskKey(key) {
   if (!key) return null;
   if (key.length <= 8) return "•".repeat(key.length);

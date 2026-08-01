@@ -304,6 +304,11 @@ if (!leadsTableExists) {
   if (!userCols.includes("page_size")) {
     db.exec("ALTER TABLE users ADD COLUMN page_size INTEGER DEFAULT 50");
   }
+  if (!userCols.includes("signature")) {
+    const defaultSignature = "Kind Regards,\n   Saeed Iqbal\n   Ceo | Xeven Pixels\n   https://xevenpixels.com\n   contact@xevenpixels.com";
+    db.prepare("ALTER TABLE users ADD COLUMN signature TEXT").run();
+    db.prepare("UPDATE users SET signature = ? WHERE signature IS NULL").run(defaultSignature);
+  }
 }
 
 // ---------- One catch log per (niche, city): merge any existing duplicates ----------

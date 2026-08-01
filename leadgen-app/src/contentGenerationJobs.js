@@ -47,6 +47,8 @@ function isCancelled(leadId) {
 async function runJob(userId, leadId, lead, tone, length, analysis, platforms) {
   const completed = [];
   const failed = {};
+  const userRow = db.prepare("SELECT signature FROM users WHERE id = ?").get(userId);
+  const signature = userRow ? userRow.signature : null;
 
   try {
     upsertJobRow(leadId, { status: "running", current_step: `Generating ${platforms[0]}…`, completed_platforms: "[]", failed_platforms: "{}" });
@@ -55,7 +57,7 @@ async function runJob(userId, leadId, lead, tone, length, analysis, platforms) {
       if (isCancelled(leadId)) return;
 
       upsertJobRow(leadId, { current_step: `Generating ${platform}…` });
-      const result = await generateOutreachContent(userId, { lead, platform, tone, length, analysis });
+      const result = await generateOutreachContent(userId, { lead, platform, tone, length, analysis, signature });
 
       if (isCancelled(leadId)) return;
 

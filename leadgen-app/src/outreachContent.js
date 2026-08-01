@@ -6,11 +6,11 @@
 // or briefly down doesn't fail the whole request.
 const { generateWithFallback } = require("./aiProviders");
 
-const SIGNATURE = `Kind Regards,
-   Saeed Iqbal
-   Ceo | Xeven Pixels
-   https://xevenpixels.com
-   contact@xevenpixels.com`;
+// Signature is now a per-user setting (Account Settings -> Signature),
+// not hardcoded - this default only applies if a user somehow has no
+// signature saved at all (shouldn't normally happen, since the DB column
+// has a default value applied via migration).
+const DEFAULT_SIGNATURE = "Kind Regards,\n   Saeed Iqbal\n   Ceo | Xeven Pixels\n   https://xevenpixels.com\n   contact@xevenpixels.com";
 
 const TONES = [
   "Personalized Observation",
@@ -68,12 +68,13 @@ Write the message now. Requirements:
 - Output ONLY the message content itself, nothing else (no preamble, no explanation)`;
 }
 
-async function generateOutreachContent(userId, { lead, platform, tone, length, analysis }) {
+async function generateOutreachContent(userId, { lead, platform, tone, length, analysis, signature }) {
   const prompt = buildContentPrompt({ lead, platform, tone, length, analysis });
   const result = await generateWithFallback(userId, prompt);
   if (!result.ok) return result;
 
-  const content = `${result.text.trim()}\n\n${SIGNATURE}`;
+  const sig = signature != null && signature !== "" ? signature : DEFAULT_SIGNATURE;
+  const content = `${result.text.trim()}\n\n${sig}`;
   return { ok: true, content, provider: result.provider };
 }
 
@@ -81,4 +82,4 @@ const LENGTHS = ["Detailed", "Medium", "Short", "Concise"];
 
 const PLATFORM_LIST = ["email", "facebook", "instagram", "linkedin", "tiktok", "whatsapp"];
 
-module.exports = { TONES, LENGTHS, PLATFORM_LIST, PLATFORM_GUIDANCE, SIGNATURE, buildContentPrompt, generateOutreachContent };
+module.exports = { TONES, LENGTHS, PLATFORM_LIST, PLATFORM_GUIDANCE, DEFAULT_SIGNATURE, buildContentPrompt, generateOutreachContent };

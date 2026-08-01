@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.01-13.1";
+const APP_VERSION = "2026.08.01-13.3";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -313,6 +313,80 @@ async function loadApiKeys() {
   }
 }
 
+const navSettingsAccount = document.getElementById("navSettingsAccount");
+const signatureInput = document.getElementById("signatureInput");
+const signatureResult = document.getElementById("signatureResult");
+
+function showSignatureResult(kind, text) {
+  signatureResult.style.display = "block";
+  signatureResult.className = `settings-result ${kind}`;
+  signatureResult.textContent = text;
+}
+
+async function loadSignature() {
+  try {
+    const res = await api("/api/settings/signature");
+    const data = await res.json();
+    signatureInput.value = data.signature || "";
+  } catch (err) {
+    console.error("Failed to load signature:", err);
+  }
+}
+
+navSettingsAccount.addEventListener("click", async () => {
+  signatureResult.style.display = "none";
+  state.lastNavSection = "settings";
+  setContentView("settings-account");
+  await loadDailyCap();
+  await loadSignature();
+});
+
+document.getElementById("signatureSaveBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("signatureSaveBtn");
+  btn.disabled = true;
+  try {
+    const res = await api("/api/settings/signature", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ signature: signatureInput.value }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Could not save signature");
+    showSignatureResult("ok", "Signature saved - used on every outreach message generated from now on.");
+    showToast("Signature saved", "success");
+  } catch (err) {
+    showSignatureResult("bad", err.message);
+    showToast(`Could not save signature: ${err.message}`, "error");
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+document.getElementById("signatureResetBtn").addEventListener("click", async () => {
+  const confirmed = await openModal({
+    title: "Reset signature to default?",
+    message: "This replaces your current signature with the original default text.",
+    confirmText: "Reset",
+    danger: true,
+  });
+  if (!confirmed) return;
+
+  try {
+    await api("/api/settings/signature", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        signature: "Kind Regards,\n   Saeed Iqbal\n   Ceo | Xeven Pixels\n   https://xevenpixels.com\n   contact@xevenpixels.com",
+      }),
+    });
+    await loadSignature();
+    showSignatureResult("ok", "Reset to default.");
+    showToast("Signature reset to default", "success");
+  } catch (err) {
+    showSignatureResult("bad", err.message);
+  }
+});
+
 navSettingsApi.addEventListener("click", async () => {
   newKeyLabel.value = "";
   newKeyValue.value = "";
@@ -320,7 +394,6 @@ navSettingsApi.addEventListener("click", async () => {
   state.lastNavSection = "settings";
   setContentView("settings-api");
   await loadApiKeys();
-  await loadDailyCap();
 
   const usageContainer = document.getElementById("settingsUsage-google_places");
   if (usageContainer) {
@@ -1223,6 +1296,7 @@ function setContentView(view) {
     "settings-deepseek": document.getElementById("settingsDeepseekView"),
     "settings-colors": document.getElementById("settingsColorsView"),
     "settings-team": document.getElementById("settingsTeamView"),
+    "settings-account": document.getElementById("settingsAccountView"),
     "settings-limits": document.getElementById("settingsLimitsView"),
   };
   Object.entries(ALL_VIEWS).forEach(([name, el]) => {
