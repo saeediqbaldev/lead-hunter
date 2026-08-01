@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.01-12.6";
+const APP_VERSION = "2026.08.01-12.7";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -97,169 +97,197 @@ function apiKeyRowHtml(k) {
     </div>`;
 }
 
-// ---------- Gemini key management (mirrors the Google Places pattern above) ----------
-const geminiKeysList = document.getElementById("geminiKeysList");
-const newGeminiKeyLabel = document.getElementById("newGeminiKeyLabel");
-const newGeminiKeyValue = document.getElementById("newGeminiKeyValue");
-const geminiSettingsResult = document.getElementById("geminiSettingsResult");
-const geminiTestNewBtn = document.getElementById("geminiTestNewBtn");
-const geminiSaveNewBtn = document.getElementById("geminiSaveNewBtn");
-const navSettingsGemini = document.getElementById("navSettingsGemini");
+// ---------- AI provider key management (Gemini/Groq/DeepSeek all use this
+// same factory - mirrors the Google Places pattern, parameterized instead
+// of duplicated three times) ----------
+function setupAiProviderKeySection({ provider, label, displayLabel, endpointPrefix, view, getKeyHint }) {
+  const dLabel = displayLabel || label;
+  const keysList = document.getElementById(`${provider}KeysList`);
+  const newKeyLabel = document.getElementById(`new${label}KeyLabel`);
+  const newKeyValue = document.getElementById(`new${label}KeyValue`);
+  const settingsResult = document.getElementById(`${provider}SettingsResult`);
+  const testNewBtn = document.getElementById(`${provider}TestNewBtn`);
+  const saveNewBtn = document.getElementById(`${provider}SaveNewBtn`);
+  const navBtn = document.getElementById(`navSettings${label}`);
 
-function showGeminiResult(kind, text) {
-  geminiSettingsResult.style.display = "block";
-  geminiSettingsResult.className = `settings-result ${kind}`;
-  geminiSettingsResult.textContent = text;
-}
-function hideGeminiResult() {
-  geminiSettingsResult.style.display = "none";
-}
-
-function geminiKeyRowHtml(k) {
-  return `
-    <div class="api-key-row ${k.active ? "active" : ""}" data-key-id="${k.id}">
-      <div class="api-key-info">
-        <span class="api-key-label">${k.label}</span>
-        <span class="api-key-masked">${k.masked}</span>
-        ${k.active ? '<span class="api-key-active-badge">● In use</span>' : ""}
-        <span class="api-key-usage" title="Gemini requests made with this key">
-          ${k.requestsMade} req
-        </span>
-      </div>
-      <div class="api-key-actions">
-        ${!k.active ? `<button type="button" class="small-btn" data-action="activate-gemini-key" data-id="${k.id}">Use this</button>` : ""}
-        <button type="button" class="small-btn" data-action="test-gemini-key" data-id="${k.id}">Test</button>
-        <button type="button" class="small-btn danger-btn" data-action="delete-gemini-key" data-id="${k.id}">Delete</button>
-      </div>
-    </div>`;
-}
-
-async function loadGeminiKeys() {
-  geminiKeysList.innerHTML = `<div class="api-keys-empty">Loading…</div>`;
-  try {
-    const res = await api("/api/settings/gemini-keys");
-    const data = await res.json();
-    geminiKeysList.innerHTML =
-      data.keys.length === 0
-        ? `<div class="api-keys-empty">No Gemini key saved yet. Add one below - get a free one at aistudio.google.com/apikey.</div>`
-        : data.keys.map(geminiKeyRowHtml).join("");
-  } catch (err) {
-    geminiKeysList.innerHTML = `<div class="api-keys-empty">Could not load saved keys.</div>`;
+  function showResult(kind, text) {
+    settingsResult.style.display = "block";
+    settingsResult.className = `settings-result ${kind}`;
+    settingsResult.textContent = text;
   }
-}
-
-navSettingsGemini.addEventListener("click", async () => {
-  newGeminiKeyLabel.value = "";
-  newGeminiKeyValue.value = "";
-  hideGeminiResult();
-  state.lastNavSection = "settings";
-  setContentView("settings-gemini");
-  await loadGeminiKeys();
-});
-
-geminiSaveNewBtn.addEventListener("click", async () => {
-  const label = newGeminiKeyLabel.value.trim() || "Untitled key";
-  const apiKey = newGeminiKeyValue.value.trim();
-  if (!apiKey) {
-    showGeminiResult("bad", "Paste a Gemini API key first.");
-    return;
+  function hideResult() {
+    settingsResult.style.display = "none";
   }
-  geminiSaveNewBtn.disabled = true;
-  geminiSaveNewBtn.textContent = "Saving…";
-  try {
-    const res = await api("/api/settings/gemini-keys", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ label, apiKey }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      showGeminiResult("bad", data.error || "Could not save this key.");
-      showToast(`Could not save Gemini key: ${data.error || "test failed"}`, "error");
+
+  function keyRowHtml(k) {
+    return `
+      <div class="api-key-row ${k.active ? "active" : ""}" data-key-id="${k.id}">
+        <div class="api-key-info">
+          <span class="api-key-label">${k.label}</span>
+          <span class="api-key-masked">${k.masked}</span>
+          ${k.active ? '<span class="api-key-active-badge">● In use</span>' : ""}
+          <span class="api-key-usage" title="${dLabel} requests made with this key">${k.requestsMade} req</span>
+        </div>
+        <div class="api-key-actions">
+          ${!k.active ? `<button type="button" class="small-btn" data-action="activate-${provider}-key" data-id="${k.id}">Use this</button>` : ""}
+          <button type="button" class="small-btn" data-action="test-${provider}-key" data-id="${k.id}">Test</button>
+          <button type="button" class="small-btn danger-btn" data-action="delete-${provider}-key" data-id="${k.id}">Delete</button>
+        </div>
+      </div>`;
+  }
+
+  async function loadKeys() {
+    keysList.innerHTML = `<div class="api-keys-empty">Loading…</div>`;
+    try {
+      const res = await api(`/api/settings/${endpointPrefix}-keys`);
+      const data = await res.json();
+      keysList.innerHTML =
+        data.keys.length === 0
+          ? `<div class="api-keys-empty">No ${dLabel} key saved yet. ${getKeyHint}</div>`
+          : data.keys.map(keyRowHtml).join("");
+    } catch (err) {
+      keysList.innerHTML = `<div class="api-keys-empty">Could not load saved keys.</div>`;
+    }
+  }
+
+  navBtn.addEventListener("click", async () => {
+    newKeyLabel.value = "";
+    newKeyValue.value = "";
+    hideResult();
+    state.lastNavSection = "settings";
+    setContentView(view);
+    await loadKeys();
+  });
+
+  saveNewBtn.addEventListener("click", async () => {
+    const keyLabel = newKeyLabel.value.trim() || "Untitled key";
+    const apiKey = newKeyValue.value.trim();
+    if (!apiKey) {
+      showResult("bad", `Paste a ${dLabel} API key first.`);
       return;
     }
-    showGeminiResult("ok", `Saved "${data.label}" (${data.masked}).`);
-    showToast(`Gemini key "${data.label}" saved`, "success");
-    newGeminiKeyLabel.value = "";
-    newGeminiKeyValue.value = "";
-    await loadGeminiKeys();
-  } catch (err) {
-    showGeminiResult("bad", err.message || "Could not save this key.");
-    showToast(`Could not save Gemini key: ${err.message}`, "error");
-  } finally {
-    geminiSaveNewBtn.disabled = false;
-    geminiSaveNewBtn.textContent = "Test & Save";
-  }
-});
-
-geminiTestNewBtn.addEventListener("click", async () => {
-  const apiKey = newGeminiKeyValue.value.trim();
-  if (!apiKey) {
-    showGeminiResult("bad", "Paste a Gemini API key first.");
-    return;
-  }
-  geminiTestNewBtn.disabled = true;
-  geminiTestNewBtn.textContent = "Testing…";
-  try {
-    const res = await api("/api/settings/gemini-keys/test-value", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ apiKey }),
-    });
-    const data = await res.json();
-    showGeminiResult(data.ok ? "ok" : "bad", data.ok ? "Success — this key works." : data.error || "This key doesn't work.");
-  } finally {
-    geminiTestNewBtn.disabled = false;
-    geminiTestNewBtn.textContent = "Test";
-  }
-});
-
-geminiKeysList.addEventListener("click", async (e) => {
-  const btn = e.target.closest("[data-action]");
-  if (!btn) return;
-  const action = btn.dataset.action;
-  const id = btn.dataset.id;
-
-  if (action === "activate-gemini-key") {
-    await api(`/api/settings/gemini-keys/${id}/activate`, { method: "POST" });
-    hideGeminiResult();
-    showToast("Active Gemini key updated", "success");
-    await loadGeminiKeys();
-    return;
-  }
-
-  if (action === "test-gemini-key") {
-    const original = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = "Testing…";
+    saveNewBtn.disabled = true;
+    saveNewBtn.textContent = "Saving…";
     try {
-      const res = await api(`/api/settings/gemini-keys/${id}/test`, { method: "POST" });
+      const res = await api(`/api/settings/${endpointPrefix}-keys`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: keyLabel, apiKey }),
+      });
       const data = await res.json();
-      showGeminiResult(data.ok ? "ok" : "bad", data.ok ? "Success — this key still works." : data.error || "This key no longer works.");
-      showToast(data.ok ? "Key test succeeded" : `Key test failed: ${data.error || "no longer works"}`, data.ok ? "success" : "error");
+      if (!res.ok) {
+        showResult("bad", data.error || "Could not save this key.");
+        showToast(`Could not save ${dLabel} key: ${data.error || "test failed"}`, "error");
+        return;
+      }
+      showResult("ok", `Saved "${data.label}" (${data.masked}).`);
+      showToast(`${dLabel} key "${data.label}" saved`, "success");
+      newKeyLabel.value = "";
+      newKeyValue.value = "";
+      await loadKeys();
+    } catch (err) {
+      showResult("bad", err.message || "Could not save this key.");
+      showToast(`Could not save ${dLabel} key: ${err.message}`, "error");
     } finally {
-      btn.disabled = false;
-      btn.textContent = original;
+      saveNewBtn.disabled = false;
+      saveNewBtn.textContent = "Test & Save";
     }
-    return;
-  }
+  });
 
-  if (action === "delete-gemini-key") {
-    const row = btn.closest(".api-key-row");
-    const label = row.querySelector(".api-key-label").textContent;
-    const confirmed = await openModal({
-      title: `Delete key "${label}"?`,
-      message: "This cannot be undone. If this was the active key, business analysis and content generation will stop working until another key is added or activated.",
-      confirmText: "Delete",
-      danger: true,
-    });
-    if (!confirmed) return;
-    await api(`/api/settings/gemini-keys/${id}`, { method: "DELETE" });
-    hideGeminiResult();
-    showToast(`Gemini key "${label}" deleted`, "success");
-    await loadGeminiKeys();
-    return;
-  }
+  testNewBtn.addEventListener("click", async () => {
+    const apiKey = newKeyValue.value.trim();
+    if (!apiKey) {
+      showResult("bad", `Paste a ${dLabel} API key first.`);
+      return;
+    }
+    testNewBtn.disabled = true;
+    testNewBtn.textContent = "Testing…";
+    try {
+      const res = await api(`/api/settings/${endpointPrefix}-keys/test-value`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey }),
+      });
+      const data = await res.json();
+      showResult(data.ok ? "ok" : "bad", data.ok ? "Success — this key works." : data.error || "This key doesn't work.");
+    } finally {
+      testNewBtn.disabled = false;
+      testNewBtn.textContent = "Test";
+    }
+  });
+
+  keysList.addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-action]");
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const id = btn.dataset.id;
+
+    if (action === `activate-${provider}-key`) {
+      await api(`/api/settings/${endpointPrefix}-keys/${id}/activate`, { method: "POST" });
+      hideResult();
+      showToast(`Active ${dLabel} key updated`, "success");
+      await loadKeys();
+      return;
+    }
+
+    if (action === `test-${provider}-key`) {
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "Testing…";
+      try {
+        const res = await api(`/api/settings/${endpointPrefix}-keys/${id}/test`, { method: "POST" });
+        const data = await res.json();
+        showResult(data.ok ? "ok" : "bad", data.ok ? "Success — this key still works." : data.error || "This key no longer works.");
+        showToast(data.ok ? "Key test succeeded" : `Key test failed: ${data.error || "no longer works"}`, data.ok ? "success" : "error");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+      }
+      return;
+    }
+
+    if (action === `delete-${provider}-key`) {
+      const row = btn.closest(".api-key-row");
+      const rowLabel = row.querySelector(".api-key-label").textContent;
+      const confirmed = await openModal({
+        title: `Delete key "${rowLabel}"?`,
+        message: `This cannot be undone. If this was the active key, ${dLabel} will be skipped in the AI fallback chain until another key is added or activated.`,
+        confirmText: "Delete",
+        danger: true,
+      });
+      if (!confirmed) return;
+      await api(`/api/settings/${endpointPrefix}-keys/${id}`, { method: "DELETE" });
+      hideResult();
+      showToast(`${dLabel} key "${rowLabel}" deleted`, "success");
+      await loadKeys();
+      return;
+    }
+  });
+
+  return { loadKeys };
+}
+
+setupAiProviderKeySection({
+  provider: "gemini",
+  label: "Gemini",
+  endpointPrefix: "gemini",
+  view: "settings-gemini",
+  getKeyHint: "Add one below - get a free one at aistudio.google.com/apikey.",
+});
+setupAiProviderKeySection({
+  provider: "groq",
+  label: "Groq",
+  endpointPrefix: "groq",
+  view: "settings-groq",
+  getKeyHint: "Add one below - get a free one at console.groq.com/keys.",
+});
+setupAiProviderKeySection({
+  provider: "deepseek",
+  label: "Deepseek",
+  displayLabel: "DeepSeek",
+  endpointPrefix: "deepseek",
+  view: "settings-deepseek",
+  getKeyHint: "Add one below - get one at platform.deepseek.com/api_keys.",
 });
 
 async function loadApiKeys() {
@@ -1087,6 +1115,8 @@ function setContentView(view) {
     reports: reportsPanel,
     "settings-api": document.getElementById("settingsApiView"),
     "settings-gemini": document.getElementById("settingsGeminiView"),
+    "settings-groq": document.getElementById("settingsGroqView"),
+    "settings-deepseek": document.getElementById("settingsDeepseekView"),
     "settings-colors": document.getElementById("settingsColorsView"),
     "settings-team": document.getElementById("settingsTeamView"),
     "settings-limits": document.getElementById("settingsLimitsView"),
@@ -2172,6 +2202,7 @@ const WHATSAPP_SVG = `<i class="bi bi-whatsapp"></i>`;
 // normal text) against a white panel while keeping the same hue.
 // ========== Lead expand panel: Inspect + Generate content (Reach Out only) ==========
 let inspectPollTimer = null;
+let genPollTimer = null;
 const CHECK_ICONS = { pass: "bi-check-circle-fill", fail: "bi-x-circle-fill", warn: "bi-exclamation-circle-fill" };
 const PLATFORMS = [
   { key: "email", icon: "bi-envelope-fill" },
@@ -2196,6 +2227,10 @@ function closeAllLeadExpansions() {
   if (inspectPollTimer) {
     clearInterval(inspectPollTimer);
     inspectPollTimer = null;
+  }
+  if (genPollTimer) {
+    clearInterval(genPollTimer);
+    genPollTimer = null;
   }
   document.querySelectorAll(".lead-expand-row").forEach((el) => el.remove());
   state.expandedLeadId = null;
@@ -2303,41 +2338,28 @@ async function loadAndRenderInspect(leadId, bodyEl) {
   }
 }
 
-async function generateContentForPlatform(leadId, platform, tone, length, outputEl) {
-  outputEl.innerHTML = `<div class="inspect-progress"><span class="inspect-spinner"></span> Generating ${platform} content…</div>`;
-  try {
-    const res = await api(`/api/leads/${leadId}/generate-content`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ platform, tone, length }),
-    });
-
-    // Check the content-type before assuming it's JSON - if something in
-    // front of the app (a proxy, a CDN, a WAF) returns its own error page
-    // instead of forwarding to this route, res.json() throws a cryptic
-    // parse error ("Unexpected token '<'") that hides what actually came
-    // back. Reading it as text first and showing a snippet makes any
-    // future occurrence immediately diagnosable without needing server
-    // log access at all.
-    const contentType = res.headers.get("content-type") || "";
-    if (!contentType.includes("application/json")) {
-      const rawText = await res.text();
-      outputEl.innerHTML = `<div style="color:var(--danger);">Got a non-JSON response (HTTP ${res.status}, content-type: ${contentType || "none"}) - this usually means something in front of the app (a proxy, CDN, or firewall) intercepted the request instead of it reaching the app itself. Raw response (first 500 chars):<pre style="white-space:pre-wrap; margin-top:8px; font-size:11px; opacity:0.8;">${rawText.slice(0, 500).replace(/</g, "&lt;")}</pre></div>`;
-      showToast("Server returned a non-JSON response - see details below", "error");
-      return;
-    }
-
-    const data = await res.json();
-    if (!res.ok) {
-      outputEl.innerHTML = `<div style="color:var(--danger);">${data.error || "Generation failed."}</div>`;
-      showToast(`Content generation failed: ${data.error || "unknown error"}`, "error");
-      return;
-    }
-    outputEl.textContent = data.content;
-    showToast(`${platform.charAt(0).toUpperCase() + platform.slice(1)} content generated`, "success");
-  } catch (err) {
-    outputEl.innerHTML = `<div style="color:var(--danger);">Network error: ${err.message || "could not reach the server"}. Try again - if this keeps happening, check your connection.</div>`;
+// Shared by both "Generate All" and single-platform "Regenerate" - checks
+// the content-type before assuming JSON, since if something in front of
+// the app (a proxy, CDN, or firewall) ever returns its own error page
+// instead of forwarding the request, res.json() throws a cryptic parse
+// error ("Unexpected token '<'") that hides what actually came back.
+async function callGenerationStart(leadId, body) {
+  const res = await api(`/api/leads/${leadId}/generate-content/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const contentType = res.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    const rawText = await res.text();
+    return {
+      ok: false,
+      error: `Got a non-JSON response (HTTP ${res.status}, content-type: ${contentType || "none"}) - this usually means something in front of the app (a proxy, CDN, or firewall) intercepted the request. Raw response (first 300 chars): ${rawText.slice(0, 300).replace(/</g, "&lt;")}`,
+    };
   }
+  const data = await res.json();
+  if (!res.ok) return { ok: false, error: data.error || "Could not start generation." };
+  return { ok: true };
 }
 
 function buildExpandPanelHtml(lead) {
@@ -2369,17 +2391,23 @@ function buildExpandPanelHtml(lead) {
         <select class="gen-tone-select" data-length-select style="flex:0 0 140px; min-width:120px;">
           ${CONTENT_LENGTHS.map((l) => `<option value="${l}" ${l === "Medium" ? "selected" : ""}>${l}</option>`).join("")}
         </select>
-        <button type="button" class="expand-actions-btn" data-action="generate-email" style="background:var(--accent); color:#1a1310; border:none; border-radius:6px; padding:7px 14px; font-size:12px; font-weight:600; cursor:pointer;">
+        <button type="button" data-action="generate-all" style="background:var(--accent); color:#1a1310; border:none; border-radius:6px; padding:7px 14px; font-size:12px; font-weight:600; cursor:pointer;">
           <i class="bi bi-stars"></i> Generate Content
         </button>
+        <button type="button" data-action="generate-stop" title="Stop" style="display:none;"><i class="bi bi-stop-circle"></i></button>
       </div>
       <div class="platform-tabs">
-        ${PLATFORMS.map((p) => `<button type="button" class="platform-tab ${p.key === "email" ? "active" : ""}" data-platform="${p.key}" title="${p.key}"><i class="bi ${p.icon}"></i></button>`).join("")}
+        ${PLATFORMS.map(
+          (p) =>
+            `<button type="button" class="platform-tab ${p.key === "email" ? "active" : ""}" data-platform="${p.key}" title="${p.key}"><i class="bi ${p.icon}"></i><span class="platform-tab-dot" data-platform-dot="${p.key}"></span></button>`
+        ).join("")}
       </div>
-      <div class="gen-output-mini" data-gen-output>Select a tone, then click "Generate Content" (starts with Email). Switching platform tabs afterward will auto-generate for that platform using the same tone.</div>
+      <div data-gen-progress style="display:none;" class="inspect-progress"><span class="inspect-spinner"></span> <span data-gen-progress-text></span></div>
+      <div class="gen-output-mini" data-gen-output>Pick a tone and length, then click "Generate Content" to write all 6 platforms at once in the background - switching tabs afterward just shows what was generated for each, without using any more requests.</div>
       <div class="gen-actions-mini">
         <button type="button" data-action="copy-content"><i class="bi bi-clipboard"></i> Copy</button>
-        <button type="button" data-action="regenerate-content"><i class="bi bi-arrow-repeat"></i> Regenerate</button>
+        <button type="button" data-action="regenerate-content"><i class="bi bi-arrow-repeat"></i> Regenerate this platform</button>
+        <button type="button" data-action="clear-content" class="danger-btn"><i class="bi bi-trash"></i> Clear this platform</button>
       </div>
     </div>
   `;
@@ -2411,12 +2439,25 @@ async function toggleLeadExpand(leadId) {
   await loadAndRenderInspect(leadId, inspectBody);
 
   const outreachContentRes = await api(`/api/leads/${leadId}/outreach-content`).catch(() => null);
-  const savedContent = outreachContentRes && outreachContentRes.ok ? (await outreachContentRes.json()).content : [];
+  let savedContent = outreachContentRes && outreachContentRes.ok ? (await outreachContentRes.json()).content : [];
   const outputEl = expandRow.querySelector("[data-gen-output]");
   const toneSelect = expandRow.querySelector("[data-tone-select]");
   const lengthSelect = expandRow.querySelector("[data-length-select]");
+  const generateBtn = expandRow.querySelector('[data-action="generate-all"]');
+  const stopBtn = expandRow.querySelector('[data-action="generate-stop"]');
+  const progressEl = expandRow.querySelector("[data-gen-progress]");
+  const progressTextEl = expandRow.querySelector("[data-gen-progress-text]");
 
-  function showSavedOrPlaceholder(platform) {
+  function markCompletedDots() {
+    expandRow.querySelectorAll("[data-platform-dot]").forEach((dot) => {
+      const has = savedContent.some((c) => c.platform === dot.dataset.platformDot);
+      dot.classList.toggle("done", has);
+    });
+  }
+
+  function showPlatform(platform) {
+    currentPlatform = platform;
+    expandRow.querySelectorAll(".platform-tab").forEach((t) => t.classList.toggle("active", t.dataset.platform === platform));
     const saved = savedContent.find((c) => c.platform === platform);
     if (saved) {
       outputEl.textContent = saved.content;
@@ -2429,10 +2470,69 @@ async function toggleLeadExpand(leadId) {
         currentLength = saved.length;
       }
     } else {
-      outputEl.innerHTML = `Select a tone, then click "Generate Content" (starts with Email). Switching platform tabs afterward will auto-generate for that platform using the same tone.`;
+      outputEl.innerHTML = `Not generated yet for ${platform}. Pick a tone and length, then click "Generate Content" to write all 6 platforms at once, or switch to a platform that's already been generated.`;
     }
   }
-  showSavedOrPlaceholder("email");
+  showPlatform("email");
+  markCompletedDots();
+
+  async function pollGenerationStatus() {
+    const res = await api(`/api/leads/${leadId}/generate-content/status`);
+    const job = await res.json();
+
+    if (job.status === "running") {
+      progressTextEl.textContent = job.currentStep || "Working…";
+      return;
+    }
+
+    // Finished (done/failed/stopped) - stop polling and refresh the panel
+    clearInterval(genPollTimer);
+    genPollTimer = null;
+    progressEl.style.display = "none";
+    generateBtn.style.display = "inline-flex";
+    stopBtn.style.display = "none";
+
+    const contentRes = await api(`/api/leads/${leadId}/outreach-content`).catch(() => null);
+    savedContent = contentRes && contentRes.ok ? (await contentRes.json()).content : savedContent;
+    markCompletedDots();
+    showPlatform(currentPlatform);
+
+    const failedCount = Object.keys(job.failedPlatforms || {}).length;
+    if (job.status === "stopped") {
+      showToast("Content generation stopped", "info");
+    } else if (job.completedPlatforms.length > 0 && failedCount > 0) {
+      showToast(`Generated ${job.completedPlatforms.length}/6 platforms - ${failedCount} failed (check individual platforms)`, "error");
+    } else if (job.completedPlatforms.length > 0) {
+      showToast(`Generated content for ${job.completedPlatforms.length} platform(s)`, "success");
+    } else {
+      const firstError = Object.values(job.failedPlatforms || {})[0];
+      showToast(`Content generation failed: ${firstError || "unknown error"}`, "error");
+    }
+  }
+
+  async function startGeneration(platforms) {
+    currentTone = toneSelect.value;
+    currentLength = lengthSelect.value;
+    if (!currentTone) {
+      showToast("Pick a tone/format first", "error");
+      return;
+    }
+
+    const result = await callGenerationStart(leadId, { tone: currentTone, length: currentLength, platforms });
+    if (!result.ok) {
+      showToast(result.error, "error");
+      outputEl.innerHTML = `<div style="color:var(--danger);">${result.error}</div>`;
+      return;
+    }
+
+    progressEl.style.display = "flex";
+    generateBtn.style.display = "none";
+    stopBtn.style.display = "inline-flex";
+    progressTextEl.textContent = "Starting…";
+
+    await pollGenerationStatus();
+    if (!genPollTimer) genPollTimer = setInterval(pollGenerationStatus, 1500);
+  }
 
   expandRow.addEventListener("click", async (e) => {
     const action = e.target.closest("[data-action]")?.dataset.action;
@@ -2480,16 +2580,15 @@ async function toggleLeadExpand(leadId) {
       return;
     }
 
-    if (action === "generate-email") {
-      currentTone = toneSelect.value;
-      currentLength = lengthSelect.value;
-      if (!currentTone) {
-        showToast("Pick a tone/format first", "error");
-        return;
-      }
-      currentPlatform = "email";
-      expandRow.querySelectorAll(".platform-tab").forEach((t) => t.classList.toggle("active", t.dataset.platform === "email"));
-      await generateContentForPlatform(leadId, "email", currentTone, currentLength, outputEl);
+    // Generates all 6 platforms in one background job - per spec, no need
+    // to click Generate again when switching platform tabs afterward.
+    if (action === "generate-all") {
+      await startGeneration(null); // null = all platforms, handled server-side
+      return;
+    }
+
+    if (action === "generate-stop") {
+      await api(`/api/leads/${leadId}/generate-content/stop`, { method: "POST" });
       return;
     }
 
@@ -2500,34 +2599,31 @@ async function toggleLeadExpand(leadId) {
     }
 
     if (action === "regenerate-content") {
-      currentLength = lengthSelect.value;
-      if (!currentTone) {
-        showToast("Pick a tone/format first", "error");
-        return;
-      }
-      await generateContentForPlatform(leadId, currentPlatform, currentTone, currentLength, outputEl);
+      await startGeneration([currentPlatform]);
       return;
     }
 
+    if (action === "clear-content") {
+      const confirmed = await openModal({
+        title: `Clear ${currentPlatform} content?`,
+        message: "This deletes the saved content for this platform. This cannot be undone.",
+        confirmText: "Clear",
+        danger: true,
+      });
+      if (!confirmed) return;
+      await api(`/api/leads/${leadId}/outreach-content/${currentPlatform}`, { method: "DELETE" });
+      savedContent = savedContent.filter((c) => c.platform !== currentPlatform);
+      markCompletedDots();
+      showPlatform(currentPlatform);
+      showToast(`Cleared ${currentPlatform} content`, "success");
+      return;
+    }
+
+    // Platform tabs now only switch which platform's already-generated
+    // content is shown - they no longer trigger new generation, per spec.
     const platformTab = e.target.closest(".platform-tab");
     if (platformTab) {
-      const platform = platformTab.dataset.platform;
-      expandRow.querySelectorAll(".platform-tab").forEach((t) => t.classList.toggle("active", t === platformTab));
-      currentPlatform = platform;
-
-      if (!currentTone) {
-        currentTone = toneSelect.value;
-      }
-      currentLength = lengthSelect.value;
-      if (!currentTone) {
-        showToast("Pick a tone/format first", "error");
-        outputEl.innerHTML = `Select a tone/format above first, then this platform will generate automatically.`;
-        return;
-      }
-      // Per spec: switching platform tabs auto-generates for that platform
-      // using the currently-selected tone (and length) - no need to click
-      // Generate again.
-      await generateContentForPlatform(leadId, platform, currentTone, currentLength, outputEl);
+      showPlatform(platformTab.dataset.platform);
     }
   });
 }

@@ -413,6 +413,22 @@ CREATE TABLE IF NOT EXISTS outreach_content (
 {
   const outreachContentCols = db.prepare("PRAGMA table_info(outreach_content)").all().map((c) => c.name);
   if (!outreachContentCols.includes("length")) db.exec("ALTER TABLE outreach_content ADD COLUMN length TEXT");
+  if (!outreachContentCols.includes("provider")) db.exec("ALTER TABLE outreach_content ADD COLUMN provider TEXT");
 }
+
+// ---------- Async batch content generation job tracking (generates all
+// platforms at once in the background, mirroring the Inspect job pattern -
+// this is what avoids any single HTTP request needing to stay open long
+// enough to hit a reverse-proxy timeout) ----------
+db.exec(`
+CREATE TABLE IF NOT EXISTS content_generation_jobs (
+  lead_id INTEGER PRIMARY KEY,
+  status TEXT DEFAULT 'pending',
+  current_step TEXT,
+  completed_platforms TEXT DEFAULT '[]',
+  failed_platforms TEXT DEFAULT '{}',
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+`);
 
 module.exports = db;

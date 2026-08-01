@@ -197,30 +197,41 @@ ${checklistText}
 
 Category scores: Website Health ${categoryResults.website.score}/100, GMB & Local SEO ${categoryResults.gmb.score}/100, Social Presence ${categoryResults.social.score}/100.
 
-Based ONLY on the checklist above (don't invent facts not shown here), write:
-1. 2-4 genuine strengths - specific, not generic praise
-2. 2-4 genuine weaknesses - specific, actionable gaps
-3. 2-3 suggested services this agency could pitch to this business, each a short phrase (e.g. "Website speed & mobile optimization"), directly tied to the weaknesses found
-
-Keep every point concise (one sentence each) and grounded in the actual checklist data, not speculation.`;
+Based ONLY on the checklist above (don't invent facts not shown here), respond with ONLY a JSON object (no other text, no markdown code fences) in exactly this shape:
+{
+  "strengths": ["...", "..."],
+  "weaknesses": ["...", "..."],
+  "suggestedServices": ["...", "..."]
 }
 
-async function analyzeWithGemini(apiKey, lead, categoryResults) {
-  const { generateText } = require("./gemini");
+Rules: 2-4 genuine strengths (specific, not generic praise), 2-4 genuine weaknesses (specific, actionable gaps), 2-3 suggested services this agency could pitch (each a short phrase like "Website speed & mobile optimization", directly tied to the weaknesses found). Keep every point concise (one sentence each) and grounded in the actual checklist data, not speculation.`;
+}
+
+// Uses the AI provider fallback chain (Groq -> Gemini -> DeepSeek) instead
+// of calling one provider directly. The prompt above includes an explicit
+// JSON shape example so this works reliably across all three providers,
+// not just Gemini's stricter schema-constrained mode (geminiSchema is
+// still passed through so Gemini gets its stronger guarantee specifically
+// when it's the one that ends up being used).
+async function analyzeWithAI(userId, lead, categoryResults) {
+  const { generateWithFallback } = require("./aiProviders");
   const prompt = buildAnalysisPrompt(lead, categoryResults);
-  const result = await generateText(apiKey, prompt, { responseSchema: ANALYSIS_RESPONSE_SCHEMA });
+  const result = await generateWithFallback(userId, prompt, { jsonMode: true, geminiSchema: ANALYSIS_RESPONSE_SCHEMA });
 
   if (!result.ok) return { ok: false, error: result.error };
 
   try {
-    const parsed = JSON.parse(result.text);
+    // Strip markdown code fences if a non-Gemini provider added them
+    // despite instructions not to - cheap and harmless if there are none.
+    const cleaned = result.text.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "");
+    const parsed = JSON.parse(cleaned);
     if (!Array.isArray(parsed.strengths) || !Array.isArray(parsed.weaknesses) || !Array.isArray(parsed.suggestedServices)) {
-      return { ok: false, error: "Gemini's response was missing expected fields." };
+      return { ok: false, error: `${result.provider}'s response was missing expected fields.` };
     }
-    return { ok: true, ...parsed };
+    return { ok: true, ...parsed, provider: result.provider };
   } catch (err) {
-    return { ok: false, error: `Could not parse Gemini's response as JSON: ${err.message}` };
+    return { ok: false, error: `Could not parse ${result.provider}'s response as JSON: ${err.message}` };
   }
 }
 
-module.exports = { runWebsiteChecks, runGmbChecks, runSocialChecks, scoreFromChecks, buildAnalysisPrompt, analyzeWithGemini };
+module.exports = { runWebsiteChecks, runGmbChecks, runSocialChecks, scoreFromChecks, buildAnalysisPrompt, analyzeWithAI };

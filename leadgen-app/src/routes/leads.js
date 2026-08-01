@@ -230,58 +230,77 @@ router.post("/:id/inspect/stop", (req, res) => {
   res.json({ ok: true, stopped });
 });
 
-// ---------- Outreach content generation ----------
-const { generateOutreachContent, TONES, LENGTHS } = require("../outreachContent");
+// ---------- Outreach content generation (async job - generates all
+// platforms in the background, mirroring the Inspect job pattern) ----------
+const { generateOutreachContent, TONES, LENGTHS, PLATFORM_LIST } = require("../outreachContent");
+const contentJobs = require("../contentGenerationJobs");
 
 // GET /api/leads/:id/outreach-content -> everything already generated+saved for this lead
 router.get("/:id/outreach-content", (req, res) => {
   const lead = getOwnedLead(req.session.userId, req.params.id);
   if (!lead) return res.status(404).json({ error: "Lead not found" });
 
-  const rows = db.prepare("SELECT platform, tone, length, content, generated_at FROM outreach_content WHERE lead_id = ?").all(req.params.id);
-  res.json({ tones: TONES, lengths: LENGTHS, content: rows });
+  const rows = db
+    .prepare("SELECT platform, tone, length, content, provider, generated_at FROM outreach_content WHERE lead_id = ?")
+    .all(req.params.id);
+  res.json({ tones: TONES, lengths: LENGTHS, platforms: PLATFORM_LIST, content: rows });
 });
 
-// POST /api/leads/:id/generate-content { platform, tone } -> generates AND
-// auto-saves (overwriting any previous content for this platform), per the
-// "no need to click Generate again when switching platform tabs" flow.
-router.post("/:id/generate-content", async (req, res) => {
-  try {
-    const lead = getOwnedLeadWithContext(req.session.userId, req.params.id);
-    if (!lead) return res.status(404).json({ error: "Lead not found" });
+// POST /api/leads/:id/generate-content/start { tone, length, platforms? }
+// platforms is optional - omit it to generate all 6 at once (the normal
+// "Generate Content" button flow), or pass a single-item array to
+// regenerate just one platform.
+router.post("/:id/generate-content/start", (req, res) => {
+  const lead = getOwnedLeadWithContext(req.session.userId, req.params.id);
+  if (!lead) return res.status(404).json({ error: "Lead not found" });
 
-    const { platform, tone, length } = req.body || {};
-    if (!platform || !tone) return res.status(400).json({ error: "platform and tone are required" });
+  const { tone, length, platforms } = req.body || {};
+  if (!tone) return res.status(400).json({ error: "tone is required" });
 
-    const geminiKeyRow = apiKeys.getActiveKey(req.session.userId, "gemini");
-    if (!geminiKeyRow) {
-      return res.status(400).json({ error: "No Gemini API key configured - add one in Settings → Gemini AI." });
-    }
-
-    const analysis = analysisJobs.getAnalysis(Number(req.params.id));
-    const result = await generateOutreachContent(geminiKeyRow.key_value, { lead, platform, tone, length, analysis });
-
-    if (!result.ok) return res.status(502).json({ error: result.error });
-
-    apiKeys.recordUsage(req.session.userId, geminiKeyRow.id, { requests: 1 });
-
-    db.prepare(
-      `INSERT INTO outreach_content (lead_id, platform, tone, length, content, generated_at) VALUES (?, ?, ?, ?, ?, datetime('now'))
-       ON CONFLICT(lead_id, platform) DO UPDATE SET tone = excluded.tone, length = excluded.length, content = excluded.content, generated_at = excluded.generated_at`
-    ).run(req.params.id, platform, tone, length || null, result.content);
-
-    res.json({ ok: true, platform, tone, length, content: result.content });
-  } catch (err) {
-    console.error("generate-content failed:", err);
-    // Express 4 does NOT automatically catch errors thrown inside async
-    // route handlers (that only changed in Express 5) - without this
-    // try/catch, an unexpected error here would leave the request hanging
-    // with no response ever sent, until the reverse proxy's own timeout
-    // eventually returned an HTML error page instead of JSON, which is
-    // exactly what produces a generic "could not reach the server" on the
-    // frontend instead of a real, useful error message.
-    res.status(500).json({ error: `Server error: ${err.message}` });
+  const analysis = analysisJobs.getAnalysis(Number(req.params.id));
+  const result = contentJobs.startGeneration(req.session.userId, lead, { tone, length, analysis, platforms });
+  if (result.alreadyRunning) {
+    return res.status(409).json({ error: "Content generation is already running for this lead." });
   }
+  res.json({ ok: true });
+});
+
+// GET /api/leads/:id/generate-content/status
+router.get("/:id/generate-content/status", (req, res) => {
+  const lead = getOwnedLead(req.session.userId, req.params.id);
+  if (!lead) return res.status(404).json({ error: "Lead not found" });
+
+  const job = contentJobs.getJob(Number(req.params.id));
+  res.json(job || { leadId: Number(req.params.id), status: "pending", completedPlatforms: [], failedPlatforms: {} });
+});
+
+// POST /api/leads/:id/generate-content/stop
+router.post("/:id/generate-content/stop", (req, res) => {
+  const lead = getOwnedLead(req.session.userId, req.params.id);
+  if (!lead) return res.status(404).json({ error: "Lead not found" });
+
+  const stopped = contentJobs.stopGeneration(Number(req.params.id));
+  res.json({ ok: true, stopped });
+});
+
+// DELETE /api/leads/:id/outreach-content/:platform -> clear one platform's
+// saved content. Generated content is otherwise permanent - it's never
+// cleared automatically, only by an explicit delete or a fresh regenerate.
+router.delete("/:id/outreach-content/:platform", (req, res) => {
+  const lead = getOwnedLead(req.session.userId, req.params.id);
+  if (!lead) return res.status(404).json({ error: "Lead not found" });
+
+  db.prepare("DELETE FROM outreach_content WHERE lead_id = ? AND platform = ?").run(req.params.id, req.params.platform);
+  res.json({ ok: true });
+});
+
+// DELETE /api/leads/:id/outreach-content -> clear ALL saved content for this lead
+router.delete("/:id/outreach-content", (req, res) => {
+  const lead = getOwnedLead(req.session.userId, req.params.id);
+  if (!lead) return res.status(404).json({ error: "Lead not found" });
+
+  db.prepare("DELETE FROM outreach_content WHERE lead_id = ?").run(req.params.id);
+  res.json({ ok: true });
 });
 
 // GET /api/leads/pinned/list -> every pinned lead this user has, with niche

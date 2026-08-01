@@ -1,7 +1,10 @@
 // Generates outreach content (cold email, social DMs) for a lead, using
 // whatever business-analysis data is available as grounding context so the
 // message references real, specific findings rather than generic filler.
-const { generateText } = require("./gemini");
+// Uses the AI provider fallback chain (Groq -> Gemini -> DeepSeek) instead
+// of calling one provider directly, so a single provider being rate-limited
+// or briefly down doesn't fail the whole request.
+const { generateWithFallback } = require("./aiProviders");
 
 const SIGNATURE = `Kind Regards,
    Saeed Iqbal
@@ -65,15 +68,17 @@ Write the message now. Requirements:
 - Output ONLY the message content itself, nothing else (no preamble, no explanation)`;
 }
 
-async function generateOutreachContent(apiKey, { lead, platform, tone, length, analysis }) {
+async function generateOutreachContent(userId, { lead, platform, tone, length, analysis }) {
   const prompt = buildContentPrompt({ lead, platform, tone, length, analysis });
-  const result = await generateText(apiKey, prompt);
+  const result = await generateWithFallback(userId, prompt);
   if (!result.ok) return result;
 
   const content = `${result.text.trim()}\n\n${SIGNATURE}`;
-  return { ok: true, content };
+  return { ok: true, content, provider: result.provider };
 }
 
 const LENGTHS = ["Detailed", "Medium", "Short", "Concise"];
 
-module.exports = { TONES, LENGTHS, PLATFORM_GUIDANCE, SIGNATURE, buildContentPrompt, generateOutreachContent };
+const PLATFORM_LIST = ["email", "facebook", "instagram", "linkedin", "tiktok", "whatsapp"];
+
+module.exports = { TONES, LENGTHS, PLATFORM_LIST, PLATFORM_GUIDANCE, SIGNATURE, buildContentPrompt, generateOutreachContent };

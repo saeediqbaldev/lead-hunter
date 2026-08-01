@@ -5,7 +5,7 @@
 // make directly - no separate microservice needed.
 const db = require("./db");
 const apiKeys = require("./apiKeys");
-const { runWebsiteChecks, runGmbChecks, runSocialChecks, scoreFromChecks, analyzeWithGemini } = require("./businessAnalysis");
+const { runWebsiteChecks, runGmbChecks, runSocialChecks, scoreFromChecks, analyzeWithAI } = require("./businessAnalysis");
 
 const STEPS = [
   "Checking website health…",
@@ -91,17 +91,12 @@ async function runPipeline(userId, leadId, lead) {
     });
     if (isCancelled(leadId)) return;
 
-    // AI writeup - only runs if a Gemini key is configured; otherwise the
-    // checklist/scores are still saved and useful on their own.
-    const geminiKey = apiKeys.getActiveKeyValue(userId, "gemini");
-    let aiResult = { ok: false, error: "No Gemini API key configured - add one in Settings to enable AI summaries." };
-    if (geminiKey) {
-      aiResult = await analyzeWithGemini(geminiKey, lead, { website, gmb, social });
-      if (geminiKey) {
-        const keyRow = apiKeys.getActiveKey(userId, "gemini");
-        if (keyRow) apiKeys.recordUsage(userId, keyRow.id, { requests: 1 });
-      }
-    }
+    // AI writeup - only runs if at least one AI provider key is configured;
+    // otherwise the checklist/scores are still saved and useful on their
+    // own. Uses the fallback chain (Groq -> Gemini -> DeepSeek), so a
+    // single provider being rate-limited or down doesn't skip this step
+    // entirely if another provider is available.
+    const aiResult = await analyzeWithAI(userId, lead, { website, gmb, social });
     if (isCancelled(leadId)) return;
 
     upsertAnalysisRow(leadId, {

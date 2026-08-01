@@ -1380,8 +1380,14 @@ button#huntBtn:disabled, .primary-btn:disabled { background: var(--border); colo
   width: 32px; height: 32px; border-radius: 6px; border: 1px solid var(--border);
   background: var(--panel-raised); color: var(--text-muted); cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center; font-size: 14px;
+  position: relative;
 }
 .platform-tab:hover { color: var(--text); }
+.platform-tab-dot {
+  position: absolute; bottom: -2px; right: -2px; width: 8px; height: 8px;
+  border-radius: 50%; background: transparent; border: 1.5px solid var(--border);
+}
+.platform-tab-dot.done { background: var(--good); border-color: var(--good); }
 .platform-tab.active { border-color: var(--accent); color: var(--accent); background: rgba(255,106,61,0.08); }
 .gen-output-mini {
   background: var(--panel-raised); border: 1px solid var(--border); border-radius: 8px;

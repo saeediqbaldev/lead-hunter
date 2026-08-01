@@ -2,6 +2,7 @@ const express = require("express");
 const asyncHandler = require("../asyncHandler");
 const { testApiKey: testPlacesKey } = require("../placesApi");
 const { testApiKey: testGeminiKey } = require("../gemini");
+const { groqClient, deepseekClient } = require("../openaiCompatible");
 const apiKeys = require("../apiKeys");
 const db = require("../db");
 
@@ -114,6 +115,12 @@ router.use("/keys", createKeyRoutes("google_places", testPlacesKey, "GOOGLE_PLAC
 // Gemini keys (new: /api/settings/gemini-keys/...) - used for business
 // deep-analysis and outreach content generation.
 router.use("/gemini-keys", createKeyRoutes("gemini", testGeminiKey, null));
+
+// Groq keys (new: /api/settings/groq-keys/...) and DeepSeek keys (new:
+// /api/settings/deepseek-keys/...) - both used as fallback AI providers
+// alongside Gemini for business analysis and content generation.
+router.use("/groq-keys", createKeyRoutes("groq", groqClient.testApiKey, null));
+router.use("/deepseek-keys", createKeyRoutes("deepseek", deepseekClient.testApiKey, null));
 
 // GET /api/settings/usage-summary -> this month's usage totals for both
 // providers, for the "Limits Usage" page.

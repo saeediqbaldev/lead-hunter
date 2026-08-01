@@ -6,6 +6,44 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V12.7
+This is the big one - three AI providers with automatic fallback, and a
+complete rebuild of how content generation works, directly motivated by
+the 502 error and hitting Gemini's free-tier quota.
+
+- **Groq and DeepSeek added as full AI providers**, each with their own
+  Settings page (key save/test/activate/delete, same as Gemini). Built via
+  a shared factory function instead of tripling the code. Caught two real
+  bugs before shipping: forgot to register the new pages in the view
+  router (they'd load data but never actually show), and a casing mismatch
+  between the HTML IDs and the JS ("Deepseek" vs "DeepSeek") that would
+  have silently broken every element lookup on that page. Both found via
+  real browser testing.
+- **Automatic AI fallback chain**: Groq tried first (generous free tier +
+  fast), then Gemini, then DeepSeek last. If one fails for any reason -
+  no key, rate-limited, network error - it automatically tries the next
+  instead of failing the request. Tested through 5 real scenarios: no
+  keys, single success, cascading through 2 fallbacks, cascading through
+  all 3, and total failure with a clear aggregated error message.
+- **Content generation rebuilt as a background job**, the same
+  start/status/stop pattern already proven by Inspect. One click now
+  generates all 6 platforms at once in the background - no single HTTP
+  request stays open long enough to hit any reverse-proxy timeout, which
+  is what was actually causing the 502 errors. Tested exhaustively: full
+  success, partial failure (one platform failing doesn't kill the batch),
+  and cancellation (genuinely halts progress, confirmed by waiting well
+  past when it would have naturally finished).
+- **Platform tabs no longer regenerate on click** - they now just display
+  whatever was already generated for that platform, with a small dot
+  indicator showing which platforms are done. Regenerate targets only the
+  currently-viewed platform.
+- **Generated content is now genuinely permanent** until explicitly
+  cleared or regenerated - added a Clear action (per platform). Verified:
+  clearing one platform doesn't touch the others, and the clear persists
+  after closing and reopening the panel.
+- The Inspect feature's AI writeup also now uses the fallback chain
+  instead of being Gemini-only.
+
 ## What's in this V12.6
 - **Real root cause found via the browser diagnostic tool**: HTTP 429,
   `RESOURCE_EXHAUSTED` - the Gemini free tier's daily quota (as low as 20
