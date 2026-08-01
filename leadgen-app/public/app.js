@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.01-12.4";
+const APP_VERSION = "2026.08.01-12.5";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {

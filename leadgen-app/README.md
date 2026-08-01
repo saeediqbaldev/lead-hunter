@@ -6,6 +6,27 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V12.5
+- The improved error message from V12.4 immediately paid off: it revealed
+  "Unexpected token '<'" instead of a generic failure - meaning the
+  response body started with an HTML tag, not JSON. Checked the auth
+  middleware directly to rule it out (it always returns proper JSON on
+  session failures, confirmed by reading the code). The remaining
+  explanation: something in front of the Node app (Coolify's Traefik
+  reverse proxy, or a CDN/WAF if one is in the path) is returning its own
+  HTML error page - most likely because the previous 45s Gemini timeout was
+  longer than that layer's own timeout, so the proxy's timeout fired first
+  and returned HTML before my code's timeout ever got the chance to return
+  a clean JSON error.
+- Reduced the Gemini request timeout to 20s - comfortably under typical
+  reverse-proxy defaults (commonly 30-60s for nginx/Traefik-based setups
+  like Coolify) - so this timeout fires first and always returns real JSON.
+- Added duration logging for every Gemini call (`[gemini] request
+  completed in Xms`) so if this happens again, checking the server logs
+  will show definitively whether it's a genuine slow response, a fast
+  response followed by something else going wrong, or the request never
+  reaching the code at all - rather than guessing blind.
+
 ## What's in this V12.4
 - **Found and definitively fixed "Could not reach the server" for real this
   time**: the true root cause was a well-known Express 4.x gotcha - the

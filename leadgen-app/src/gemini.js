@@ -4,7 +4,13 @@
 // text-generation calls - no need for a heavier SDK dependency for this.
 const GEMINI_MODEL = "gemini-2.5-flash";
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
-const REQUEST_TIMEOUT_MS = 45000;
+// Kept deliberately conservative - well under typical reverse-proxy default
+// timeouts (commonly 30-60s for nginx/Traefik setups like Coolify uses) so
+// THIS timeout fires and returns a clean JSON error before the proxy's own
+// timeout can intervene and return an HTML error page instead, which is
+// what produces "Unexpected token '<'" on the client (attempting to
+// JSON-parse an HTML response).
+const REQUEST_TIMEOUT_MS = 20000;
 
 // A plain fetch() with no timeout can hang indefinitely if Gemini is slow
 // to respond - and structured JSON-schema generation genuinely can take a
@@ -16,8 +22,14 @@ const REQUEST_TIMEOUT_MS = 45000;
 async function fetchWithTimeout(url, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const startedAt = Date.now();
   try {
-    return await fetch(url, { ...options, signal: controller.signal });
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    console.log(`[gemini] request completed in ${Date.now() - startedAt}ms (status ${res.status})`);
+    return res;
+  } catch (err) {
+    console.log(`[gemini] request failed after ${Date.now() - startedAt}ms: ${err.name} - ${err.message}`);
+    throw err;
   } finally {
     clearTimeout(timer);
   }
@@ -87,7 +99,7 @@ async function generateText(apiKey, prompt, { responseSchema } = {}) {
     return { ok: true, text };
   } catch (err) {
     const timedOut = err.name === "AbortError";
-    return { ok: false, error: timedOut ? "Gemini took too long to respond (over 45s) - try again." : `Could not reach Gemini: ${err.message}` };
+    return { ok: false, error: timedOut ? "Gemini took too long to respond (over 20s) - try again, or try a shorter length setting." : `Could not reach Gemini: ${err.message}` };
   }
 }
 
