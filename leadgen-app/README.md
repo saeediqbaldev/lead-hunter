@@ -6,6 +6,38 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V12.3
+- **Fixed a real, confirmed bug**: Gemini API calls had no timeout at all -
+  a plain `fetch()` with nothing to abort it. If Gemini was slow to
+  respond, the request could hang indefinitely, and most reverse proxies
+  (Coolify/Traefik included) kill idle connections around 60s - cutting the
+  connection mid-flight and producing exactly the generic "Could not reach
+  the server" error reported. Added a proper 45s timeout with a clear error
+  message if it's ever hit.
+- **Clarified the "no AI writeup" messaging**: reproduced the key-save-then
+  -lookup flow directly and confirmed it works correctly in isolation, so
+  the most likely explanation for a stale "no Gemini key configured"
+  result is that Inspect was run before the key was saved - "Refresh" only
+  re-displays that same saved result, it doesn't start a new check. The
+  message now says this explicitly instead of leaving it ambiguous.
+- **Fixed the Inspect/Generate panel not being full-width**: found the
+  cause - the panel shares the `.list-row` class (for consistent spacing),
+  which sets a narrow 9-column grid layout at equal CSS specificity to the
+  panel's own full-width flex layout, meaning whichever was later in the
+  stylesheet would win by chance. Pinned the fix explicitly instead of
+  relying on that. Verified: the panel now spans 96% of its container's
+  width (the remaining 4% is just the container's own padding).
+- **Inspect/Generate now available everywhere** (Hunt, Reach Out, Pinned) -
+  removed the mode restriction that limited it to Reach Out only. Since the
+  underlying data was always stored per-lead (not per-view), this needed
+  no backend changes - verified working in Hunt mode directly.
+- **New "Limits Usage" page** under Settings: shows this month's real usage
+  for Google Places and Gemini pulled from your own account, alongside
+  Google's commonly-published free-tier reference figures - clearly marked
+  as approximate, since these numbers have changed more than once in 2026
+  without notice, with links to the official current pages for anything
+  you need to rely on exactly.
+
 ## What's in this V12.2
 This completes the business deep-analysis and outreach content feature
 started in V12.1. Every piece below was verified with real browser

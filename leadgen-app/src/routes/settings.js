@@ -114,4 +114,12 @@ router.use("/keys", createKeyRoutes("google_places", testPlacesKey, "GOOGLE_PLAC
 // deep-analysis and outreach content generation.
 router.use("/gemini-keys", createKeyRoutes("gemini", testGeminiKey, null));
 
+// GET /api/settings/usage-summary -> this month's usage totals for both
+// providers, for the "Limits Usage" page.
+router.get("/usage-summary", (req, res) => {
+  const places = apiKeys.currentMonthUsage(req.session.userId, "google_places");
+  const gemini = apiKeys.currentMonthUsage(req.session.userId, "gemini");
+  res.json({ places, gemini });
+});
+
 module.exports = router;

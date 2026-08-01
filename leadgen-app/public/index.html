@@ -6,7 +6,7 @@
 <title>Xeven Leads</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=122" />
+<link rel="stylesheet" href="style.css?v=123" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -107,6 +107,7 @@
             <button class="nav-leaf nav-leaf-action" data-goto="settings-gemini" id="navSettingsGemini"><i class="bi bi-stars"></i> Gemini AI</button>
             <button class="nav-leaf nav-leaf-action" data-goto="settings-colors" id="navSettingsColors"><i class="bi bi-palette"></i> Colors</button>
             <button class="nav-leaf nav-leaf-action" data-goto="settings-team" id="navSettingsTeam" style="display:none;"><i class="bi bi-people"></i> Team</button>
+            <button class="nav-leaf nav-leaf-action" data-goto="settings-limits" id="navSettingsLimits"><i class="bi bi-speedometer2"></i> Limits Usage</button>
           </div>
         </div>
       </nav>
@@ -508,6 +509,19 @@
         </div>
       </section>
 
+      <!-- ---------- Settings: Limits Usage page ---------- -->
+      <section class="panel settings-view view-hidden" id="settingsLimitsView">
+        <div class="board-header">
+          <div>
+            <h2>Limits Usage</h2>
+            <div class="scope-line">What each API costs, this month's usage, and roughly how much free-tier room you have left</div>
+          </div>
+        </div>
+        <div class="settings-body" id="limitsUsageBody">
+          <p class="hint">Loading…</p>
+        </div>
+      </section>
+
     </section>
 
   </main>
@@ -563,6 +577,6 @@
 
 
 
-  <script src="app.js?v=122"></script>
+  <script src="app.js?v=123"></script>
 </body>
 </html>

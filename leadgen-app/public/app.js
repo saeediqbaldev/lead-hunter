@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.07.31-12.2";
+const APP_VERSION = "2026.08.01-12.3";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -576,6 +576,7 @@ themeResetBtn.addEventListener("click", async () => {
 // ---------- Current user + admin team panel ----------
 const usernameTag = document.getElementById("usernameTag");
 const navSettingsTeam = document.getElementById("navSettingsTeam");
+const navSettingsLimits = document.getElementById("navSettingsLimits");
 const usersList = document.getElementById("usersList");
 const newUsername = document.getElementById("newUsername");
 const newUserPassword = document.getElementById("newUserPassword");
@@ -637,6 +638,79 @@ navSettingsTeam.addEventListener("click", async () => {
   state.lastNavSection = "settings";
   setContentView("settings-team");
   await loadUsers();
+});
+
+// ---------- Limits Usage page ----------
+// The exact free-tier numbers below are Google's commonly-published figures
+// as of mid-2026 - Google has changed these multiple times (e.g. a 50-80%
+// cut in December 2025), and can again without notice. These are shown as
+// an approximate reference point, not a guarantee - the "this month" usage
+// numbers next to them are real and pulled from your own account.
+const USAGE_LIMITS_INFO = [
+  {
+    title: "Google Places API (hunting)",
+    icon: "bi-geo-alt-fill",
+    provider: "google_places",
+    notes: [
+      "Billed via a monthly free credit (not a flat request count) - Essentials-tier fields (name, address, phone, website) are the cheapest; adding ratings pulls in Pro-tier pricing.",
+      "A reasonable rule of thumb: a few thousand Essentials-tier searches per month comfortably fits inside the free credit for most solo/small-team use - exact math depends on which fields you request.",
+    ],
+    link: "https://mapsplatform.google.com/pricing/",
+    linkLabel: "Current official Places API pricing",
+  },
+  {
+    title: "Gemini API (business analysis + content generation)",
+    icon: "bi-stars",
+    provider: "gemini",
+    notes: [
+      "Free tier (Gemini 2.5 Flash, as commonly published mid-2026): roughly 10-15 requests/minute and 250-1,500 requests/day. Google has changed these figures more than once without notice, so treat this as a ballpark, not a guarantee.",
+      "Each Inspect run uses about 1 request; each piece of generated outreach content (per platform) uses about 1 request.",
+    ],
+    link: "https://ai.google.dev/gemini-api/docs/rate-limits",
+    linkLabel: "Current official Gemini rate limits",
+  },
+  {
+    title: "PageSpeed Insights (used during Inspect)",
+    icon: "bi-speedometer2",
+    provider: null,
+    notes: [
+      "Free with no API key required at the volume this app uses it (one check per Inspect run on a business's website). Google doesn't publish a hard cap for this usage level.",
+    ],
+    link: "https://developers.google.com/speed/docs/insights/v5/get-started",
+    linkLabel: "PageSpeed Insights API docs",
+  },
+];
+
+function usageCardHtml(info, usage) {
+  const usageLine = info.provider && usage[info.provider === "google_places" ? "places" : "gemini"]
+    ? `<div class="mono" style="font-size:12px; color:var(--accent); margin-bottom:10px;">This month: ${usage[info.provider === "google_places" ? "places" : "gemini"].totalRequests} requests${info.provider === "google_places" ? ` · ${usage.places.totalLeads} leads captured` : ""}</div>`
+    : "";
+  return `
+    <div class="settings-card">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+        <i class="bi ${info.icon}" style="color:var(--accent); font-size:16px;"></i>
+        <strong style="font-family:var(--font-display);">${info.title}</strong>
+      </div>
+      ${usageLine}
+      ${info.notes.map((n) => `<p class="hint" style="margin:0 0 8px 0;">${n}</p>`).join("")}
+      <a href="${info.link}" target="_blank" rel="noopener" style="font-size:12px;">${info.linkLabel} <i class="bi bi-box-arrow-up-right"></i></a>
+    </div>`;
+}
+
+navSettingsLimits.addEventListener("click", async () => {
+  state.lastNavSection = "settings";
+  setContentView("settings-limits");
+  const body = document.getElementById("limitsUsageBody");
+  body.innerHTML = `<p class="hint">Loading…</p>`;
+  try {
+    const res = await api("/api/settings/usage-summary");
+    const usage = await res.json();
+    body.innerHTML =
+      `<p class="hint" style="margin-bottom:16px;">Numbers marked "This month" are your real usage, pulled from your own account. The free-tier figures next to them are Google's commonly-published reference numbers as of mid-2026 - Google has changed these before without notice, so use the linked official pages for anything you need to rely on exactly.</p>` +
+      USAGE_LIMITS_INFO.map((info) => usageCardHtml(info, usage)).join("");
+  } catch (err) {
+    body.innerHTML = `<p class="hint">Could not load usage data.</p>`;
+  }
 });
 
 adminCreateBtn.addEventListener("click", async () => {
@@ -1015,6 +1089,7 @@ function setContentView(view) {
     "settings-gemini": document.getElementById("settingsGeminiView"),
     "settings-colors": document.getElementById("settingsColorsView"),
     "settings-team": document.getElementById("settingsTeamView"),
+    "settings-limits": document.getElementById("settingsLimitsView"),
   };
   Object.entries(ALL_VIEWS).forEach(([name, el]) => {
     if (!el) return;
@@ -2198,7 +2273,7 @@ function renderInspectSectionBody(analysis, lead) {
       <div class="sw-col-mini strengths"><h4><i class="bi bi-arrow-up-circle-fill"></i> Strengths</h4><ul class="sw-list-mini">${analysis.strengths.map((s) => `<li>${s}</li>`).join("")}</ul></div>
       <div class="sw-col-mini weaknesses"><h4><i class="bi bi-arrow-down-circle-fill"></i> Weaknesses</h4><ul class="sw-list-mini">${analysis.weaknesses.map((s) => `<li>${s}</li>`).join("")}</ul></div>
     </div>`
-        : `<div class="inspect-empty">No Gemini key configured, so the AI writeup (strengths/weaknesses/suggested services) was skipped - the checklist and scores above are still fully accurate.</div>`
+        : `<div class="inspect-empty">No AI writeup was generated on this run (checklist and scores above are still fully accurate either way). If you've added a Gemini key since this was last inspected, click <strong>Inspect</strong> again to re-run it with your current key - "Refresh" only re-displays this same saved result, it doesn't start a new check.</div>`
     }
     ${
       analysis.suggestedServices.length
@@ -2291,8 +2366,6 @@ function buildExpandPanelHtml(lead) {
 }
 
 async function toggleLeadExpand(leadId) {
-  if (state.mode !== "outreach") return; // Inspect/Generate only applies in Reach Out, per spec
-
   const row = recordsBody.querySelector(`.list-row[data-lead-row-id="${leadId}"]`);
   if (!row) return;
 
@@ -2430,7 +2503,6 @@ async function toggleLeadExpand(leadId) {
 }
 
 recordsBody.addEventListener("click", (e) => {
-  if (state.mode !== "outreach") return;
   if (e.target.closest(".lead-expand-row")) return; // clicks inside the expand panel itself are handled separately
   if (e.target.closest(".row-status-dropdown, .row-actions, a, button")) return; // don't hijack interactive elements
   const row = e.target.closest(".list-row[data-lead-row-id]");

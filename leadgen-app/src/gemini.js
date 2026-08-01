@@ -4,6 +4,24 @@
 // text-generation calls - no need for a heavier SDK dependency for this.
 const GEMINI_MODEL = "gemini-2.5-flash";
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
+const REQUEST_TIMEOUT_MS = 45000;
+
+// A plain fetch() with no timeout can hang indefinitely if Gemini is slow
+// to respond - and structured JSON-schema generation genuinely can take a
+// while. Most reverse proxies (Coolify/Traefik included) kill idle
+// connections around 60s, which would cut the request mid-flight and
+// surface as a generic connection failure on the client with no useful
+// error message. This wraps every Gemini call with an explicit timeout so
+// a slow response fails cleanly and quickly instead.
+async function fetchWithTimeout(url, options = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 // GET /v1beta/models is a free, lightweight call (lists available models)
 // - good enough to validate a key actually works without spending any real
@@ -13,7 +31,7 @@ async function testApiKey(apiKey) {
     return { ok: false, error: "Enter an API key first." };
   }
   try {
-    const res = await fetch(`${GEMINI_BASE}/models`, {
+    const res = await fetchWithTimeout(`${GEMINI_BASE}/models`, {
       headers: { "x-goog-api-key": apiKey.trim() },
     });
     if (res.ok) return { ok: true };
@@ -28,7 +46,8 @@ async function testApiKey(apiKey) {
     }
     return { ok: false, error: message };
   } catch (err) {
-    return { ok: false, error: `Could not reach Google's servers: ${err.message}` };
+    const timedOut = err.name === "AbortError";
+    return { ok: false, error: timedOut ? "Timed out waiting for Google's servers." : `Could not reach Google's servers: ${err.message}` };
   }
 }
 
@@ -44,7 +63,7 @@ async function generateText(apiKey, prompt, { responseSchema } = {}) {
   }
 
   try {
-    const res = await fetch(`${GEMINI_BASE}/models/${GEMINI_MODEL}:generateContent`, {
+    const res = await fetchWithTimeout(`${GEMINI_BASE}/models/${GEMINI_MODEL}:generateContent`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
       body: JSON.stringify(body),
@@ -67,7 +86,8 @@ async function generateText(apiKey, prompt, { responseSchema } = {}) {
     if (!text) return { ok: false, error: "Gemini returned an empty response." };
     return { ok: true, text };
   } catch (err) {
-    return { ok: false, error: `Could not reach Gemini: ${err.message}` };
+    const timedOut = err.name === "AbortError";
+    return { ok: false, error: timedOut ? "Gemini took too long to respond (over 45s) - try again." : `Could not reach Gemini: ${err.message}` };
   }
 }
 

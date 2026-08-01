@@ -113,6 +113,26 @@ function dailyUsageHistory(userId, days = 90, provider = DEFAULT_PROVIDER) {
     .all(userId, provider, startStr);
 }
 
+// Sum of usage within the current calendar month, per key - used by the
+// Settings "Limits Usage" page so the user can see where they stand against
+// approximate free-tier caps without needing to check Google's console.
+function currentMonthUsage(userId, provider = DEFAULT_PROVIDER) {
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  const monthStartStr = monthStart.toISOString().slice(0, 10);
+
+  const rows = db
+    .prepare(
+      `SELECT COALESCE(SUM(d.requests_made), 0) AS totalRequests, COALESCE(SUM(d.leads_caught), 0) AS totalLeads
+       FROM api_key_daily_usage d
+       JOIN api_keys k ON k.id = d.api_key_id
+       WHERE k.user_id = ? AND k.provider = ? AND d.usage_date >= ?`
+    )
+    .get(userId, provider, monthStartStr);
+
+  return { totalRequests: rows.totalRequests || 0, totalLeads: rows.totalLeads || 0 };
+}
+
 module.exports = {
   listKeys,
   getKeyById,
@@ -125,4 +145,5 @@ module.exports = {
   todaysUsage,
   allTimeUsage,
   dailyUsageHistory,
+  currentMonthUsage,
 };

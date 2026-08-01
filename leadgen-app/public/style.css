@@ -1293,19 +1293,27 @@ button#huntBtn:disabled, .primary-btn:disabled { background: var(--border); colo
 .toast.error i { color: var(--danger); }
 .toast.info i { color: var(--accent); }
 
-/* ---------- Lead expand panel (Inspect + Generate content, Reach Out only) ---------- */
+/* ---------- Lead expand panel (Inspect + Generate content) ---------- */
 .list-row.expandable { cursor: pointer; }
 .lead-expand-row {
+  /* .lead-expand-row also carries the .list-row class (for consistent
+     row-list styling/spacing), which sets display:grid with a narrow
+     9-column template - at equal selector specificity that would win by
+     cascade order alone, so this is pinned explicitly rather than relying
+     on stylesheet ordering, which is exactly the kind of subtle bug that's
+     bitten this app before. */
+  display: flex !important;
   grid-column: 1 / -1;
+  width: 100%;
+  box-sizing: border-box;
   background: var(--panel-raised);
   border-bottom: 1px solid var(--border);
   padding: 18px 22px;
-  display: flex;
   flex-direction: column;
   gap: 18px;
 }
 
-.expand-section { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+.expand-section { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; width: 100%; box-sizing: border-box; }
 .expand-section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .expand-section-title { font-family: var(--font-display); font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 8px; }
 .expand-actions { display: flex; gap: 6px; }
