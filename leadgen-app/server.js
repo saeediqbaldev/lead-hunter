@@ -77,6 +77,18 @@ app.use("/api/backup", requireAuth, backupRoute);
 
 app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
 
+// Safety net: Express 4 does not automatically catch errors thrown inside
+// async route handlers (only Express 5 does this natively) - without this,
+// an unexpected error in any route would leave the request hanging with no
+// response ever sent, until the reverse proxy's own timeout eventually
+// returned a generic HTML error page instead of JSON. This guarantees
+// every request gets a real, JSON-formatted response no matter what fails.
+app.use((err, req, res, next) => {
+  console.error("Unhandled route error:", err);
+  if (res.headersSent) return next(err);
+  res.status(500).json({ error: `Server error: ${err.message || "unknown error"}` });
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Lead-gen app running on port ${PORT}`);

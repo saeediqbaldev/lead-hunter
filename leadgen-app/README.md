@@ -6,6 +6,30 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V12.4
+- **Found and definitively fixed "Could not reach the server" for real this
+  time**: the true root cause was a well-known Express 4.x gotcha - the
+  framework does NOT automatically catch errors thrown inside `async`
+  route handlers (only Express 5 does this natively). The
+  `/generate-content` route had no try/catch, so if anything unexpected
+  threw, the request would hang indefinitely with no response ever sent,
+  until the reverse proxy's own timeout eventually returned an HTML error
+  page instead of JSON. Proved this concretely: made the route throw on
+  purpose, confirmed it would have hung before the fix, confirmed it now
+  returns instantly with a real error message after. Fixed with an
+  explicit try/catch on that route, a reusable `asyncHandler` wrapper
+  applied to the other routes making real external API calls (Settings key
+  test/save), and a global Express error-handling safety net so this class
+  of bug can't silently hang a request anywhere else in the app again.
+- **New Length selector** next to Tone in the content generator: Detailed /
+  Medium / Short / Concise, each mapped to real prompt guidance controlling
+  actual output length. Verified end-to-end: generating with a selected
+  length actually reflects it, switching platform tabs correctly carries
+  the length through automatically (same as tone), regenerating with a
+  newly-changed length correctly picks up the new value, and each
+  platform's length is saved and restored independently when reopening the
+  panel.
+
 ## What's in this V12.3
 - **Fixed a real, confirmed bug**: Gemini API calls had no timeout at all -
   a plain `fetch()` with nothing to abort it. If Gemini was slow to

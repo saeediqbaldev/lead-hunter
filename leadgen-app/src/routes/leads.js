@@ -1,5 +1,6 @@
 const express = require("express");
 const db = require("../db");
+const asyncHandler = require("../asyncHandler");
 const { buildCatchLogCsv, buildCatchLogPdf, buildNicheXlsx, buildExportFilename } = require("../export");
 const apiKeys = require("../apiKeys");
 
@@ -230,45 +231,57 @@ router.post("/:id/inspect/stop", (req, res) => {
 });
 
 // ---------- Outreach content generation ----------
-const { generateOutreachContent, TONES } = require("../outreachContent");
+const { generateOutreachContent, TONES, LENGTHS } = require("../outreachContent");
 
 // GET /api/leads/:id/outreach-content -> everything already generated+saved for this lead
 router.get("/:id/outreach-content", (req, res) => {
   const lead = getOwnedLead(req.session.userId, req.params.id);
   if (!lead) return res.status(404).json({ error: "Lead not found" });
 
-  const rows = db.prepare("SELECT platform, tone, content, generated_at FROM outreach_content WHERE lead_id = ?").all(req.params.id);
-  res.json({ tones: TONES, content: rows });
+  const rows = db.prepare("SELECT platform, tone, length, content, generated_at FROM outreach_content WHERE lead_id = ?").all(req.params.id);
+  res.json({ tones: TONES, lengths: LENGTHS, content: rows });
 });
 
 // POST /api/leads/:id/generate-content { platform, tone } -> generates AND
 // auto-saves (overwriting any previous content for this platform), per the
 // "no need to click Generate again when switching platform tabs" flow.
 router.post("/:id/generate-content", async (req, res) => {
-  const lead = getOwnedLeadWithContext(req.session.userId, req.params.id);
-  if (!lead) return res.status(404).json({ error: "Lead not found" });
+  try {
+    const lead = getOwnedLeadWithContext(req.session.userId, req.params.id);
+    if (!lead) return res.status(404).json({ error: "Lead not found" });
 
-  const { platform, tone } = req.body || {};
-  if (!platform || !tone) return res.status(400).json({ error: "platform and tone are required" });
+    const { platform, tone, length } = req.body || {};
+    if (!platform || !tone) return res.status(400).json({ error: "platform and tone are required" });
 
-  const geminiKeyRow = apiKeys.getActiveKey(req.session.userId, "gemini");
-  if (!geminiKeyRow) {
-    return res.status(400).json({ error: "No Gemini API key configured - add one in Settings → Gemini AI." });
+    const geminiKeyRow = apiKeys.getActiveKey(req.session.userId, "gemini");
+    if (!geminiKeyRow) {
+      return res.status(400).json({ error: "No Gemini API key configured - add one in Settings → Gemini AI." });
+    }
+
+    const analysis = analysisJobs.getAnalysis(Number(req.params.id));
+    const result = await generateOutreachContent(geminiKeyRow.key_value, { lead, platform, tone, length, analysis });
+
+    if (!result.ok) return res.status(502).json({ error: result.error });
+
+    apiKeys.recordUsage(req.session.userId, geminiKeyRow.id, { requests: 1 });
+
+    db.prepare(
+      `INSERT INTO outreach_content (lead_id, platform, tone, length, content, generated_at) VALUES (?, ?, ?, ?, ?, datetime('now'))
+       ON CONFLICT(lead_id, platform) DO UPDATE SET tone = excluded.tone, length = excluded.length, content = excluded.content, generated_at = excluded.generated_at`
+    ).run(req.params.id, platform, tone, length || null, result.content);
+
+    res.json({ ok: true, platform, tone, length, content: result.content });
+  } catch (err) {
+    console.error("generate-content failed:", err);
+    // Express 4 does NOT automatically catch errors thrown inside async
+    // route handlers (that only changed in Express 5) - without this
+    // try/catch, an unexpected error here would leave the request hanging
+    // with no response ever sent, until the reverse proxy's own timeout
+    // eventually returned an HTML error page instead of JSON, which is
+    // exactly what produces a generic "could not reach the server" on the
+    // frontend instead of a real, useful error message.
+    res.status(500).json({ error: `Server error: ${err.message}` });
   }
-
-  const analysis = analysisJobs.getAnalysis(Number(req.params.id));
-  const result = await generateOutreachContent(geminiKeyRow.key_value, { lead, platform, tone, analysis });
-
-  if (!result.ok) return res.status(502).json({ error: result.error });
-
-  apiKeys.recordUsage(req.session.userId, geminiKeyRow.id, { requests: 1 });
-
-  db.prepare(
-    `INSERT INTO outreach_content (lead_id, platform, tone, content, generated_at) VALUES (?, ?, ?, ?, datetime('now'))
-     ON CONFLICT(lead_id, platform) DO UPDATE SET tone = excluded.tone, content = excluded.content, generated_at = excluded.generated_at`
-  ).run(req.params.id, platform, tone, result.content);
-
-  res.json({ ok: true, platform, tone, content: result.content });
 });
 
 // GET /api/leads/pinned/list -> every pinned lead this user has, with niche

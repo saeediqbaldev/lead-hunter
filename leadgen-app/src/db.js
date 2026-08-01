@@ -410,4 +410,9 @@ CREATE TABLE IF NOT EXISTS outreach_content (
 );
 `);
 
+{
+  const outreachContentCols = db.prepare("PRAGMA table_info(outreach_content)").all().map((c) => c.name);
+  if (!outreachContentCols.includes("length")) db.exec("ALTER TABLE outreach_content ADD COLUMN length TEXT");
+}
+
 module.exports = db;

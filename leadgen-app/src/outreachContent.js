@@ -28,8 +28,16 @@ const PLATFORM_GUIDANCE = {
   whatsapp: "Format as a WhatsApp message - short, friendly, conversational, 2-4 sentences, no subject line.",
 };
 
-function buildContentPrompt({ lead, platform, tone, analysis }) {
+const LENGTH_GUIDANCE = {
+  Detailed: "Write a detailed, thorough message - several sentences or short paragraphs, covering the context fully.",
+  Medium: "Write a medium-length message - a few sentences, balanced between brief and thorough.",
+  Short: "Write a short message - 2-3 sentences at most, get to the point quickly.",
+  Concise: "Write an extremely concise message - 1-2 sentences total, as brief as possible while still being complete and natural.",
+};
+
+function buildContentPrompt({ lead, platform, tone, length, analysis }) {
   const platformGuidance = PLATFORM_GUIDANCE[platform] || PLATFORM_GUIDANCE.email;
+  const lengthGuidance = LENGTH_GUIDANCE[length] || "";
 
   let context = `Business: ${lead.name}\nCategory: ${lead.niche_name || "local business"}\nLocation: ${lead.city_name || lead.address || "unknown"}`;
 
@@ -47,6 +55,7 @@ ${context}
 
 Tone/approach to use: "${tone}"
 ${platformGuidance}
+${lengthGuidance ? `Length: ${lengthGuidance}` : ""}
 
 Write the message now. Requirements:
 - Professional, humanized, natural-sounding - not generic template language a business owner would recognize as spam
@@ -56,8 +65,8 @@ Write the message now. Requirements:
 - Output ONLY the message content itself, nothing else (no preamble, no explanation)`;
 }
 
-async function generateOutreachContent(apiKey, { lead, platform, tone, analysis }) {
-  const prompt = buildContentPrompt({ lead, platform, tone, analysis });
+async function generateOutreachContent(apiKey, { lead, platform, tone, length, analysis }) {
+  const prompt = buildContentPrompt({ lead, platform, tone, length, analysis });
   const result = await generateText(apiKey, prompt);
   if (!result.ok) return result;
 
@@ -65,4 +74,6 @@ async function generateOutreachContent(apiKey, { lead, platform, tone, analysis 
   return { ok: true, content };
 }
 
-module.exports = { TONES, PLATFORM_GUIDANCE, SIGNATURE, buildContentPrompt, generateOutreachContent };
+const LENGTHS = ["Detailed", "Medium", "Short", "Concise"];
+
+module.exports = { TONES, LENGTHS, PLATFORM_GUIDANCE, SIGNATURE, buildContentPrompt, generateOutreachContent };

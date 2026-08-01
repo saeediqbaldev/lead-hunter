@@ -1,4 +1,5 @@
 const express = require("express");
+const asyncHandler = require("../asyncHandler");
 const { testApiKey: testPlacesKey } = require("../placesApi");
 const { testApiKey: testGeminiKey } = require("../gemini");
 const apiKeys = require("../apiKeys");
@@ -57,16 +58,16 @@ function createKeyRoutes(provider, testFn, envFallbackVar) {
     });
   });
 
-  sub.post("/test-value", async (req, res) => {
+  sub.post("/test-value", asyncHandler(async (req, res) => {
     const { apiKey } = req.body || {};
     if (!apiKey || !apiKey.trim()) {
       return res.status(400).json({ ok: false, error: "Enter an API key first." });
     }
     const result = await testFn(apiKey.trim());
     res.json(result);
-  });
+  }));
 
-  sub.post("/", async (req, res) => {
+  sub.post("/", asyncHandler(async (req, res) => {
     const { label, apiKey } = req.body || {};
     if (!apiKey || !apiKey.trim()) {
       return res.status(400).json({ error: "apiKey is required" });
@@ -81,14 +82,14 @@ function createKeyRoutes(provider, testFn, envFallbackVar) {
 
     const row = apiKeys.insertKey(req.session.userId, trimmedLabel, trimmedKey, provider);
     res.json(toPublicRow(row));
-  });
+  }));
 
-  sub.post("/:id/test", async (req, res) => {
+  sub.post("/:id/test", asyncHandler(async (req, res) => {
     const row = apiKeys.getKeyById(req.session.userId, req.params.id);
     if (!row) return res.status(404).json({ ok: false, error: "Key not found" });
     const result = await testFn(row.key_value);
     res.json(result);
-  });
+  }));
 
   sub.post("/:id/activate", (req, res) => {
     const row = apiKeys.getKeyById(req.session.userId, req.params.id);

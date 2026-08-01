@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.01-12.3";
+const APP_VERSION = "2026.08.01-12.4";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -2190,6 +2190,7 @@ const CONTENT_TONES = [
   "Value-First / Free Audit",
   "Question-Based Conversation",
 ];
+const CONTENT_LENGTHS = ["Detailed", "Medium", "Short", "Concise"];
 
 function closeAllLeadExpansions() {
   if (inspectPollTimer) {
@@ -2302,13 +2303,13 @@ async function loadAndRenderInspect(leadId, bodyEl) {
   }
 }
 
-async function generateContentForPlatform(leadId, platform, tone, outputEl) {
+async function generateContentForPlatform(leadId, platform, tone, length, outputEl) {
   outputEl.innerHTML = `<div class="inspect-progress"><span class="inspect-spinner"></span> Generating ${platform} content…</div>`;
   try {
     const res = await api(`/api/leads/${leadId}/generate-content`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ platform, tone }),
+      body: JSON.stringify({ platform, tone, length }),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -2319,7 +2320,7 @@ async function generateContentForPlatform(leadId, platform, tone, outputEl) {
     outputEl.textContent = data.content;
     showToast(`${platform.charAt(0).toUpperCase() + platform.slice(1)} content generated`, "success");
   } catch (err) {
-    outputEl.innerHTML = `<div style="color:var(--danger);">Could not reach the server.</div>`;
+    outputEl.innerHTML = `<div style="color:var(--danger);">Network error: ${err.message || "could not reach the server"}. Try again - if this keeps happening, check your connection.</div>`;
   }
 }
 
@@ -2348,6 +2349,9 @@ function buildExpandPanelHtml(lead) {
         <select class="gen-tone-select" data-tone-select>
           <option value="">Select a tone/format…</option>
           ${CONTENT_TONES.map((t) => `<option value="${t}">${t}</option>`).join("")}
+        </select>
+        <select class="gen-tone-select" data-length-select style="flex:0 0 140px; min-width:120px;">
+          ${CONTENT_LENGTHS.map((l) => `<option value="${l}" ${l === "Medium" ? "selected" : ""}>${l}</option>`).join("")}
         </select>
         <button type="button" class="expand-actions-btn" data-action="generate-email" style="background:var(--accent); color:#1a1310; border:none; border-radius:6px; padding:7px 14px; font-size:12px; font-weight:600; cursor:pointer;">
           <i class="bi bi-stars"></i> Generate Content
@@ -2385,6 +2389,7 @@ async function toggleLeadExpand(leadId) {
 
   let currentPlatform = "email";
   let currentTone = "";
+  let currentLength = "Medium";
 
   const inspectBody = expandRow.querySelector("[data-inspect-body]");
   await loadAndRenderInspect(leadId, inspectBody);
@@ -2393,6 +2398,7 @@ async function toggleLeadExpand(leadId) {
   const savedContent = outreachContentRes && outreachContentRes.ok ? (await outreachContentRes.json()).content : [];
   const outputEl = expandRow.querySelector("[data-gen-output]");
   const toneSelect = expandRow.querySelector("[data-tone-select]");
+  const lengthSelect = expandRow.querySelector("[data-length-select]");
 
   function showSavedOrPlaceholder(platform) {
     const saved = savedContent.find((c) => c.platform === platform);
@@ -2401,6 +2407,10 @@ async function toggleLeadExpand(leadId) {
       if (saved.tone) {
         toneSelect.value = saved.tone;
         currentTone = saved.tone;
+      }
+      if (saved.length) {
+        lengthSelect.value = saved.length;
+        currentLength = saved.length;
       }
     } else {
       outputEl.innerHTML = `Select a tone, then click "Generate Content" (starts with Email). Switching platform tabs afterward will auto-generate for that platform using the same tone.`;
@@ -2456,13 +2466,14 @@ async function toggleLeadExpand(leadId) {
 
     if (action === "generate-email") {
       currentTone = toneSelect.value;
+      currentLength = lengthSelect.value;
       if (!currentTone) {
         showToast("Pick a tone/format first", "error");
         return;
       }
       currentPlatform = "email";
       expandRow.querySelectorAll(".platform-tab").forEach((t) => t.classList.toggle("active", t.dataset.platform === "email"));
-      await generateContentForPlatform(leadId, "email", currentTone, outputEl);
+      await generateContentForPlatform(leadId, "email", currentTone, currentLength, outputEl);
       return;
     }
 
@@ -2473,11 +2484,12 @@ async function toggleLeadExpand(leadId) {
     }
 
     if (action === "regenerate-content") {
+      currentLength = lengthSelect.value;
       if (!currentTone) {
         showToast("Pick a tone/format first", "error");
         return;
       }
-      await generateContentForPlatform(leadId, currentPlatform, currentTone, outputEl);
+      await generateContentForPlatform(leadId, currentPlatform, currentTone, currentLength, outputEl);
       return;
     }
 
@@ -2490,14 +2502,16 @@ async function toggleLeadExpand(leadId) {
       if (!currentTone) {
         currentTone = toneSelect.value;
       }
+      currentLength = lengthSelect.value;
       if (!currentTone) {
         showToast("Pick a tone/format first", "error");
         outputEl.innerHTML = `Select a tone/format above first, then this platform will generate automatically.`;
         return;
       }
       // Per spec: switching platform tabs auto-generates for that platform
-      // using the currently-selected tone - no need to click Generate again.
-      await generateContentForPlatform(leadId, platform, currentTone, outputEl);
+      // using the currently-selected tone (and length) - no need to click
+      // Generate again.
+      await generateContentForPlatform(leadId, platform, currentTone, currentLength, outputEl);
     }
   });
 }
