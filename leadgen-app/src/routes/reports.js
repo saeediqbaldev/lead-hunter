@@ -14,12 +14,27 @@ const RANGE_DAYS = {
   all: null,
 };
 
+// The app's day boundary (when "today" flips over) is anchored to this
+// timezone offset, not the server's own local time (which is typically
+// UTC in a Docker container) or a rolling 24-hour window. Defaults to
+// Pakistan (UTC+5) per the app's primary usage.
+const TIMEZONE_OFFSET_HOURS = 5;
+
 function rangeStartDate(rangeKey) {
   const days = RANGE_DAYS[rangeKey];
   if (!days) return null; // "all time" - no lower bound
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d.toISOString().slice(0, 10) + " 00:00:00";
+
+  const offsetMs = TIMEZONE_OFFSET_HOURS * 3600000;
+  const now = new Date();
+  // Shift "now" into the target timezone's wall-clock time, truncate to
+  // that day's midnight, then shift back to UTC for the DB comparison
+  // (created_at is stored in UTC via SQLite's datetime('now')).
+  const shiftedNow = new Date(now.getTime() + offsetMs);
+  const todayMidnightShifted = Date.UTC(shiftedNow.getUTCFullYear(), shiftedNow.getUTCMonth(), shiftedNow.getUTCDate());
+  const startOfRangeShifted = todayMidnightShifted - (days - 1) * 86400000; // "1d" = just today, "7d" = today + 6 prior days
+  const startUtc = new Date(startOfRangeShifted - offsetMs);
+
+  return startUtc.toISOString().slice(0, 19).replace("T", " ");
 }
 
 const STATUS_KEYS = ["new", "shortlisted", "contacted", "engaged", "converted", "won", "rejected"];

@@ -49,6 +49,7 @@ function getAnalysis(leadId) {
     strengths: row.strengths ? JSON.parse(row.strengths) : [],
     weaknesses: row.weaknesses ? JSON.parse(row.weaknesses) : [],
     suggestedServices: row.suggested_services ? JSON.parse(row.suggested_services) : [],
+    provider: row.provider,
     error: row.error,
     updatedAt: row.updated_at,
   };
@@ -104,6 +105,7 @@ async function runPipeline(userId, leadId, lead) {
       weaknesses: JSON.stringify(aiResult.ok ? aiResult.weaknesses : []),
       suggested_services: JSON.stringify(aiResult.ok ? aiResult.suggestedServices : []),
       raw_data: JSON.stringify({ aiError: aiResult.ok ? null : aiResult.error }),
+      provider: aiResult.ok ? aiResult.provider : null,
       status: "done",
       current_step: null,
     });

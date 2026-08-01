@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.01-12.7";
+const APP_VERSION = "2026.08.01-12.8";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -971,6 +971,21 @@ modalInput.addEventListener("keydown", (e) => {
   }
 });
 
+// Escape closes whatever's currently open - the confirm/prompt modal takes
+// priority, otherwise any open dropdown-style popup gets closed. Doesn't
+// touch the sidebar accordion sections (Hunt/Reach Out/Pinned/Reports),
+// since those are persistent navigation, not transient popups.
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (modalOverlay.style.display !== "none") {
+    closeModal(null);
+    return;
+  }
+  document
+    .querySelectorAll(".theme-dropdown.open, [data-export-menu].open, #exportViewMenu.open, .row-status-dropdown.open")
+    .forEach((el) => el.classList.remove("open"));
+});
+
 // ---------- DOM refs ----------
 const searchForm = document.getElementById("searchForm");
 const huntBtn = document.getElementById("huntBtn");
@@ -1024,6 +1039,7 @@ const SORT_OPTIONS = [
   { value: "created_at", label: "Latest first", color: "#948d80" },
   { value: "name", label: "Name (A-Z)", color: "#7fa8d9" },
   { value: "rating", label: "Rating (high-low)", color: "#7fb88a" },
+  { value: "needs_count", label: "Most needed first", color: "#ff6a3d" },
 ];
 
 const catchLogNameInput = document.getElementById("catchLogName");
@@ -1856,6 +1872,7 @@ const OUTREACH_STATUS_LIST = [
   { key: "engaged", label: "Engaged" },
   { key: "converted", label: "Converted" },
   { key: "won", label: "Won" },
+  { key: "rejected", label: "Rejected" },
 ];
 
 // Instantly nudges a status-leaf's badge count in the currently-rendered
@@ -1879,45 +1896,50 @@ async function renderOutreachTree() {
     return;
   }
 
-  const blocks = await Promise.all(
-    state.niches.map(async (niche) => {
+  // Summaries are fetched for every niche (not just open ones) because a
+  // niche needs to be hidden entirely once ALL its cities have zero leads
+  // outside "new" - that decision can't be made without knowing every
+  // niche's totals, regardless of which ones happen to be expanded.
+  const allSummaries = await Promise.all(state.niches.map((niche) => getOutreachSummary(niche.id)));
+
+  const blocks = state.niches
+    .map((niche, i) => {
+      const summary = allSummaries[i];
+      const visibleCities = summary.filter((city) => city.total > 0);
+      if (visibleCities.length === 0) return null; // hide this niche entirely - nothing to reach out to
+
       const isOpen = state.outreachOpenNicheIds.has(niche.id);
       let citiesHtml = "";
       if (isOpen) {
-        const summary = await getOutreachSummary(niche.id);
-        citiesHtml = summary.length
-          ? summary
-              .map((city) => {
-                const cityKey = `${niche.id}:${city.catchLogId}`;
-                const cityOpen = state.outreachOpenCityIds.has(cityKey);
-                const cityTotal =
-                  city.shortlisted + city.contacted + city.engaged + city.converted + city.won;
+        citiesHtml = visibleCities
+          .map((city) => {
+            const cityKey = `${niche.id}:${city.catchLogId}`;
+            const cityOpen = state.outreachOpenCityIds.has(cityKey);
 
-                const statusLeaves = OUTREACH_STATUS_LIST.map(
-                  (s) => `
-                  <div class="status-leaf-row ${
-                    state.outreach.catchLogId === city.catchLogId && state.outreach.status === s.key && state.mode === "outreach"
-                      ? "active"
-                      : ""
-                  }" data-niche-id="${niche.id}" data-log-id="${city.catchLogId}" data-status="${s.key}">
-                    <span class="outreach-badge ${s.key}">${city[s.key]}</span>
-                    <span class="status-leaf-label">${s.label}</span>
-                  </div>`
-                ).join("");
+            const statusLeaves = OUTREACH_STATUS_LIST.map(
+              (s) => `
+              <div class="status-leaf-row ${
+                state.outreach.catchLogId === city.catchLogId && state.outreach.status === s.key && state.mode === "outreach"
+                  ? "active"
+                  : ""
+              }" data-niche-id="${niche.id}" data-log-id="${city.catchLogId}" data-status="${s.key}">
+                <span class="outreach-badge ${s.key}">${city[s.key]}</span>
+                <span class="status-leaf-label">${s.label}</span>
+              </div>`
+            ).join("");
 
-                const isCityActiveParent = state.mode === "outreach" && state.outreach.catchLogId === city.catchLogId;
-                return `
-                <div class="catchlog-block ${cityOpen ? "open" : ""}">
-                  <div class="catchlog-row outreach-city-row ${isCityActiveParent ? "active-parent" : ""}" data-action="toggle-outreach-city" data-niche-id="${niche.id}" data-log-id="${city.catchLogId}">
-                    <span class="niche-caret small">▶</span>
-                    <div class="catchlog-name">${city.catchLogName}</div>
-                    <div class="catchlog-meta">${cityTotal} total</div>
-                  </div>
-                  <div class="status-leaf-list">${statusLeaves}</div>
-                </div>`;
-              })
-              .join("")
-          : `<div class="catchlog-row"><span class="catchlog-meta">No catch logs yet</span></div>`;
+            const isCityActiveParent = state.mode === "outreach" && state.outreach.catchLogId === city.catchLogId;
+            return `
+            <div class="catchlog-block ${cityOpen ? "open" : ""}">
+              <div class="catchlog-row outreach-city-row ${isCityActiveParent ? "active-parent" : ""}" data-action="toggle-outreach-city" data-niche-id="${niche.id}" data-log-id="${city.catchLogId}">
+                <span class="niche-caret small">▶</span>
+                <div class="catchlog-name">${city.catchLogName}</div>
+                <div class="catchlog-meta">${city.total} total</div>
+              </div>
+              <div class="status-leaf-list">${statusLeaves}</div>
+            </div>`;
+          })
+          .join("");
       }
 
       return `
@@ -1926,15 +1948,17 @@ async function renderOutreachTree() {
             <div class="niche-row-main">
               <span class="niche-caret">▶</span>
               <span class="niche-name">${niche.name}</span>
-              <span class="niche-count">${niche.catch_log_count} cit${niche.catch_log_count === 1 ? "y" : "ies"}</span>
+              <span class="niche-count">${visibleCities.length} cit${visibleCities.length === 1 ? "y" : "ies"}</span>
             </div>
           </div>
           <div class="catchlog-list">${citiesHtml}</div>
         </div>`;
     })
-  );
+    .filter(Boolean);
 
-  outreachTree.innerHTML = blocks.join("");
+  outreachTree.innerHTML = blocks.length
+    ? blocks.join("")
+    : `<div class="empty-state">No leads have moved out of Hunt yet. Shortlist or otherwise update a lead's status to see it here.</div>`;
 }
 
 // ---------- Pinned tree (Niche -> City -> pinned leads) ----------
@@ -2176,6 +2200,26 @@ clearScopeBtn.addEventListener("click", async () => {
   await loadLeads();
 });
 
+document.getElementById("showAllRecordsBtn").addEventListener("click", () => clearScopeBtn.click());
+
+document.getElementById("resetFiltersBtn").addEventListener("click", async () => {
+  filterSearch.value = "";
+  filterState.need = "";
+  state.sortBy = "created_at";
+  state.sortDir = null;
+  state.activeNicheId = null;
+  state.activeCatchLogId = null;
+  state.page = 1;
+  updateScopeLine();
+  renderNichesTree();
+  renderQuickNicheDropdown();
+  renderQuickCityDropdown();
+  renderNeedDropdown();
+  renderSortDropdown();
+  await loadLeads();
+  showToast("Filters reset", "success");
+});
+
 // ---------- Leads board ----------
 function mapsLinkFor(lead) {
   if (lead.place_id) return `https://www.google.com/maps/place/?q=place_id:${encodeURIComponent(lead.place_id)}`;
@@ -2257,6 +2301,17 @@ function checklistItemHtml(c) {
   return `<div class="check-item-mini ${c.status}"><i class="bi ${CHECK_ICONS[c.status] || CHECK_ICONS.warn}"></i><div>${c.label}${c.detail ? `<span class="check-detail-mini">${c.detail}</span>` : ""}</div></div>`;
 }
 
+const PROVIDER_ICON_INFO = {
+  groq: { icon: "bi-lightning-charge-fill", label: "Groq" },
+  gemini: { icon: "bi-stars", label: "Gemini" },
+  deepseek: { icon: "bi-cpu-fill", label: "DeepSeek" },
+};
+function providerHintIconHtml(provider) {
+  if (!provider || !PROVIDER_ICON_INFO[provider]) return "";
+  const info = PROVIDER_ICON_INFO[provider];
+  return `<i class="bi ${info.icon} provider-hint-icon" title="Generated using ${info.label}"></i>`;
+}
+
 function renderInspectSectionBody(analysis, lead) {
   if (!analysis || analysis.status === "pending") {
     return `<div class="inspect-empty">No inspection has been run yet for this business. Click the search icon above to start.</div>`;
@@ -2286,7 +2341,7 @@ function renderInspectSectionBody(analysis, lead) {
     <div class="score-header-mini">
       <div class="score-ring-mini">${scoreRingSvg(analysis.overallScore, 60)}<div class="score-ring-mini-text">${analysis.overallScore}</div></div>
       <div>
-        <div style="font-family:var(--font-display); font-weight:600; font-size:13px;">Overall score: ${analysis.overallScore}/100</div>
+        <div style="font-family:var(--font-display); font-weight:600; font-size:13px;">Overall score: ${analysis.overallScore}/100 ${providerHintIconHtml(analysis.provider)}</div>
         <div style="font-size:11.5px; color:var(--text-muted);">Last checked ${analysis.updatedAt || ""}</div>
       </div>
     </div>
@@ -2381,7 +2436,7 @@ function buildExpandPanelHtml(lead) {
 
     <div class="expand-section" data-generate-section>
       <div class="expand-section-head">
-        <span class="expand-section-title"><i class="bi bi-chat-left-text"></i> Generate Outreach Content</span>
+        <span class="expand-section-title"><i class="bi bi-chat-left-text"></i> Generate Outreach Content <span data-gen-provider-hint></span></span>
       </div>
       <div class="gen-controls-mini">
         <select class="gen-tone-select" data-tone-select>
@@ -2459,6 +2514,7 @@ async function toggleLeadExpand(leadId) {
     currentPlatform = platform;
     expandRow.querySelectorAll(".platform-tab").forEach((t) => t.classList.toggle("active", t.dataset.platform === platform));
     const saved = savedContent.find((c) => c.platform === platform);
+    const providerHintEl = expandRow.querySelector("[data-gen-provider-hint]");
     if (saved) {
       outputEl.textContent = saved.content;
       if (saved.tone) {
@@ -2469,8 +2525,10 @@ async function toggleLeadExpand(leadId) {
         lengthSelect.value = saved.length;
         currentLength = saved.length;
       }
+      providerHintEl.innerHTML = providerHintIconHtml(saved.provider);
     } else {
       outputEl.innerHTML = `Not generated yet for ${platform}. Pick a tone and length, then click "Generate Content" to write all 6 platforms at once, or switch to a platform that's already been generated.`;
+      providerHintEl.innerHTML = "";
     }
   }
   showPlatform("email");
@@ -2735,12 +2793,17 @@ recordsBody.addEventListener("click", (e) => {
     })
       .then(async () => {
         showToast(`Status updated to "${value}"`, "success");
+        // The outreach summary cache affects a different section (Reach
+        // Out's hide-empty-niches logic) than whichever mode this status
+        // change happened in, so it always needs invalidating here -
+        // otherwise navigating to Reach Out later would show stale
+        // hide/show decisions from before this status change.
+        state.outreachSummaries.clear();
         // Still refresh from the server shortly after, to correct S/N
         // numbering and catch any edge case the optimistic update missed -
         // this happens invisibly in the background, not blocking what the
         // user already sees.
         if (state.mode === "outreach") {
-          state.outreachSummaries.clear();
           await renderOutreachTree();
           await loadLeads();
         } else if (leavesCurrentView) {
@@ -2865,7 +2928,11 @@ function renderLeads(leads) {
       : `<span class="rating-val" title="Rating Not Pulled — ratings cost extra API quota, so they're only fetched when 'Include ratings' is checked on a hunt"><small>RNP</small></span>`;
 
     row.innerHTML = `
-      <div class="col-sn">${startIndex + index + 1}</div>
+      <div class="col-sn">${startIndex + index + 1}${
+      lead.has_analysis || lead.has_content
+        ? `<i class="bi bi-check-circle-fill sn-done-hint" title="${lead.has_analysis ? "Inspected" : ""}${lead.has_analysis && lead.has_content ? " · " : ""}${lead.has_content ? "Content generated" : ""}"></i>`
+        : ""
+    }</div>
       <div>
         <div class="lead-name-row">
           <span class="lead-name" title="${lead.name}">${lead.name}</span>
@@ -3067,7 +3134,7 @@ const reportsStatGrid = document.getElementById("reportsStatGrid");
 const apiUsageTableBody = document.getElementById("apiUsageTableBody");
 
 const REPORT_RANGE_OPTIONS = [
-  { value: "1d", label: "Last 24 hours", color: "#948d80" },
+  { value: "1d", label: "1D", color: "#948d80" },
   { value: "7d", label: "Last 7 days", color: "#7fa8d9" },
   { value: "1m", label: "Last 30 days", color: "#e0b355" },
   { value: "3m", label: "Last 3 months", color: "#ff6a3d" },

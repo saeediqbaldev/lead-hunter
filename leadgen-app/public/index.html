@@ -6,7 +6,7 @@
 <title>Xeven Leads</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=127" />
+<link rel="stylesheet" href="style.css?v=128" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -173,6 +173,10 @@
               <i class="bi bi-info-circle"></i>
             </button>
 
+            <button id="showAllRecordsBtn" class="icon-toggle-btn" title="Show all records (clear niche/city scope)">
+              <i class="bi bi-grid-3x3-gap"></i>
+            </button>
+
             <button id="scrapeBtn" class="icon-toggle-btn" title="Scrape contact info (email, social links) for this catch log" style="display:none;">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
             </button>
@@ -263,6 +267,7 @@
           </div>
 
           <button id="clearScopeBtn" class="small-btn" style="display:none;">Show all records</button>
+          <button id="resetFiltersBtn" class="small-btn" title="Reset all filters"><i class="bi bi-x-circle"></i> Reset filters</button>
         </div>
 
         <div class="records-wrap" id="recordsWrap">
@@ -299,7 +304,7 @@
           <div class="reports-filter-group">
             <div class="theme-dropdown filter-dropdown icon-filter" id="reportsRangeDropdown" title="Date range">
               <button type="button" class="theme-dropdown-trigger" id="reportsRangeDropdownTrigger">
-                <span id="reportsRangeDropdownLabel">Last 24 hours</span>
+                <span id="reportsRangeDropdownLabel">1D</span>
                 <span class="theme-dropdown-caret">▾</span>
               </button>
               <div class="theme-dropdown-panel" id="reportsRangeDropdownPanel"></div>
@@ -627,6 +632,6 @@
 
 
 
-  <script src="app.js?v=127"></script>
+  <script src="app.js?v=128"></script>
 </body>
 </html>

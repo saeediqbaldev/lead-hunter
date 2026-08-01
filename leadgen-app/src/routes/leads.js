@@ -18,6 +18,7 @@ const SORT_COLUMNS = {
   created_at: "l.created_at",
   name: "l.name COLLATE NOCASE",
   rating: "l.rating",
+  needs_count: "json_array_length(l.needs)",
 };
 
 // Shared WHERE-clause builder so the paginated list and the "export current
@@ -30,7 +31,7 @@ function buildLeadsQuery(userId, query) {
 
   const sortBy = SORT_COLUMNS[query.sortBy] ? query.sortBy : "created_at";
   const sortDir = query.sortDir === "asc" ? "ASC" : query.sortDir === "desc" ? "DESC" : null;
-  const defaultDir = { created_at: "DESC", rating: "DESC", name: "ASC" };
+  const defaultDir = { created_at: "DESC", rating: "DESC", name: "ASC", needs_count: "DESC" };
   const direction = sortDir || defaultDir[sortBy];
 
   let baseQuery = `
@@ -78,7 +79,12 @@ router.get("/", (req, res) => {
 
   const offset = (page - 1) * pageSize;
   const rows = db
-    .prepare(`SELECT l.*, cl.name AS city_name, n.name AS niche_name ${baseQuery} ORDER BY ${SORT_COLUMNS[sortBy]} ${direction} LIMIT ? OFFSET ?`)
+    .prepare(
+      `SELECT l.*, cl.name AS city_name, n.name AS niche_name,
+              EXISTS(SELECT 1 FROM business_analysis ba WHERE ba.lead_id = l.id AND ba.status = 'done') AS has_analysis,
+              EXISTS(SELECT 1 FROM outreach_content oc WHERE oc.lead_id = l.id) AS has_content
+       ${baseQuery} ORDER BY ${SORT_COLUMNS[sortBy]} ${direction} LIMIT ? OFFSET ?`
+    )
     .all(...params, pageSize, offset);
 
   res.json({
@@ -309,7 +315,9 @@ router.delete("/:id/outreach-content", (req, res) => {
 router.get("/pinned/list", (req, res) => {
   const rows = db
     .prepare(
-      `SELECT l.*, cl.id AS catch_log_id, cl.name AS city_name, n.id AS niche_id, n.name AS niche_name
+      `SELECT l.*, cl.id AS catch_log_id, cl.name AS city_name, n.id AS niche_id, n.name AS niche_name,
+              EXISTS(SELECT 1 FROM business_analysis ba WHERE ba.lead_id = l.id AND ba.status = 'done') AS has_analysis,
+              EXISTS(SELECT 1 FROM outreach_content oc WHERE oc.lead_id = l.id) AS has_content
        FROM leads l
        JOIN catch_logs cl ON cl.id = l.catch_log_id
        JOIN niches n ON n.id = cl.niche_id

@@ -398,6 +398,11 @@ CREATE TABLE IF NOT EXISTS business_analysis (
 );
 `);
 
+{
+  const businessAnalysisCols = db.prepare("PRAGMA table_info(business_analysis)").all().map((c) => c.name);
+  if (!businessAnalysisCols.includes("provider")) db.exec("ALTER TABLE business_analysis ADD COLUMN provider TEXT");
+}
+
 // ---------- Generated outreach content, per lead per platform ----------
 db.exec(`
 CREATE TABLE IF NOT EXISTS outreach_content (

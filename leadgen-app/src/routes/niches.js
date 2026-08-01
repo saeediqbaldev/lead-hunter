@@ -160,15 +160,25 @@ router.get("/:id/outreach-summary", (req, res) => {
     "SELECT COUNT(*) AS c FROM leads WHERE catch_log_id = ? AND status = ?"
   );
 
-  const summary = logs.map((log) => ({
-    catchLogId: log.id,
-    catchLogName: log.name,
-    shortlisted: countStmt.get(log.id, "shortlisted").c,
-    contacted: countStmt.get(log.id, "contacted").c,
-    engaged: countStmt.get(log.id, "engaged").c,
-    converted: countStmt.get(log.id, "converted").c,
-    won: countStmt.get(log.id, "won").c,
-  }));
+  const summary = logs.map((log) => {
+    const shortlisted = countStmt.get(log.id, "shortlisted").c;
+    const contacted = countStmt.get(log.id, "contacted").c;
+    const engaged = countStmt.get(log.id, "engaged").c;
+    const converted = countStmt.get(log.id, "converted").c;
+    const won = countStmt.get(log.id, "won").c;
+    const rejected = countStmt.get(log.id, "rejected").c;
+    return {
+      catchLogId: log.id,
+      catchLogName: log.name,
+      shortlisted,
+      contacted,
+      engaged,
+      converted,
+      won,
+      rejected,
+      total: shortlisted + contacted + engaged + converted + won + rejected,
+    };
+  });
 
   res.json(summary);
 });

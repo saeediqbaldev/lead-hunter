@@ -6,6 +6,43 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V12.8
+- **Modals/popups close on outside-click and Escape** - the confirm modal
+  already had outside-click, added Escape for it plus a global handler
+  covering every dropdown-style popup in the app.
+- **Pointer cursor** on buttons, links, dropdowns, table rows, and other
+  clickable elements throughout the app.
+- **"1D" report filter** (renamed from "Last 24 hours") now means the
+  actual calendar day in a fixed timezone (UTC+5 default) instead of a
+  rolling 24-hour window or server-local midnight - verified with an exact
+  hand-calculated edge case (3am UTC+5, just past midnight) and confirmed
+  with real seeded leads through the actual SQL query.
+- **"Show All" icon button** in Hunt's header, a **Reset Filters** button,
+  and a **"Most Needed" sort** (using SQLite's JSON1 extension to sort by
+  needs-array length) - all verified with real data and real browser
+  interaction.
+- **Provider hint icons** in both the Inspect and Generate Content
+  sections, showing which AI (Groq/Gemini/DeepSeek) actually produced that
+  result. Caught and fixed a real bug along the way: a helper function got
+  accidentally nested inside another function's scope, which threw a
+  genuine `ReferenceError` the moment you switched platform tabs - found
+  via the browser console, not just visual inspection.
+- **Inspected/generated checkmark** on the S/N column, visible everywhere
+  a lead appears (Hunt, Reach Out, Pinned) - built with `EXISTS` subqueries
+  joined directly into the existing queries rather than extra round-trips,
+  and confirmed via real measurement that the icon (absolutely positioned)
+  doesn't affect the column's fixed width.
+- **Reach Out now hides niches/cities with zero leads outside "new"** -
+  verified with the exact scenario described: a lead shortlisted out of
+  Hunt makes its city appear, and reverting that same lead back to "new"
+  makes it disappear again. Found and fixed a real bug in the process: the
+  cache behind this only cleared when a status change happened while
+  already viewing Reach Out, not when it happened from Hunt - so changing
+  status from Hunt would leave Reach Out showing stale, wrong results
+  until an unrelated refresh happened to clear it. Also added "rejected"
+  to the counted statuses and to the visible status list, which had been
+  missing.
+
 ## What's in this V12.7
 This is the big one - three AI providers with automatic fallback, and a
 complete rebuild of how content generation works, directly motivated by
