@@ -87,6 +87,11 @@ async function generateText(apiKey, prompt, { responseSchema } = {}) {
       try {
         const parsed = JSON.parse(errText);
         if (parsed.error && parsed.error.message) message = parsed.error.message;
+        if (res.status === 429 || parsed.error?.status === "RESOURCE_EXHAUSTED") {
+          const retryMatch = message.match(/retry in ([\d.]+)s/i);
+          const waitSeconds = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : null;
+          message = `You've hit your Gemini free-tier quota${waitSeconds ? ` - try again in about ${waitSeconds} seconds` : ""}. Free-tier limits reset daily and can be as low as 20 requests/day depending on your account - check current limits at ai.google.dev/gemini-api/docs/rate-limits, or add billing to raise them.`;
+        }
       } catch {
         // keep generic message
       }

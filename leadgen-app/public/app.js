@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.01-12.5";
+const APP_VERSION = "2026.08.01-12.6";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -2311,6 +2311,22 @@ async function generateContentForPlatform(leadId, platform, tone, length, output
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ platform, tone, length }),
     });
+
+    // Check the content-type before assuming it's JSON - if something in
+    // front of the app (a proxy, a CDN, a WAF) returns its own error page
+    // instead of forwarding to this route, res.json() throws a cryptic
+    // parse error ("Unexpected token '<'") that hides what actually came
+    // back. Reading it as text first and showing a snippet makes any
+    // future occurrence immediately diagnosable without needing server
+    // log access at all.
+    const contentType = res.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      const rawText = await res.text();
+      outputEl.innerHTML = `<div style="color:var(--danger);">Got a non-JSON response (HTTP ${res.status}, content-type: ${contentType || "none"}) - this usually means something in front of the app (a proxy, CDN, or firewall) intercepted the request instead of it reaching the app itself. Raw response (first 500 chars):<pre style="white-space:pre-wrap; margin-top:8px; font-size:11px; opacity:0.8;">${rawText.slice(0, 500).replace(/</g, "&lt;")}</pre></div>`;
+      showToast("Server returned a non-JSON response - see details below", "error");
+      return;
+    }
+
     const data = await res.json();
     if (!res.ok) {
       outputEl.innerHTML = `<div style="color:var(--danger);">${data.error || "Generation failed."}</div>`;

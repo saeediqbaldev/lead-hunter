@@ -6,6 +6,28 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V12.6
+- **Real root cause found via the browser diagnostic tool**: HTTP 429,
+  `RESOURCE_EXHAUSTED` - the Gemini free tier's daily quota (as low as 20
+  requests/day depending on the account) was genuinely exhausted. This
+  isn't a bug, it's Google's real limit.
+- Tested the app's 429-parsing logic directly against the exact real error
+  body from that finding - it parses correctly, ruling that out as a
+  separate bug. The remaining mystery ("Unexpected token '<'" instead of a
+  clean error) is most likely something specific to that deployment's own
+  network path that can't be reproduced from here.
+- **Made the frontend self-diagnosing instead of continuing to guess**: it
+  now checks the response's content-type before assuming it's JSON. If a
+  proxy, CDN, or firewall ever returns something other than JSON again,
+  the UI will show the actual raw response content directly (truncated),
+  making any future occurrence immediately diagnosable without needing
+  server log access at all.
+- **Added friendly, actionable messaging for hitting the free-tier quota**
+  specifically: extracts Google's exact retry-after time and explains the
+  daily reset and the option to add billing, instead of just showing the
+  raw API error text. Verified with the exact real error body from
+  testing - correctly extracts "58 seconds" and produces a clear message.
+
 ## What's in this V12.5
 - The improved error message from V12.4 immediately paid off: it revealed
   "Unexpected token '<'" instead of a generic failure - meaning the
