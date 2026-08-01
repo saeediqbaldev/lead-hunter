@@ -44,7 +44,7 @@ function isCancelled(leadId) {
   return !job || job.cancelled;
 }
 
-async function runJob(userId, leadId, lead, tone, length, analysis, platforms) {
+async function runJob(userId, leadId, lead, tone, length, analysis, platforms, language, aiProvider) {
   const completed = [];
   const failed = {};
   const userRow = db.prepare("SELECT signature FROM users WHERE id = ?").get(userId);
@@ -57,15 +57,15 @@ async function runJob(userId, leadId, lead, tone, length, analysis, platforms) {
       if (isCancelled(leadId)) return;
 
       upsertJobRow(leadId, { current_step: `Generating ${platform}…` });
-      const result = await generateOutreachContent(userId, { lead, platform, tone, length, analysis, signature });
+      const result = await generateOutreachContent(userId, { lead, platform, tone, length, analysis, signature, language, aiProvider });
 
       if (isCancelled(leadId)) return;
 
       if (result.ok) {
         db.prepare(
-          `INSERT INTO outreach_content (lead_id, platform, tone, length, content, provider, generated_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-           ON CONFLICT(lead_id, platform) DO UPDATE SET tone = excluded.tone, length = excluded.length, content = excluded.content, provider = excluded.provider, generated_at = excluded.generated_at`
-        ).run(leadId, platform, tone, length || null, result.content, result.provider || null);
+          `INSERT INTO outreach_content (lead_id, platform, tone, length, content, provider, language, generated_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+           ON CONFLICT(lead_id, platform) DO UPDATE SET tone = excluded.tone, length = excluded.length, content = excluded.content, provider = excluded.provider, language = excluded.language, generated_at = excluded.generated_at`
+        ).run(leadId, platform, tone, length || null, result.content, result.provider || null, language || null);
         completed.push(platform);
       } else {
         failed[platform] = result.error;
@@ -87,13 +87,13 @@ async function runJob(userId, leadId, lead, tone, length, analysis, platforms) {
   }
 }
 
-function startGeneration(userId, lead, { tone, length, analysis, platforms }) {
+function startGeneration(userId, lead, { tone, length, analysis, platforms, language, aiProvider }) {
   const leadId = lead.id;
   if (activeJobs.has(leadId)) return { alreadyRunning: true };
 
   const targetPlatforms = platforms && platforms.length ? platforms : PLATFORM_LIST;
   activeJobs.set(leadId, { cancelled: false });
-  runJob(userId, leadId, lead, tone, length, analysis, targetPlatforms); // fire and forget - progress is polled via getJob()
+  runJob(userId, leadId, lead, tone, length, analysis, targetPlatforms, language, aiProvider); // fire and forget - progress is polled via getJob()
   return { alreadyRunning: false };
 }
 

@@ -38,9 +38,13 @@ const LENGTH_GUIDANCE = {
   Concise: "Write an extremely concise message - 1-2 sentences total, as brief as possible while still being complete and natural.",
 };
 
-function buildContentPrompt({ lead, platform, tone, length, analysis }) {
+const LANGUAGES = ["English", "French", "Spanish", "German", "Portuguese", "Arabic", "Chinese"];
+
+function buildContentPrompt({ lead, platform, tone, length, analysis, language }) {
   const platformGuidance = PLATFORM_GUIDANCE[platform] || PLATFORM_GUIDANCE.email;
   const lengthGuidance = LENGTH_GUIDANCE[length] || "";
+  const languageInstruction =
+    language && language !== "English" ? `\nWrite the ENTIRE message in ${language} - not English, ${language}. The signature will be added separately in its original form, so don't worry about that part.` : "";
 
   let context = `Business: ${lead.name}\nCategory: ${lead.niche_name || "local business"}\nLocation: ${lead.city_name || lead.address || "unknown"}`;
 
@@ -58,7 +62,7 @@ ${context}
 
 Tone/approach to use: "${tone}"
 ${platformGuidance}
-${lengthGuidance ? `Length: ${lengthGuidance}` : ""}
+${lengthGuidance ? `Length: ${lengthGuidance}` : ""}${languageInstruction}
 
 Write the message now. Requirements:
 - Professional, humanized, natural-sounding - not generic template language a business owner would recognize as spam
@@ -68,9 +72,9 @@ Write the message now. Requirements:
 - Output ONLY the message content itself, nothing else (no preamble, no explanation)`;
 }
 
-async function generateOutreachContent(userId, { lead, platform, tone, length, analysis, signature }) {
-  const prompt = buildContentPrompt({ lead, platform, tone, length, analysis });
-  const result = await generateWithFallback(userId, prompt);
+async function generateOutreachContent(userId, { lead, platform, tone, length, analysis, signature, language, aiProvider }) {
+  const prompt = buildContentPrompt({ lead, platform, tone, length, analysis, language });
+  const result = await generateWithFallback(userId, prompt, { onlyProvider: aiProvider || undefined });
   if (!result.ok) return result;
 
   const sig = signature != null && signature !== "" ? signature : DEFAULT_SIGNATURE;
@@ -82,4 +86,4 @@ const LENGTHS = ["Detailed", "Medium", "Short", "Concise"];
 
 const PLATFORM_LIST = ["email", "facebook", "instagram", "linkedin", "tiktok", "whatsapp"];
 
-module.exports = { TONES, LENGTHS, PLATFORM_LIST, PLATFORM_GUIDANCE, DEFAULT_SIGNATURE, buildContentPrompt, generateOutreachContent };
+module.exports = { TONES, LENGTHS, LANGUAGES, PLATFORM_LIST, PLATFORM_GUIDANCE, DEFAULT_SIGNATURE, buildContentPrompt, generateOutreachContent };

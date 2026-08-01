@@ -193,7 +193,7 @@ router.get("/:id/outreach-content", (req, res) => {
   if (!lead) return res.status(404).json({ error: "Lead not found" });
 
   const rows = db
-    .prepare("SELECT platform, tone, length, content, provider, generated_at FROM outreach_content WHERE lead_id = ?")
+    .prepare("SELECT platform, tone, length, content, provider, language, generated_at FROM outreach_content WHERE lead_id = ?")
     .all(req.params.id);
   res.json({ tones: TONES, lengths: LENGTHS, platforms: PLATFORM_LIST, content: rows });
 });
@@ -206,11 +206,11 @@ router.post("/:id/generate-content/start", (req, res) => {
   const lead = getOwnedLeadWithContext(req.session.userId, req.params.id);
   if (!lead) return res.status(404).json({ error: "Lead not found" });
 
-  const { tone, length, platforms } = req.body || {};
+  const { tone, length, platforms, language, aiProvider } = req.body || {};
   if (!tone) return res.status(400).json({ error: "tone is required" });
 
   const analysis = analysisJobs.getAnalysis(Number(req.params.id));
-  const result = contentJobs.startGeneration(req.session.userId, lead, { tone, length, analysis, platforms });
+  const result = contentJobs.startGeneration(req.session.userId, lead, { tone, length, analysis, platforms, language, aiProvider });
   if (result.alreadyRunning) {
     return res.status(409).json({ error: "Content generation is already running for this lead." });
   }

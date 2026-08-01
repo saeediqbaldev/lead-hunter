@@ -6,6 +6,40 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V13.4
+**Critical fix**: `src/aiProviders.js` had ended up containing leftover
+test-mock code instead of the real Groq/Gemini/DeepSeek fallback logic -
+meaning every single AI call in the last few shipped versions (Inspect's
+AI writeup and all content generation) was silently returning fake "Mock
+content" instead of doing anything real. This happened during this
+session's testing process and should have been caught by verification
+before shipping - it wasn't, because the check used was a diff against
+another backup file that turned out to also be corrupted, rather than
+checking the actual file content structurally. Restored the real
+implementation from an earlier confirmed-good backup and verified it this
+time by checking the actual code content directly (provider order, function
+names, zero "Mock content" strings) rather than comparing two files that
+could both be wrong. Confirmed end-to-end: with no AI key configured, it
+now correctly returns a real, honest error instead of fake content.
+
+Also corrected a misunderstanding from the previous round: "select a
+platform to generate content" meant choosing which AI provider
+(Groq/Gemini/DeepSeek) to use, not which social media platform. Reverted
+the single-platform-only checkbox entirely - content generation always
+writes all 6 social platforms again, like before. Added what was actually
+asked for:
+- **AI provider selector** (with icons) - "Auto" uses the normal fallback
+  chain; picking Groq, Gemini, or DeepSeek specifically uses ONLY that
+  one, no silent fallback, so the choice is honored exactly.
+- **Language/translation selector** (with flag icons) - English, French,
+  Spanish, German, Portuguese, Arabic, Chinese. The signature stays in its
+  original form regardless of the content's language.
+
+Verified together end-to-end: generated all 6 platforms in one run with
+Gemini explicitly selected and Spanish selected - confirmed all 6 used
+Gemini specifically (not Groq, which would normally go first) and all 6
+correctly received the Spanish-language instruction.
+
 ## What's in this V13.3
 Item 7, the last one from this round - the app is now a real, installable
 PWA.

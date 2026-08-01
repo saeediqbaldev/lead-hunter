@@ -427,6 +427,7 @@ CREATE TABLE IF NOT EXISTS outreach_content (
   const outreachContentCols = db.prepare("PRAGMA table_info(outreach_content)").all().map((c) => c.name);
   if (!outreachContentCols.includes("length")) db.exec("ALTER TABLE outreach_content ADD COLUMN length TEXT");
   if (!outreachContentCols.includes("provider")) db.exec("ALTER TABLE outreach_content ADD COLUMN provider TEXT");
+  if (!outreachContentCols.includes("language")) db.exec("ALTER TABLE outreach_content ADD COLUMN language TEXT");
 }
 
 // ---------- Async batch content generation job tracking (generates all

@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.01-13.3";
+const APP_VERSION = "2026.08.01-13.4";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -2488,6 +2488,27 @@ const CONTENT_TONES = [
 ];
 const CONTENT_LENGTHS = ["Detailed", "Medium", "Short", "Concise"];
 
+const CONTENT_LANGUAGES = [
+  { value: "English", label: "English", flag: "🇬🇧" },
+  { value: "French", label: "French", flag: "🇫🇷" },
+  { value: "Spanish", label: "Spanish", flag: "🇪🇸" },
+  { value: "German", label: "German", flag: "🇩🇪" },
+  { value: "Portuguese", label: "Portuguese", flag: "🇵🇹" },
+  { value: "Arabic", label: "Arabic", flag: "🇸🇦" },
+  { value: "Chinese", label: "Chinese", flag: "🇨🇳" },
+];
+
+// "" (Auto) uses the normal fallback chain (Groq -> Gemini -> DeepSeek).
+// Picking a specific provider uses ONLY that one, with no fallback - so
+// the user's explicit choice is respected exactly, not silently swapped
+// for a different provider if the chosen one is unavailable.
+const AI_PROVIDER_OPTIONS = [
+  { value: "", label: "Auto", icon: "bi-shuffle" },
+  { value: "groq", label: "Groq", icon: "bi-lightning-charge-fill" },
+  { value: "gemini", label: "Gemini", icon: "bi-stars" },
+  { value: "deepseek", label: "DeepSeek", icon: "bi-cpu-fill" },
+];
+
 function closeAllLeadExpansions() {
   if (inspectPollTimer) {
     clearInterval(inspectPollTimer);
@@ -2664,18 +2685,26 @@ function buildExpandPanelHtml(lead) {
           <option value="">Select a tone/format…</option>
           ${CONTENT_TONES.map((t) => `<option value="${t}">${t}</option>`).join("")}
         </select>
-        <select class="gen-tone-select" data-length-select style="flex:0 0 140px; min-width:120px;">
+        <select class="gen-tone-select" data-length-select style="flex:0 0 130px; min-width:110px;">
           ${CONTENT_LENGTHS.map((l) => `<option value="${l}" ${l === "Medium" ? "selected" : ""}>${l}</option>`).join("")}
         </select>
+        <select class="gen-tone-select" data-language-select style="flex:0 0 160px; min-width:140px;">
+          ${CONTENT_LANGUAGES.map((l) => `<option value="${l.value}" ${l.value === "English" ? "selected" : ""}>${l.flag} ${l.label}</option>`).join("")}
+        </select>
+      </div>
+      <div class="gen-provider-row">
+        <span class="gen-provider-row-label">AI provider:</span>
+        ${AI_PROVIDER_OPTIONS.map(
+          (p) =>
+            `<button type="button" class="ai-provider-tab ${p.value === "" ? "active" : ""}" data-ai-provider="${p.value}" title="${p.label}"><i class="bi ${p.icon}"></i> ${p.label}</button>`
+        ).join("")}
+      </div>
+      <div class="gen-controls-mini">
         <button type="button" data-action="generate-all" style="background:var(--accent); color:#1a1310; border:none; border-radius:6px; padding:7px 14px; font-size:12px; font-weight:600; cursor:pointer;">
-          <i class="bi bi-stars"></i> <span data-generate-btn-label>Generate Content</span>
+          <i class="bi bi-stars"></i> Generate Content
         </button>
         <button type="button" data-action="generate-stop" title="Stop" style="display:none;"><i class="bi bi-stop-circle"></i></button>
       </div>
-      <label class="gen-scope-toggle">
-        <input type="checkbox" data-generate-all-toggle checked />
-        Generate all 6 platforms at once - uncheck to generate only the platform tab currently selected below
-      </label>
       <div class="platform-tabs">
         ${PLATFORMS.map(
           (p) =>
@@ -2683,7 +2712,7 @@ function buildExpandPanelHtml(lead) {
         ).join("")}
       </div>
       <div data-gen-progress style="display:none;" class="inspect-progress"><span class="inspect-spinner"></span> <span data-gen-progress-text></span></div>
-      <div class="gen-output-mini" data-gen-output>Pick a tone and length, then click "Generate Content". By default this writes all 6 platforms at once in the background - uncheck the box above first if you'd rather generate just one platform (whichever tab is currently selected).</div>
+      <div class="gen-output-mini" data-gen-output>Pick a tone, length, and language, then click "Generate Content" - writes all 6 platforms at once in the background. Switching tabs afterward just shows what was generated for each, without using any more requests.</div>
       <div class="gen-actions-mini">
         <button type="button" data-action="copy-content"><i class="bi bi-clipboard"></i> Copy</button>
         <button type="button" data-action="regenerate-content"><i class="bi bi-arrow-repeat"></i> Regenerate this platform</button>
@@ -2714,6 +2743,8 @@ async function toggleLeadExpand(leadId) {
   let currentPlatform = "email";
   let currentTone = "";
   let currentLength = "Medium";
+  let currentLanguage = "English";
+  let currentAiProvider = ""; // "" = Auto (fallback chain)
 
   const inspectBody = expandRow.querySelector("[data-inspect-body]");
   await loadAndRenderInspect(leadId, inspectBody);
@@ -2723,6 +2754,7 @@ async function toggleLeadExpand(leadId) {
   const outputEl = expandRow.querySelector("[data-gen-output]");
   const toneSelect = expandRow.querySelector("[data-tone-select]");
   const lengthSelect = expandRow.querySelector("[data-length-select]");
+  const languageSelect = expandRow.querySelector("[data-language-select]");
   const generateBtn = expandRow.querySelector('[data-action="generate-all"]');
   const stopBtn = expandRow.querySelector('[data-action="generate-stop"]');
   const progressEl = expandRow.querySelector("[data-gen-progress]");
@@ -2756,16 +2788,23 @@ async function toggleLeadExpand(leadId) {
         lengthSelect.value = saved.length;
         currentLength = saved.length;
       }
+      if (saved.language) languageSelect.value = saved.language;
       providerHintEl.innerHTML = providerHintIconHtml(saved.provider);
     } else {
-      outputEl.innerHTML = `Not generated yet for ${platform}. Pick a tone and length, then click "Generate Content" to write all 6 platforms at once, or switch to a platform that's already been generated.`;
+      outputEl.innerHTML = `Not generated yet for ${platform}. Pick a tone, length, and language, then click "Generate Content" to write all 6 platforms at once, or switch to a platform that's already been generated.`;
       providerHintEl.innerHTML = "";
     }
-    updateGenerateButtonLabel();
   }
   showPlatform("email");
   markCompletedDots();
-  expandRow.querySelector("[data-generate-all-toggle]").addEventListener("change", updateGenerateButtonLabel);
+
+  expandRow.querySelectorAll(".ai-provider-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      expandRow.querySelectorAll(".ai-provider-tab").forEach((t) => t.classList.remove("active"));
+      tab.classList.add("active");
+      currentAiProvider = tab.dataset.aiProvider;
+    });
+  });
 
   async function pollGenerationStatus() {
     const res = await api(`/api/leads/${leadId}/generate-content/status`);
@@ -2804,12 +2843,19 @@ async function toggleLeadExpand(leadId) {
   async function startGeneration(platforms) {
     currentTone = toneSelect.value;
     currentLength = lengthSelect.value;
+    currentLanguage = languageSelect.value;
     if (!currentTone) {
       showToast("Pick a tone/format first", "error");
       return;
     }
 
-    const result = await callGenerationStart(leadId, { tone: currentTone, length: currentLength, platforms });
+    const result = await callGenerationStart(leadId, {
+      tone: currentTone,
+      length: currentLength,
+      language: currentLanguage,
+      aiProvider: currentAiProvider || undefined,
+      platforms,
+    });
     if (!result.ok) {
       showToast(result.error, "error");
       outputEl.innerHTML = `<div style="color:var(--danger);">${result.error}</div>`;
@@ -2874,8 +2920,7 @@ async function toggleLeadExpand(leadId) {
     // Generates all 6 platforms in one background job - per spec, no need
     // to click Generate again when switching platform tabs afterward.
     if (action === "generate-all") {
-      const generateAllChecked = expandRow.querySelector("[data-generate-all-toggle]").checked;
-      await startGeneration(generateAllChecked ? null : [currentPlatform]);
+      await startGeneration(null); // null = all 6 platforms, always
       return;
     }
 
