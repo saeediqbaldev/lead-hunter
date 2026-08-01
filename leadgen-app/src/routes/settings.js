@@ -159,7 +159,7 @@ const USAGE_RANGE_DAYS = { "1d": 1, "7d": 7, "30d": 30, "60d": 60, "90d": 90, "1
 
 router.get("/usage-history", (req, res) => {
   const provider = ["google_places", "gemini", "groq", "deepseek"].includes(req.query.provider) ? req.query.provider : "gemini";
-  const range = USAGE_RANGE_DAYS.hasOwnProperty(req.query.range) ? req.query.range : "90d";
+  const range = USAGE_RANGE_DAYS.hasOwnProperty(req.query.range) ? req.query.range : "1d";
   const days = USAGE_RANGE_DAYS[range];
 
   const allTime = apiKeys.allTimeUsage(req.session.userId, provider);

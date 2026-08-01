@@ -6,6 +6,41 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V13.1
+- **Reports refresh button** now correctly boxed to match Hunt/Reach Out/
+  Pinned - it was missing the same bordered container the other three
+  have, which is why it looked like it was floating outside its row.
+- **Usage chart duration now defaults to 1D** everywhere instead of 90D.
+- **Fixed a real, confirmed bug**: the SSL check was comparing the
+  *stored* website URL string instead of the *actual final URL* after
+  following redirects - so a lead saved with "http://" that genuinely
+  redirects to a valid https:// site would incorrectly show "No SSL".
+  Proved the exact scenario with a realistic mock and confirmed the fix.
+  Also added deeper checks (structured data, image alt-text coverage,
+  content depth) and wired the actual extracted page text into the AI
+  prompt so the strengths/weaknesses writeup now considers genuine content
+  quality, not just structural checks.
+- **Contact scraper now respects the current view's filters** (status,
+  search, need, inspected-only) instead of indiscriminately scraping every
+  lead ever caught in the whole city/log - refactored the query-building
+  logic into a shared module so the board and the scraper can never drift
+  out of sync on what "current view" means. Also fixed the scrape panel's
+  Refresh button, which used to silently leave stale numbers on screen
+  after a job finished - it now properly clears the display first.
+- **Content generation now supports picking a single platform** - a
+  checkbox lets you generate just the currently-selected platform tab
+  instead of always all 6, with the button label updating to show exactly
+  what it'll generate.
+- **Found and fixed a real regression from earlier in this session**:
+  while extracting shared query-building logic for the scraper fix above,
+  `leads.js` ended up missing an import (`SORT_COLUMNS`) that it still
+  referenced twice - a runtime error that a syntax check alone cannot
+  catch, since the file was still syntactically valid. This broke loading
+  leads entirely in both Hunt and Reach Out. Caught it through real
+  end-to-end testing before packaging, fixed it, and then re-verified
+  every consumer of that shared logic (every sort option, exports, the
+  scraper, pinned leads) to make sure nothing else was affected.
+
 ## What's in this V13.0
 - **Refresh buttons on all 4 sidebar sections** (Hunt, Reach Out, Pinned,
   Reports) - honestly, this one had been missed in an earlier round

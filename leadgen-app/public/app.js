@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.01-13.0";
+const APP_VERSION = "2026.08.01-13.1";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -1429,7 +1429,17 @@ scrapeStartBtn.addEventListener("click", async () => {
   scrapeStartBtn.disabled = true;
 
   try {
-    const res = await api(`/api/catch-logs/${catchLogId}/scrape/start`, { method: "POST" });
+    // Scrapes exactly what the current view shows - same filters as the
+    // board itself (Hunt is always status=new, plus whatever search/need/
+    // inspected filters are currently active), not indiscriminately every
+    // lead ever caught in this catch log.
+    const params = new URLSearchParams();
+    params.set("status", "new");
+    if (filterSearch.value) params.set("search", filterSearch.value);
+    if (filterState.need) params.set("need", filterState.need);
+    if (filterState.inspected) params.set("inspected", "1");
+
+    const res = await api(`/api/catch-logs/${catchLogId}/scrape/start?${params.toString()}`, { method: "POST" });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Could not start scrape");
 
@@ -1457,7 +1467,17 @@ scrapeStopBtn.addEventListener("click", async () => {
   }
 });
 
-scrapeRefreshBtn.addEventListener("click", pollScrapeStatus);
+scrapeRefreshBtn.addEventListener("click", async () => {
+  // Refresh should genuinely clear what's shown, not just silently leave
+  // stale numbers from a previous completed/stopped run - zero the
+  // display first, then repopulate it with whatever's actually true right
+  // now (a live job's real numbers if one is running, or empty if not).
+  ["scrapeTotal", "scrapeRequests", "scrapeDone", "scrapeScraping", "scrapeFailed", "scrapePending"].forEach((id) => {
+    document.getElementById(id).textContent = "0";
+  });
+  scrapeStatusLine.textContent = "Refreshing…";
+  await pollScrapeStatus();
+});
 
 // ---------- Sidebar nav sections (Hunt / Reach Out collapsible; Reports single page) ----------
 document.querySelectorAll(".nav-section-header").forEach((btn) => {
@@ -2574,10 +2594,14 @@ function buildExpandPanelHtml(lead) {
           ${CONTENT_LENGTHS.map((l) => `<option value="${l}" ${l === "Medium" ? "selected" : ""}>${l}</option>`).join("")}
         </select>
         <button type="button" data-action="generate-all" style="background:var(--accent); color:#1a1310; border:none; border-radius:6px; padding:7px 14px; font-size:12px; font-weight:600; cursor:pointer;">
-          <i class="bi bi-stars"></i> Generate Content
+          <i class="bi bi-stars"></i> <span data-generate-btn-label>Generate Content</span>
         </button>
         <button type="button" data-action="generate-stop" title="Stop" style="display:none;"><i class="bi bi-stop-circle"></i></button>
       </div>
+      <label class="gen-scope-toggle">
+        <input type="checkbox" data-generate-all-toggle checked />
+        Generate all 6 platforms at once - uncheck to generate only the platform tab currently selected below
+      </label>
       <div class="platform-tabs">
         ${PLATFORMS.map(
           (p) =>
@@ -2585,7 +2609,7 @@ function buildExpandPanelHtml(lead) {
         ).join("")}
       </div>
       <div data-gen-progress style="display:none;" class="inspect-progress"><span class="inspect-spinner"></span> <span data-gen-progress-text></span></div>
-      <div class="gen-output-mini" data-gen-output>Pick a tone and length, then click "Generate Content" to write all 6 platforms at once in the background - switching tabs afterward just shows what was generated for each, without using any more requests.</div>
+      <div class="gen-output-mini" data-gen-output>Pick a tone and length, then click "Generate Content". By default this writes all 6 platforms at once in the background - uncheck the box above first if you'd rather generate just one platform (whichever tab is currently selected).</div>
       <div class="gen-actions-mini">
         <button type="button" data-action="copy-content"><i class="bi bi-clipboard"></i> Copy</button>
         <button type="button" data-action="regenerate-content"><i class="bi bi-arrow-repeat"></i> Regenerate this platform</button>
@@ -2637,6 +2661,12 @@ async function toggleLeadExpand(leadId) {
     });
   }
 
+  function updateGenerateButtonLabel() {
+    const generateAllChecked = expandRow.querySelector("[data-generate-all-toggle]").checked;
+    const labelEl = expandRow.querySelector("[data-generate-btn-label]");
+    labelEl.textContent = generateAllChecked ? "Generate Content" : `Generate for ${currentPlatform.charAt(0).toUpperCase() + currentPlatform.slice(1)}`;
+  }
+
   function showPlatform(platform) {
     currentPlatform = platform;
     expandRow.querySelectorAll(".platform-tab").forEach((t) => t.classList.toggle("active", t.dataset.platform === platform));
@@ -2657,9 +2687,11 @@ async function toggleLeadExpand(leadId) {
       outputEl.innerHTML = `Not generated yet for ${platform}. Pick a tone and length, then click "Generate Content" to write all 6 platforms at once, or switch to a platform that's already been generated.`;
       providerHintEl.innerHTML = "";
     }
+    updateGenerateButtonLabel();
   }
   showPlatform("email");
   markCompletedDots();
+  expandRow.querySelector("[data-generate-all-toggle]").addEventListener("change", updateGenerateButtonLabel);
 
   async function pollGenerationStatus() {
     const res = await api(`/api/leads/${leadId}/generate-content/status`);
@@ -2768,7 +2800,8 @@ async function toggleLeadExpand(leadId) {
     // Generates all 6 platforms in one background job - per spec, no need
     // to click Generate again when switching platform tabs afterward.
     if (action === "generate-all") {
-      await startGeneration(null); // null = all platforms, handled server-side
+      const generateAllChecked = expandRow.querySelector("[data-generate-all-toggle]").checked;
+      await startGeneration(generateAllChecked ? null : [currentPlatform]);
       return;
     }
 
@@ -3590,7 +3623,7 @@ function buildProviderUsageSectionHtml(uniqueSuffix, hasLeadsColumn) {
       <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
         <h3 style="margin:0;">Usage history</h3>
         <select class="gen-tone-select" id="usageRange-${uniqueSuffix}" style="width:auto; padding:5px 8px; font-size:11.5px;">
-          ${USAGE_RANGE_OPTIONS.map((o) => `<option value="${o.value}" ${o.value === "90d" ? "selected" : ""}>${o.label}</option>`).join("")}
+          ${USAGE_RANGE_OPTIONS.map((o) => `<option value="${o.value}" ${o.value === "1d" ? "selected" : ""}>${o.label}</option>`).join("")}
         </select>
       </div>
       <div class="table-scroll-wrap">
@@ -3609,7 +3642,7 @@ function buildProviderUsageSectionHtml(uniqueSuffix, hasLeadsColumn) {
 async function loadAndRenderProviderUsage(provider, uniqueSuffix, hasLeadsColumn, range) {
   try {
     const rangeSelect = document.getElementById(`usageRange-${uniqueSuffix}`);
-    const activeRange = range || (rangeSelect ? rangeSelect.value : "90d");
+    const activeRange = range || (rangeSelect ? rangeSelect.value : "1d");
     const res = await api(`/api/settings/usage-history?provider=${provider}&range=${activeRange}`);
     const history = await res.json();
     renderProviderUsageHistory(history, {

@@ -3,6 +3,7 @@ const db = require("../db");
 const asyncHandler = require("../asyncHandler");
 const { buildCatchLogCsv, buildCatchLogPdf, buildNicheXlsx, buildExportFilename } = require("../export");
 const apiKeys = require("../apiKeys");
+const { buildLeadsQuery, SORT_COLUMNS } = require("../leadsQuery");
 
 const router = express.Router();
 
@@ -12,64 +13,6 @@ function rowToLead(row) {
     needs: row.needs ? JSON.parse(row.needs) : [],
     socials: row.socials ? JSON.parse(row.socials) : {},
   };
-}
-
-const SORT_COLUMNS = {
-  created_at: "l.created_at",
-  name: "l.name COLLATE NOCASE",
-  rating: "l.rating",
-  needs_count: "json_array_length(l.needs)",
-};
-
-// Shared WHERE-clause builder so the paginated list and the "export current
-// view" endpoints filter identically - same scope, same results, just one
-// paginates and one doesn't. ALWAYS joins through to niches and filters by
-// user_id, regardless of which other filters are given - "all records"
-// means "all of MY records", never anyone else's.
-function buildLeadsQuery(userId, query) {
-  const { status, need, search, catchLogId, nicheId, pinned, inspected } = query;
-
-  const sortBy = SORT_COLUMNS[query.sortBy] ? query.sortBy : "created_at";
-  const sortDir = query.sortDir === "asc" ? "ASC" : query.sortDir === "desc" ? "DESC" : null;
-  const defaultDir = { created_at: "DESC", rating: "DESC", name: "ASC", needs_count: "DESC" };
-  const direction = sortDir || defaultDir[sortBy];
-
-  let baseQuery = `
-    FROM leads l
-    JOIN catch_logs cl ON cl.id = l.catch_log_id
-    JOIN niches n ON n.id = cl.niche_id
-    WHERE n.user_id = ?
-  `;
-  const params = [userId];
-
-  if (nicheId) {
-    baseQuery += " AND cl.niche_id = ?";
-    params.push(nicheId);
-  }
-  if (catchLogId) {
-    baseQuery += " AND l.catch_log_id = ?";
-    params.push(catchLogId);
-  }
-  if (status) {
-    baseQuery += " AND l.status = ?";
-    params.push(status);
-  }
-  if (need) {
-    baseQuery += " AND l.needs LIKE ?";
-    params.push(`%${need}%`);
-  }
-  if (search) {
-    baseQuery += " AND (l.name LIKE ? OR l.address LIKE ?)";
-    params.push(`%${search}%`, `%${search}%`);
-  }
-  if (pinned) {
-    baseQuery += " AND l.pinned = 1";
-  }
-  if (inspected) {
-    baseQuery += " AND EXISTS(SELECT 1 FROM business_analysis ba WHERE ba.lead_id = l.id AND ba.status = 'done')";
-  }
-
-  return { baseQuery, params, sortBy, direction };
 }
 
 // GET /api/leads?status=&need=&search=&catchLogId=&nicheId=&page=&pageSize=&sortBy=&sortDir=

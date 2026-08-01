@@ -3,6 +3,7 @@ const db = require("../db");
 const { buildCatchLogCsv, buildCatchLogPdf, sanitizeFilename, buildExportFilename } = require("../export");
 const scraperService = require("../scraperService");
 const { capitalizeWords } = require("../textUtils");
+const { buildLeadsQuery } = require("../leadsQuery");
 
 const router = express.Router();
 
@@ -179,9 +180,15 @@ router.post("/:id/scrape/start", async (req, res) => {
     }
   }
 
-  const leads = db.prepare("SELECT * FROM leads WHERE catch_log_id = ? AND website IS NOT NULL AND website != ''").all(catchLogId);
+  // Scoped to whatever the current view actually shows (same filters as
+  // the board: status, search, need, inspected-only), not indiscriminately
+  // every lead ever caught in this catch log - "scrape the current view"
+  // should mean exactly that, using the identical query builder the board
+  // itself uses so the two can never drift out of sync.
+  const { baseQuery, params } = buildLeadsQuery(userId, { ...req.query, catchLogId });
+  const leads = db.prepare(`SELECT l.* ${baseQuery} AND l.website IS NOT NULL AND l.website != ''`).all(...params);
   if (leads.length === 0) {
-    return res.status(400).json({ error: "No records with a website in this catch log to scrape." });
+    return res.status(400).json({ error: "No records with a website in the current view to scrape. Adjust your filters or switch views if you expected more." });
   }
 
   try {

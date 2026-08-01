@@ -21,30 +21,54 @@ async function fetchWithTimeout(url, options = {}) {
   }
 }
 
+// Strips HTML tags/scripts/styles down to plain visible text, collapsing
+// whitespace - used both for a word-count heuristic and as a snippet fed
+// to the AI for a genuine content-quality read, not just structural checks.
+function extractVisibleText(html) {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 // ---------- Website checks (live HTML fetch, no paid API) ----------
 async function runWebsiteChecks(website) {
   const checks = [];
 
   if (!website) {
     checks.push({ label: "Has a website", status: "fail", detail: "No website found on the Google listing" });
-    return { checks, score: 0 };
+    return { checks, score: 0, contentSnippet: null };
   }
 
   checks.push({ label: "Has a website", status: "pass", detail: website });
-  checks.push({
-    label: "SSL certificate (https)",
-    status: website.startsWith("https://") ? "pass" : "fail",
-  });
 
   let html = null;
+  let finalUrl = website;
   try {
     const res = await fetchWithTimeout(website, { redirect: "follow" });
+    // The SSL check must look at the ACTUAL final URL after following any
+    // redirects, not the stored website string - a lead's website can be
+    // saved as "http://example.com" while the site itself redirects to a
+    // fully valid https:// version, which the old check (string-matching
+    // the stored URL) would have wrongly flagged as "no SSL".
+    finalUrl = res.url || website;
     if (res.ok) html = await res.text();
     else checks.push({ label: "Website reachable", status: "fail", detail: `HTTP ${res.status}` });
   } catch (err) {
     checks.push({ label: "Website reachable", status: "fail", detail: err.message });
   }
 
+  checks.push({
+    label: "SSL certificate (https)",
+    status: finalUrl.startsWith("https://") ? "pass" : "fail",
+    detail: finalUrl !== website ? `redirects to ${finalUrl}` : undefined,
+  });
+
+  let contentSnippet = null;
   if (html) {
     const hasTitle = /<title[^>]*>([^<]{3,})<\/title>/i.test(html);
     checks.push({ label: "Has a title tag", status: hasTitle ? "pass" : "fail" });
@@ -57,6 +81,37 @@ async function runWebsiteChecks(website) {
 
     const hasContactForm = /<form[^>]*>/i.test(html);
     checks.push({ label: "Contact form present", status: hasContactForm ? "pass" : "warn" });
+
+    // Structured data (schema.org JSON-LD or microdata) helps a business
+    // show up richer in search results - a genuinely useful, checkable signal.
+    const hasStructuredData = /<script[^>]+type=["']application\/ld\+json["']/i.test(html) || /itemscope/i.test(html);
+    checks.push({ label: "Structured data (schema.org)", status: hasStructuredData ? "pass" : "warn", detail: hasStructuredData ? undefined : "not found - helps rich search results" });
+
+    // Image alt-text coverage - accessibility + basic on-page SEO signal.
+    const imgTags = html.match(/<img\b[^>]*>/gi) || [];
+    if (imgTags.length > 0) {
+      const withAlt = imgTags.filter((tag) => /\balt\s*=\s*["'][^"']+["']/i.test(tag)).length;
+      const altRatio = withAlt / imgTags.length;
+      checks.push({
+        label: "Image alt text coverage",
+        status: altRatio >= 0.8 ? "pass" : altRatio >= 0.4 ? "warn" : "fail",
+        detail: `${withAlt}/${imgTags.length} images have alt text`,
+      });
+    }
+
+    // Content depth - a very thin page (just a logo and a phone number)
+    // is a genuinely different problem than a slow page, and worth
+    // surfacing as its own signal rather than folding it into "SEO".
+    contentSnippet = extractVisibleText(html);
+    const wordCount = contentSnippet ? contentSnippet.split(/\s+/).filter(Boolean).length : 0;
+    checks.push({
+      label: "Content depth",
+      status: wordCount >= 200 ? "pass" : wordCount >= 60 ? "warn" : "fail",
+      detail: `~${wordCount} words of visible text`,
+    });
+    // Keep only a bounded snippet from here on - enough for the AI to make
+    // a genuine quality read without ballooning the prompt.
+    contentSnippet = contentSnippet ? contentSnippet.slice(0, 1500) : null;
   }
 
   // PageSpeed Insights (free, no API key required at low volume) - adds
@@ -87,7 +142,7 @@ async function runWebsiteChecks(website) {
   }
 
   const score = scoreFromChecks(checks);
-  return { checks, score };
+  return { checks, score, contentSnippet };
 }
 
 // ---------- GMB & Local SEO checks (from already-captured lead data, zero new API cost) ----------
@@ -186,6 +241,10 @@ function buildAnalysisPrompt(lead, categoryResults) {
     .map((c) => `- ${c.label}: ${c.status.toUpperCase()}${c.detail ? ` (${c.detail})` : ""}`)
     .join("\n");
 
+  const contentSection = categoryResults.website.contentSnippet
+    ? `\n\nActual visible text extracted from the homepage (for judging genuine content quality - clarity, professionalism, whether it explains what the business does and why to choose them - not just the structural checks above):\n"""\n${categoryResults.website.contentSnippet}\n"""`
+    : "";
+
   return `You are a marketing consultant analyzing a local business's online presence, to help a lead-generation agency pitch relevant services.
 
 Business: ${lead.name}
@@ -195,16 +254,16 @@ Location: ${lead.city_name || lead.address || "unknown"}
 Here is a checklist of factors already checked programmatically (PASS/WARN/FAIL):
 ${checklistText}
 
-Category scores: Website Health ${categoryResults.website.score}/100, GMB & Local SEO ${categoryResults.gmb.score}/100, Social Presence ${categoryResults.social.score}/100.
+Category scores: Website Health ${categoryResults.website.score}/100, GMB & Local SEO ${categoryResults.gmb.score}/100, Social Presence ${categoryResults.social.score}/100.${contentSection}
 
-Based ONLY on the checklist above (don't invent facts not shown here), respond with ONLY a JSON object (no other text, no markdown code fences) in exactly this shape:
+Based on the checklist above and the actual page content if given (don't invent facts not shown here), respond with ONLY a JSON object (no other text, no markdown code fences) in exactly this shape:
 {
   "strengths": ["...", "..."],
   "weaknesses": ["...", "..."],
   "suggestedServices": ["...", "..."]
 }
 
-Rules: 2-4 genuine strengths (specific, not generic praise), 2-4 genuine weaknesses (specific, actionable gaps), 2-3 suggested services this agency could pitch (each a short phrase like "Website speed & mobile optimization", directly tied to the weaknesses found). Keep every point concise (one sentence each) and grounded in the actual checklist data, not speculation.`;
+Rules: 2-4 genuine strengths (specific, not generic praise), 2-4 genuine weaknesses (specific, actionable gaps), 2-3 suggested services this agency could pitch (each a short phrase like "Website speed & mobile optimization", directly tied to the weaknesses found). If page content was given above, weigh in on genuine content quality too (is it clear what the business does, does it read professionally, is there a real call to action) alongside the structural checklist - a page can pass every structural check and still read poorly, or vice versa. Keep every point concise (one sentence each) and grounded in what was actually given, not speculation.`;
 }
 
 // Uses the AI provider fallback chain (Groq -> Gemini -> DeepSeek) instead

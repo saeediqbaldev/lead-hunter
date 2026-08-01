@@ -1440,3 +1440,6 @@ button:disabled { cursor: not-allowed; }
   background: var(--panel-raised); border: 1px solid var(--border); border-radius: 6px;
   color: var(--text); padding: 4px 6px; font-size: 12px;
 }
+
+.gen-scope-toggle { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--text-muted); margin: 8px 0; cursor: pointer; }
+.gen-scope-toggle input { cursor: pointer; }
