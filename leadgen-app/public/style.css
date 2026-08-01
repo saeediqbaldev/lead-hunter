@@ -1200,10 +1200,14 @@ button#huntBtn:disabled, .primary-btn:disabled { background: var(--border); colo
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 16px;
-  height: 300px;
+  height: 450px;
+  min-height: 250px;
+  min-width: 280px;
   display: flex;
   flex-direction: column;
   position: relative;
+  resize: both;
+  overflow: hidden;
 }
 .chart-error-msg {
   font-size: 12px;
@@ -1257,7 +1261,7 @@ button#huntBtn:disabled, .primary-btn:disabled { background: var(--border); colo
 
 @media (max-width: 900px) {
   .reports-charts-row { grid-template-columns: 1fr; }
-  .reports-chart-card { height: 260px; }
+  .reports-chart-card { height: 390px; }
 }
 
 /* ---------- Toast notifications (bottom-right, fade in/out) ---------- */
@@ -1417,3 +1421,6 @@ select, .modal-overlay [data-close], .toggle-switch, .theme-mode-btn,
 button:disabled { cursor: not-allowed; }
 
 .provider-hint-icon { font-size: 11px; color: var(--accent); margin-left: 4px; vertical-align: middle; cursor: help; }
+
+.theme-link, .settings-body a, .hint a { color: var(--accent); text-decoration: none; }
+.theme-link:hover, .settings-body a:hover, .hint a:hover { text-decoration: underline; }

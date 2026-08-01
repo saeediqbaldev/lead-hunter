@@ -125,9 +125,44 @@ router.use("/deepseek-keys", createKeyRoutes("deepseek", deepseekClient.testApiK
 // GET /api/settings/usage-summary -> this month's usage totals for both
 // providers, for the "Limits Usage" page.
 router.get("/usage-summary", (req, res) => {
-  const places = apiKeys.currentMonthUsage(req.session.userId, "google_places");
-  const gemini = apiKeys.currentMonthUsage(req.session.userId, "gemini");
-  res.json({ places, gemini });
+  const providers = ["google_places", "gemini", "groq", "deepseek"];
+  const result = {};
+  for (const p of providers) {
+    result[p] = apiKeys.currentMonthUsage(req.session.userId, p);
+  }
+  res.json(result);
+});
+
+// GET /api/settings/usage-history?provider=gemini|groq|deepseek|google_places
+// -> all-time totals per key + a daily timeseries, same shape the Reports
+// page's chart already uses, reused here for the Limits Usage page's
+// per-provider charts (and embedded on each provider's own Settings page).
+router.get("/usage-history", (req, res) => {
+  const provider = ["google_places", "gemini", "groq", "deepseek"].includes(req.query.provider) ? req.query.provider : "gemini";
+  const allTime = apiKeys.allTimeUsage(req.session.userId, provider);
+  const daily = apiKeys.dailyUsageHistory(req.session.userId, 90, provider);
+
+  const days = Array.from(new Set(daily.map((d) => d.usage_date))).sort();
+  const byKey = {};
+  for (const row of allTime) {
+    byKey[row.id] = {
+      id: row.id,
+      label: row.label,
+      active: !!row.is_active,
+      totalRequests: row.requests_made || 0,
+      totalLeads: row.leads_caught || 0,
+      requestsSeries: days.map(() => 0),
+    };
+  }
+  daily.forEach((row) => {
+    const entry = byKey[row.api_key_id];
+    if (!entry) return;
+    const dayIndex = days.indexOf(row.usage_date);
+    if (dayIndex === -1) return;
+    entry.requestsSeries[dayIndex] = row.requests_made || 0;
+  });
+
+  res.json({ days, keys: Object.values(byKey) });
 });
 
 module.exports = router;

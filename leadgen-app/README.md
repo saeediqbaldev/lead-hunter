@@ -6,6 +6,31 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V12.9
+This completes the full list from the last round - all 9 items plus
+Limits Usage are now done.
+
+- **Charts are now 1.5x taller and resizable** by dragging the bottom-right
+  corner (native CSS resize) - verified with a real drag simulation:
+  initial height confirmed at exactly 450px (1.5x of the previous 300px),
+  and after dragging, both the container AND the Chart.js canvas itself
+  correctly grew to match (confirming the resize actually redraws the
+  chart, not just resizes an empty box).
+- **Limits Usage is now a real, complete picture** - added Groq and
+  DeepSeek, which had been missing from this page entirely. Each of the 4
+  providers (Places, Groq, Gemini, DeepSeek) now has: a real chart and
+  table of actual usage (not just static text), a plain-English
+  explanation of what it's used for, a link to where to get a key, and a
+  link to the current official rate-limit page - all confirmed via real
+  browser testing (4 charts, 4 tables, explanatory text all present).
+- **The same usage chart/table now also appears on each provider's own
+  Settings page** (API Keys, Gemini AI, Groq AI, DeepSeek AI) - not just
+  the central Limits Usage page - reusing the same rendering code in both
+  places rather than duplicating it.
+- **Links now use the theme's accent color** instead of default blue -
+  verified the computed color exactly matches the theme's accent
+  (`rgb(255, 106, 61)`).
+
 ## What's in this V12.8
 - **Modals/popups close on outside-click and Escape** - the confirm modal
   already had outside-click, added Escape for it plus a global handler

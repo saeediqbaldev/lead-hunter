@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.01-12.8";
+const APP_VERSION = "2026.08.01-12.9";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -157,6 +157,12 @@ function setupAiProviderKeySection({ provider, label, displayLabel, endpointPref
     state.lastNavSection = "settings";
     setContentView(view);
     await loadKeys();
+
+    const usageContainer = document.getElementById(`settingsUsage-${provider}`);
+    if (usageContainer) {
+      usageContainer.innerHTML = `<h3 class="settings-subheading">Usage</h3>` + buildProviderUsageSectionHtml(`settings-${provider}`, provider === "google_places");
+      await loadAndRenderProviderUsage(provider, `settings-${provider}`, provider === "google_places");
+    }
   });
 
   saveNewBtn.addEventListener("click", async () => {
@@ -315,6 +321,12 @@ navSettingsApi.addEventListener("click", async () => {
   setContentView("settings-api");
   await loadApiKeys();
   await loadDailyCap();
+
+  const usageContainer = document.getElementById("settingsUsage-google_places");
+  if (usageContainer) {
+    usageContainer.innerHTML = `<h3 class="settings-subheading">Usage</h3>` + buildProviderUsageSectionHtml("settings-google_places", true);
+    await loadAndRenderProviderUsage("google_places", "settings-google_places", true);
+  }
 });
 
 async function loadDailyCap() {
@@ -676,9 +688,12 @@ navSettingsTeam.addEventListener("click", async () => {
 // numbers next to them are real and pulled from your own account.
 const USAGE_LIMITS_INFO = [
   {
-    title: "Google Places API (hunting)",
+    title: "Google Places API",
     icon: "bi-geo-alt-fill",
     provider: "google_places",
+    usedFor: "Hunting for new leads - every search that finds businesses in the Hunt board uses this API.",
+    keyLink: "https://console.cloud.google.com/google/maps-apis/credentials",
+    keyLinkLabel: "console.cloud.google.com (Maps Platform credentials)",
     notes: [
       "Billed via a monthly free credit (not a flat request count) - Essentials-tier fields (name, address, phone, website) are the cheapest; adding ratings pulls in Pro-tier pricing.",
       "A reasonable rule of thumb: a few thousand Essentials-tier searches per month comfortably fits inside the free credit for most solo/small-team use - exact math depends on which fields you request.",
@@ -687,9 +702,26 @@ const USAGE_LIMITS_INFO = [
     linkLabel: "Current official Places API pricing",
   },
   {
-    title: "Gemini API (business analysis + content generation)",
+    title: "Groq API",
+    icon: "bi-lightning-charge-fill",
+    provider: "groq",
+    usedFor: "First provider tried in the AI fallback chain for both business analysis (Inspect) and outreach content generation - fast, generous free tier.",
+    keyLink: "https://console.groq.com/keys",
+    keyLinkLabel: "console.groq.com/keys",
+    notes: [
+      "Free tier (as commonly published mid-2026): roughly 500-14,400 requests/day depending on the model, with no credit card required. Runs open-source models (Llama, Qwen, GPT-OSS, and others) rather than a proprietary model.",
+      "Each Inspect run uses about 1 request; each piece of generated outreach content (per platform) uses about 1 request.",
+    ],
+    link: "https://console.groq.com/docs/rate-limits",
+    linkLabel: "Current official Groq rate limits",
+  },
+  {
+    title: "Gemini API",
     icon: "bi-stars",
     provider: "gemini",
+    usedFor: "Second provider in the AI fallback chain (used if Groq is unavailable or rate-limited) - business analysis and content generation.",
+    keyLink: "https://aistudio.google.com/apikey",
+    keyLinkLabel: "aistudio.google.com/apikey",
     notes: [
       "Free tier (Gemini 2.5 Flash, as commonly published mid-2026): roughly 10-15 requests/minute and 250-1,500 requests/day. Google has changed these figures more than once without notice, so treat this as a ballpark, not a guarantee.",
       "Each Inspect run uses about 1 request; each piece of generated outreach content (per platform) uses about 1 request.",
@@ -698,9 +730,25 @@ const USAGE_LIMITS_INFO = [
     linkLabel: "Current official Gemini rate limits",
   },
   {
-    title: "PageSpeed Insights (used during Inspect)",
+    title: "DeepSeek API",
+    icon: "bi-cpu-fill",
+    provider: "deepseek",
+    usedFor: "Last provider in the AI fallback chain (used only if both Groq and Gemini are unavailable) - business analysis and content generation.",
+    keyLink: "https://platform.deepseek.com/api_keys",
+    keyLinkLabel: "platform.deepseek.com/api_keys",
+    notes: [
+      "Not a recurring free tier - new accounts get a one-time free token grant (no credit card), after which it switches to pay-as-you-go at very low per-token rates. Best used as a fallback held in reserve rather than a primary provider.",
+    ],
+    link: "https://api-docs.deepseek.com/quick_start/pricing",
+    linkLabel: "Current official DeepSeek pricing",
+  },
+  {
+    title: "PageSpeed Insights",
     icon: "bi-speedometer2",
     provider: null,
+    usedFor: "Checks a business's website loading speed and mobile-friendliness during Inspect - no API key needed at this app's usage volume.",
+    keyLink: null,
+    keyLinkLabel: null,
     notes: [
       "Free with no API key required at the volume this app uses it (one check per Inspect run on a business's website). Google doesn't publish a hard cap for this usage level.",
     ],
@@ -709,10 +757,15 @@ const USAGE_LIMITS_INFO = [
   },
 ];
 
+const PROVIDER_ENDPOINT_KEY = { google_places: "google_places", gemini: "gemini", groq: "groq", deepseek: "deepseek" };
+const PROVIDER_SUMMARY_KEY = { google_places: "google_places", gemini: "gemini", groq: "groq", deepseek: "deepseek" };
+
 function usageCardHtml(info, usage) {
-  const usageLine = info.provider && usage[info.provider === "google_places" ? "places" : "gemini"]
-    ? `<div class="mono" style="font-size:12px; color:var(--accent); margin-bottom:10px;">This month: ${usage[info.provider === "google_places" ? "places" : "gemini"].totalRequests} requests${info.provider === "google_places" ? ` · ${usage.places.totalLeads} leads captured` : ""}</div>`
+  const summary = info.provider ? usage[PROVIDER_SUMMARY_KEY[info.provider]] : null;
+  const usageLine = summary
+    ? `<div class="mono" style="font-size:12px; color:var(--accent); margin-bottom:10px;">This month: ${summary.totalRequests} requests${info.provider === "google_places" ? ` · ${summary.totalLeads} leads captured` : ""}</div>`
     : "";
+  const chartSectionId = `limits-${info.provider || "pagespeed"}`;
   return `
     <div class="settings-card">
       <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
@@ -721,7 +774,10 @@ function usageCardHtml(info, usage) {
       </div>
       ${usageLine}
       ${info.notes.map((n) => `<p class="hint" style="margin:0 0 8px 0;">${n}</p>`).join("")}
-      <a href="${info.link}" target="_blank" rel="noopener" style="font-size:12px;">${info.linkLabel} <i class="bi bi-box-arrow-up-right"></i></a>
+      <p class="hint" style="margin:0 0 8px 0;"><strong style="color:var(--text);">What it's used for:</strong> ${info.usedFor}</p>
+      ${info.keyLink ? `<p class="hint" style="margin:0 0 10px 0;"><strong style="color:var(--text);">Get a key:</strong> <a href="${info.keyLink}" target="_blank" rel="noopener" class="theme-link">${info.keyLinkLabel}</a></p>` : ""}
+      <a href="${info.link}" target="_blank" rel="noopener" class="theme-link" style="font-size:12px;">${info.linkLabel} <i class="bi bi-box-arrow-up-right"></i></a>
+      ${info.provider ? `<div style="margin-top:14px;">${buildProviderUsageSectionHtml(chartSectionId, info.provider === "google_places")}</div>` : ""}
     </div>`;
 }
 
@@ -734,8 +790,12 @@ navSettingsLimits.addEventListener("click", async () => {
     const res = await api("/api/settings/usage-summary");
     const usage = await res.json();
     body.innerHTML =
-      `<p class="hint" style="margin-bottom:16px;">Numbers marked "This month" are your real usage, pulled from your own account. The free-tier figures next to them are Google's commonly-published reference numbers as of mid-2026 - Google has changed these before without notice, so use the linked official pages for anything you need to rely on exactly.</p>` +
+      `<p class="hint" style="margin-bottom:16px;">Numbers marked "This month" are your real usage, pulled from your own account. The free-tier figures next to them are commonly-published reference numbers as of mid-2026 - providers have changed these before without notice, so use the linked official pages for anything you need to rely on exactly.</p>` +
       USAGE_LIMITS_INFO.map((info) => usageCardHtml(info, usage)).join("");
+
+    for (const info of USAGE_LIMITS_INFO) {
+      if (info.provider) await loadAndRenderProviderUsage(info.provider, `limits-${info.provider}`, info.provider === "google_places");
+    }
   } catch (err) {
     body.innerHTML = `<p class="hint">Could not load usage data.</p>`;
   }
@@ -3426,6 +3486,42 @@ function renderGeminiUsageTable(rows) {
 
 const API_USAGE_LINE_COLORS = ["#ff6a3d", "#7fa8d9", "#e0b355", "#7fb88a", "#c586e0", "#4fd1c5", "#d95d5d"];
 const providerChartInstances = { places: null, gemini: null };
+
+// Builds the HTML shell (table + chart canvas) for one provider's usage
+// section - unique IDs per call so the same provider's section can appear
+// in more than one place at once (Limits Usage page AND that provider's
+// own Settings page) without ID collisions.
+function buildProviderUsageSectionHtml(uniqueSuffix, hasLeadsColumn) {
+  return `
+    <div class="reports-table-card">
+      <h3>Usage history — all time</h3>
+      <div class="table-scroll-wrap">
+        <table class="reports-table">
+          <thead><tr><th>Key</th><th>Total requests${hasLeadsColumn ? "" : " (all time)"}</th>${hasLeadsColumn ? "<th>Leads captured</th>" : ""}</tr></thead>
+          <tbody id="usageTableBody-${uniqueSuffix}"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="reports-chart-card reports-line-card">
+      <h3>Usage over time</h3>
+      <canvas id="usageChart-${uniqueSuffix}"></canvas>
+    </div>`;
+}
+
+async function loadAndRenderProviderUsage(provider, uniqueSuffix, hasLeadsColumn) {
+  try {
+    const res = await api(`/api/settings/usage-history?provider=${provider}`);
+    const history = await res.json();
+    renderProviderUsageHistory(history, {
+      tbodyEl: document.getElementById(`usageTableBody-${uniqueSuffix}`),
+      canvasId: `usageChart-${uniqueSuffix}`,
+      chartKey: `usage-${uniqueSuffix}`,
+      hasLeadsColumn,
+    });
+  } catch (err) {
+    console.error(`Failed to load usage history for ${provider}:`, err);
+  }
+}
 
 function renderProviderUsageHistory(history, { tbodyEl, canvasId, chartKey, hasLeadsColumn }) {
   if (!history.keys.length) {
