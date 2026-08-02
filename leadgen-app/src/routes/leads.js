@@ -186,6 +186,8 @@ router.post("/:id/inspect/stop", (req, res) => {
 // platforms in the background, mirroring the Inspect job pattern) ----------
 const { generateOutreachContent, TONES, LENGTHS, PLATFORM_LIST } = require("../outreachContent");
 const contentJobs = require("../contentGenerationJobs");
+const siteJobs = require("../siteGenerationJobs");
+const { COLOR_PRESETS, DESIGN_STYLES } = require("../websiteGenerator");
 
 // GET /api/leads/:id/outreach-content -> everything already generated+saved for this lead
 router.get("/:id/outreach-content", (req, res) => {
@@ -288,6 +290,69 @@ router.get("/pinned/list", (req, res) => {
     )
     .all(req.session.userId);
   res.json(rows.map(rowToLead));
+});
+
+// POST /api/leads/:id/generate-website/start { niche, city, businessName, designStyle, colorPreset, useVisuals }
+router.post("/:id/generate-website/start", (req, res) => {
+  const lead = getOwnedLeadWithContext(req.session.userId, req.params.id);
+  if (!lead) return res.status(404).json({ error: "Lead not found" });
+
+  const { niche, city, businessName, designStyle, colorPreset, useVisuals } = req.body || {};
+  if (!businessName || !businessName.trim()) return res.status(400).json({ error: "Business name is required" });
+
+  const analysis = analysisJobs.getAnalysis(Number(req.params.id));
+  const strengths = analysis?.strengths?.length ? analysis.strengths.join("; ") : null;
+  const weaknesses = analysis?.weaknesses?.length ? analysis.weaknesses.join("; ") : null;
+
+  const { siteId, slug } = siteJobs.startSiteGeneration(req.session.userId, {
+    leadId: lead.id,
+    niche: niche || lead.niche_name || "local business",
+    city: city || lead.city_name || "",
+    businessName: businessName.trim(),
+    designStyle,
+    colorPreset,
+    useVisuals: useVisuals !== false,
+    strengths,
+    weaknesses,
+  });
+
+  res.json({ ok: true, siteId, slug });
+});
+
+// GET /api/leads/generate-website/status/:siteId
+router.get("/generate-website/status/:siteId", (req, res) => {
+  const status = siteJobs.getSiteStatus(Number(req.params.siteId));
+  if (!status) return res.status(404).json({ error: "Not found" });
+  res.json(status);
+});
+
+// POST /api/leads/generate-website/stop/:siteId
+router.post("/generate-website/stop/:siteId", (req, res) => {
+  siteJobs.stopSiteGeneration(Number(req.params.siteId));
+  res.json({ ok: true });
+});
+
+// GET /api/leads/:id/generated-sites -> every site ever generated for this
+// lead, most recent first, so reopening the panel shows past sites too
+router.get("/:id/generated-sites", (req, res) => {
+  const lead = getOwnedLead(req.session.userId, req.params.id);
+  if (!lead) return res.status(404).json({ error: "Lead not found" });
+
+  const rows = db
+    .prepare(
+      `SELECT id, slug, design_style, color_preset, status, current_step, error, created_at
+       FROM generated_sites WHERE lead_id = ? AND user_id = ? ORDER BY created_at DESC`
+    )
+    .all(req.params.id, req.session.userId);
+  res.json(rows);
+});
+
+// DELETE /api/leads/generated-sites/:siteId
+router.delete("/generated-sites/:siteId", (req, res) => {
+  const row = db.prepare("SELECT id FROM generated_sites WHERE id = ? AND user_id = ?").get(req.params.siteId, req.session.userId);
+  if (!row) return res.status(404).json({ error: "Not found" });
+  db.prepare("DELETE FROM generated_sites WHERE id = ?").run(req.params.siteId);
+  res.json({ ok: true });
 });
 
 module.exports = router;

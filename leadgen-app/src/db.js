@@ -483,4 +483,29 @@ CREATE TABLE IF NOT EXISTS content_generation_jobs (
 );
 `);
 
+// ---------- Generated freebie landing pages (the "Create Website" feature) ----------
+// One row per generated site. html is the fully-assembled, ready-to-serve
+// page (template + AI copy + color preset baked in) - stored as a single
+// blob rather than re-assembled on every request, so serving it is just a
+// straight read, no template/AI logic on the hot path.
+db.exec(`
+CREATE TABLE IF NOT EXISTS generated_sites (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  lead_id INTEGER,
+  user_id INTEGER NOT NULL,
+  slug TEXT NOT NULL UNIQUE,
+  niche TEXT,
+  city TEXT,
+  business_name TEXT,
+  design_style TEXT,
+  color_preset TEXT,
+  use_visuals INTEGER DEFAULT 1,
+  status TEXT DEFAULT 'pending',
+  current_step TEXT,
+  error TEXT,
+  html TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+`);
+
 module.exports = db;

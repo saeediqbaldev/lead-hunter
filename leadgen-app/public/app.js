@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.02-13.7";
+const APP_VERSION = "2026.08.02-13.9";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -2753,6 +2753,206 @@ async function callGenerationStart(leadId, body) {
   return { ok: true };
 }
 
+let websiteMetaCache = null;
+async function getWebsiteMeta() {
+  if (websiteMetaCache) return websiteMetaCache;
+  const res = await api("/api/settings/site-generator-meta");
+  websiteMetaCache = await res.json();
+  return websiteMetaCache;
+}
+
+function siteHistoryItemHtml(site) {
+  const url = `${window.location.origin}/site/${site.slug}`;
+  if (site.status === "done") {
+    return `
+      <div class="site-history-item" data-site-id="${site.id}">
+        <div class="site-history-info">
+          <i class="bi bi-check-circle-fill" style="color:var(--good);"></i>
+          <span>${site.design_style} · ${site.color_preset}</span>
+        </div>
+        <div class="site-history-actions">
+          <input type="text" readonly value="${url}" data-site-url-input>
+          <button type="button" data-action="copy-site-url" title="Copy link"><i class="bi bi-clipboard"></i></button>
+          <a href="${url}" target="_blank" rel="noopener" title="View site"><i class="bi bi-box-arrow-up-right"></i></a>
+          <button type="button" data-action="delete-site" data-site-id="${site.id}" title="Delete" class="danger-item-mini"><i class="bi bi-trash"></i></button>
+        </div>
+      </div>`;
+  }
+  if (site.status === "failed") {
+    return `<div class="site-history-item"><span style="color:var(--danger);"><i class="bi bi-x-circle-fill"></i> ${site.design_style} failed: ${site.error || "unknown error"}</span></div>`;
+  }
+  return `<div class="site-history-item"><span><i class="bi bi-hourglass-split"></i> ${site.design_style} - ${site.current_step || "starting…"}</span></div>`;
+}
+
+async function initWebsitePanel(panel, leadId, lead) {
+  panel.innerHTML = `<p class="hint">Loading…</p>`;
+  const meta = await getWebsiteMeta();
+
+  panel.innerHTML = `
+    <p class="hint" style="margin-bottom:14px;">Generates a free, no-index landing page you can send alongside cold outreach - a demonstration of what you'd build for them, hosted on a shareable link.</p>
+
+    <label class="site-field-label">
+      Business name
+      <input type="text" data-site-business-name value="${lead.name || ""}">
+    </label>
+    <label class="site-field-label">
+      Niche / what they do
+      <input type="text" data-site-niche value="${lead.niche_name || ""}">
+    </label>
+
+    <div class="site-field-label" style="margin-bottom:6px;">Design style</div>
+    <div class="site-style-grid">
+      ${meta.designStyles
+        .map(
+          (s, i) => `
+        <button type="button" class="site-style-card ${i === 0 ? "active" : ""}" data-style-value="${s.value}">
+          <span class="site-style-name">${s.label}</span>
+          <span class="site-style-desc">${s.description}</span>
+        </button>`
+        )
+        .join("")}
+    </div>
+
+    <div class="site-field-label" style="margin-bottom:6px; margin-top:14px;">Color palette</div>
+    <div class="site-color-grid">
+      ${meta.colorPresets
+        .map(
+          (c, i) => `
+        <button type="button" class="site-color-swatch ${i === 0 ? "active" : ""}" data-color-value="${c.value}" title="${c.label}">
+          ${c.swatch.map((hex) => `<span style="background:${hex};"></span>`).join("")}
+        </button>`
+        )
+        .join("")}
+    </div>
+
+    <label class="site-visuals-toggle">
+      <input type="checkbox" data-site-use-visuals checked>
+      Include icons and visual accents
+    </label>
+
+    <button type="button" data-action="generate-website" class="site-generate-btn"><i class="bi bi-magic"></i> Generate Website</button>
+    <button type="button" data-action="stop-website" class="site-generate-btn" style="display:none; background:transparent; color:var(--danger); border:1px solid var(--danger);">Stop</button>
+
+    <div data-site-progress style="display:none;" class="inspect-progress"><span class="inspect-spinner"></span> <span data-site-progress-text></span></div>
+
+    <div data-site-history style="margin-top:16px;"></div>
+  `;
+
+  let selectedStyle = meta.designStyles[0].value;
+  let selectedColor = meta.colorPresets[0].value;
+  let activeSiteId = null;
+  let sitePollTimer = null;
+
+  panel.querySelectorAll(".site-style-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      panel.querySelectorAll(".site-style-card").forEach((c) => c.classList.remove("active"));
+      card.classList.add("active");
+      selectedStyle = card.dataset.styleValue;
+    });
+  });
+  panel.querySelectorAll(".site-color-swatch").forEach((sw) => {
+    sw.addEventListener("click", () => {
+      panel.querySelectorAll(".site-color-swatch").forEach((s) => s.classList.remove("active"));
+      sw.classList.add("active");
+      selectedColor = sw.dataset.colorValue;
+    });
+  });
+
+  async function refreshHistory() {
+    const res = await api(`/api/leads/${leadId}/generated-sites`);
+    const sites = await res.json();
+    const historyEl = panel.querySelector("[data-site-history]");
+    historyEl.innerHTML = sites.length ? sites.map(siteHistoryItemHtml).join("") : "";
+    return sites;
+  }
+  await refreshHistory();
+
+  async function pollSite() {
+    if (!activeSiteId) return;
+    const res = await api(`/api/leads/generate-website/status/${activeSiteId}`);
+    const status = await res.json();
+    const progressText = panel.querySelector("[data-site-progress-text]");
+    if (status.status === "running") {
+      progressText.textContent = status.currentStep || "Working…";
+    } else {
+      clearInterval(sitePollTimer);
+      sitePollTimer = null;
+      panel.querySelector("[data-site-progress]").style.display = "none";
+      panel.querySelector('[data-action="generate-website"]').style.display = "inline-flex";
+      panel.querySelector('[data-action="stop-website"]').style.display = "none";
+      await refreshHistory();
+      if (status.status === "done") showToast("Website generated", "success");
+      else if (status.status === "failed") showToast(`Website generation failed: ${status.error}`, "error");
+    }
+  }
+
+  panel.addEventListener("click", async (e) => {
+    const action = e.target.closest("[data-action]")?.dataset.action;
+
+    if (action === "generate-website") {
+      const businessName = panel.querySelector("[data-site-business-name]").value.trim();
+      const niche = panel.querySelector("[data-site-niche]").value.trim();
+      if (!businessName) {
+        showToast("Enter a business name first", "error");
+        return;
+      }
+      const res = await api(`/api/leads/${leadId}/generate-website/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          niche,
+          city: lead.city_name || "",
+          businessName,
+          designStyle: selectedStyle,
+          colorPreset: selectedColor,
+          useVisuals: panel.querySelector("[data-site-use-visuals]").checked,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || "Could not start generation", "error");
+        return;
+      }
+      activeSiteId = data.siteId;
+      panel.querySelector("[data-site-progress]").style.display = "flex";
+      panel.querySelector('[data-action="generate-website"]').style.display = "none";
+      panel.querySelector('[data-action="stop-website"]').style.display = "inline-flex";
+      await refreshHistory();
+      if (sitePollTimer) clearInterval(sitePollTimer);
+      sitePollTimer = setInterval(pollSite, 1500);
+      await pollSite();
+      return;
+    }
+
+    if (action === "stop-website") {
+      if (activeSiteId) await api(`/api/leads/generate-website/stop/${activeSiteId}`, { method: "POST" });
+      if (sitePollTimer) clearInterval(sitePollTimer);
+      panel.querySelector("[data-site-progress]").style.display = "none";
+      panel.querySelector('[data-action="generate-website"]').style.display = "inline-flex";
+      panel.querySelector('[data-action="stop-website"]').style.display = "none";
+      await refreshHistory();
+      return;
+    }
+
+    if (action === "copy-site-url") {
+      const input = e.target.closest(".site-history-item").querySelector("[data-site-url-input]");
+      await navigator.clipboard.writeText(input.value);
+      showToast("Link copied", "success");
+      return;
+    }
+
+    if (action === "delete-site") {
+      const siteId = e.target.closest("[data-action]").dataset.siteId;
+      const confirmed = await openModal({ title: "Delete this generated site?", message: "This cannot be undone.", confirmText: "Delete", danger: true });
+      if (!confirmed) return;
+      await api(`/api/leads/generated-sites/${siteId}`, { method: "DELETE" });
+      await refreshHistory();
+      showToast("Site deleted", "success");
+      return;
+    }
+  });
+}
+
 function buildExpandPanelHtml(lead) {
   return `
     <div class="expand-section" data-inspect-section>
@@ -2823,6 +3023,14 @@ function buildExpandPanelHtml(lead) {
         <button type="button" data-action="regenerate-content"><i class="bi bi-arrow-repeat"></i> Regenerate this platform</button>
         <button type="button" data-action="clear-content" class="danger-btn"><i class="bi bi-trash"></i> Clear this platform</button>
       </div>
+    </div>
+
+    <div class="expand-section" data-website-section>
+      <div class="expand-section-head">
+        <span class="expand-section-title"><i class="bi bi-window-stack"></i> Freebie Website</span>
+        <button type="button" data-action="toggle-website-panel" class="site-toggle-btn"><i class="bi bi-plus-circle"></i> Create Website</button>
+      </div>
+      <div data-website-panel style="display:none;"></div>
     </div>
   `;
 }
@@ -3030,6 +3238,24 @@ async function toggleLeadExpand(leadId) {
 
   expandRow.addEventListener("click", async (e) => {
     const action = e.target.closest("[data-action]")?.dataset.action;
+
+    if (action === "toggle-website-panel") {
+      const panel = expandRow.querySelector("[data-website-panel]");
+      const btn = e.target.closest("[data-action]");
+      const isOpen = panel.style.display !== "none";
+      if (isOpen) {
+        panel.style.display = "none";
+        btn.innerHTML = `<i class="bi bi-plus-circle"></i> Create Website`;
+      } else {
+        panel.style.display = "block";
+        btn.innerHTML = `<i class="bi bi-dash-circle"></i> Hide`;
+        if (!panel.dataset.loaded) {
+          panel.dataset.loaded = "1";
+          await initWebsitePanel(panel, leadId, lead);
+        }
+      }
+      return;
+    }
 
     if (action === "pin-lead") {
       const btn = e.target.closest("[data-action]");

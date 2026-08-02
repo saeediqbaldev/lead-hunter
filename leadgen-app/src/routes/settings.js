@@ -104,6 +104,16 @@ router.put("/content-links", (req, res) => {
 
 const { DEFAULT_SIGNATURE } = require("../outreachContent");
 
+// GET /api/settings/site-generator-meta -> design styles and color presets
+// available, for populating the "Create Website" picker UI
+router.get("/site-generator-meta", (req, res) => {
+  const { DESIGN_STYLES, COLOR_PRESETS } = require("../websiteGenerator");
+  res.json({
+    designStyles: Object.entries(DESIGN_STYLES).map(([value, v]) => ({ value, ...v })),
+    colorPresets: Object.entries(COLOR_PRESETS).map(([value, v]) => ({ value, label: v.label, swatch: v.swatch })),
+  });
+});
+
 // GET /api/settings/signature -> this user's saved outreach signature
 router.get("/signature", (req, res) => {
   const row = db.prepare("SELECT signature FROM users WHERE id = ?").get(req.session.userId);

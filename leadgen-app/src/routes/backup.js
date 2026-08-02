@@ -62,6 +62,16 @@ router.get("/export", (req, res) => {
   const outreachContent = leadIds.length
     ? db.prepare(`SELECT * FROM outreach_content WHERE lead_id IN (${leadIds.map(() => "?").join(",")})`).all(...leadIds)
     : [];
+  // Includes the full html - a restored site needs to actually be servable
+  // immediately, not just have its metadata restored while silently
+  // missing the page content (status would claim "done" but /site/:slug
+  // would 404). Individual pages are small (~9KB), so this isn't a
+  // meaningful size concern even for many sites.
+  const generatedSites = db
+    .prepare(
+      "SELECT id, lead_id, slug, niche, city, business_name, design_style, color_preset, use_visuals, status, html, created_at FROM generated_sites WHERE user_id = ?"
+    )
+    .all(userId);
 
   const backup = {
     formatVersion: BACKUP_FORMAT_VERSION,
@@ -79,6 +89,7 @@ router.get("/export", (req, res) => {
     apiKeyDailyUsage,
     businessAnalysis,
     outreachContent,
+    generatedSites,
   };
 
   const filename = `xeven-leads-backup-${user.username}-${new Date().toISOString().slice(0, 10)}.json`;
@@ -117,7 +128,7 @@ router.post("/import", (req, res) => {
     return (loc || "").trim().toLowerCase().replace(/[,\s]+/g, " ");
   }
 
-  const stats = { niches: 0, catchLogs: 0, leads: 0, apiKeys: 0, businessAnalysis: 0, outreachContent: 0 };
+  const stats = { niches: 0, catchLogs: 0, leads: 0, apiKeys: 0, businessAnalysis: 0, outreachContent: 0, generatedSites: 0 };
 
   const importTx = db.transaction(() => {
     const nicheIdMap = new Map(); // backup niche id -> real (existing or new) niche id
@@ -273,11 +284,12 @@ router.post("/import", (req, res) => {
     }
 
     // Generated outreach content - same "don't clobber anything fresher"
-    // rule, keyed by (lead_id, platform) same as the table's own primary key.
+    // rule, keyed by (lead_id, platform, language) same as the table's own
+    // primary key (each language is stored independently).
     const insertContent = db.prepare(`
-      INSERT INTO outreach_content (lead_id, platform, tone, length, content, provider, generated_at)
-      VALUES (@lead_id, @platform, @tone, @length, @content, @provider, @generated_at)
-      ON CONFLICT(lead_id, platform) DO NOTHING
+      INSERT INTO outreach_content (lead_id, platform, tone, length, content, provider, language, generated_at)
+      VALUES (@lead_id, @platform, @tone, @length, @content, @provider, @language, @generated_at)
+      ON CONFLICT(lead_id, platform, language) DO NOTHING
     `);
     for (const content of backup.outreachContent || []) {
       const realLeadId = leadIdMap.get(content.lead_id);
@@ -289,9 +301,39 @@ router.post("/import", (req, res) => {
         length: content.length,
         content: content.content,
         provider: content.provider,
+        language: content.language || "English",
         generated_at: content.generated_at,
       });
       if (info.changes > 0) stats.outreachContent++;
+    }
+
+    // Generated freebie websites - matched by slug (globally unique by
+    // design), so re-importing the same backup twice never duplicates.
+    // lead_id is remapped like everything else above; if the original
+    // lead can't be matched (e.g. it was never in this backup), the site
+    // is still restored but with no lead attached, since the page itself
+    // is still a real, valid, servable artifact on its own.
+    const insertSite = db.prepare(`
+      INSERT INTO generated_sites (lead_id, user_id, slug, niche, city, business_name, design_style, color_preset, use_visuals, status, html, created_at)
+      VALUES (@lead_id, @user_id, @slug, @niche, @city, @business_name, @design_style, @color_preset, @use_visuals, @status, @html, @created_at)
+      ON CONFLICT(slug) DO NOTHING
+    `);
+    for (const site of backup.generatedSites || []) {
+      const info = insertSite.run({
+        lead_id: leadIdMap.get(site.lead_id) || null,
+        user_id: userId,
+        slug: site.slug,
+        niche: site.niche,
+        city: site.city,
+        business_name: site.business_name,
+        design_style: site.design_style,
+        color_preset: site.color_preset,
+        use_visuals: site.use_visuals,
+        status: site.status,
+        html: site.html,
+        created_at: site.created_at,
+      });
+      if (info.changes > 0) stats.generatedSites++;
     }
 
     if (backup.theme) {

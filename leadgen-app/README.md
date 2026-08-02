@@ -6,6 +6,67 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V13.9
+**New feature: freebie website generation.** From the Generate panel on any
+lead, "Create Website" opens a new section that generates a free,
+no-index landing page - a real demonstration of what you'd build for a
+prospect, hosted on a shareable link you can send alongside cold outreach.
+
+Built around one key architectural decision: AI never generates raw HTML.
+Instead, three hand-designed templates (Modern, Minimal, Standard - each
+with a genuinely distinct visual personality, not just three copies of
+the same layout in different colors) provide the structure, and AI only
+writes the business-specific copy that drops into fixed slots. This is
+dramatically more reliable than freeform AI-generated HTML, and keeps
+every generated page looking genuinely designed rather than templated.
+
+- **6 color palettes**, decoupled from the templates - any style pairs
+  with any palette. Icons via Bootstrap Icons, no stock photo API needed
+  (avoids both licensing questions and free-tier rate limits) - visuals
+  lean on icons, color, and typography instead.
+- **Visual pickers, not dropdowns** - style cards and actual color swatches
+  you click, matching the care that went into the templates themselves.
+- **Same proven job pattern** as Inspect and content generation:
+  start/status/stop with live per-section progress, throttled between AI
+  calls to stay clear of free-tier rate limits.
+- **Genuinely excluded from search engines - three independent layers**:
+  the page's own `<meta name="robots">` tag, an `X-Robots-Tag` HTTP
+  header on the serving route, and a `robots.txt` disallow rule.
+- **Backup & restore updated for the new table** - applied the lesson from
+  an earlier release immediately rather than waiting for it to be
+  discovered missing: verified a full export/wipe/restore cycle not just
+  recreates the database row but that the restored page is genuinely
+  servable at its original link, and that re-importing the same backup
+  twice never duplicates anything.
+
+Verified end-to-end through real HTTP requests and a real browser
+session: generation completes with live progress, the resulting page is
+publicly reachable with all three no-index layers confirmed present, and
+generated pages render correctly and responsively with zero horizontal
+overflow on both desktop and mobile.
+
+## What's in this V13.8
+**Critical fix, found via proactive testing (not reported)**: backup
+restore was completely broken for any account with saved outreach
+content. When the language-independence feature was added in V13.6, the
+`outreach_content` table's primary key changed to
+`(lead_id, platform, language)` - but the backup import route was never
+updated to match, so it still referenced the old `(lead_id, platform)`
+conflict target and was missing the `language` column from its INSERT
+entirely. Any restore attempt on a backup containing generated content
+would fail outright with a database error.
+
+Found this by running a full, unprompted backup/restore round-trip as a
+health check after the last release rather than waiting for it to surface
+in your testing. Fixed and reverified the complete cycle: export, wipe,
+restore (all fields correct including language), and re-imported the same
+backup a second time to confirm no duplication.
+
+Also ran a full smoke test across every route in the app (30+ endpoints
+spanning Hunt, Reach Out, Pinned, Inspect, content generation, all 4 API
+provider Settings pages, Account Settings, Reports with both exports,
+theme, and the PWA assets) - everything else came back healthy.
+
 ## What's in this V13.7
 - **Rebranded to "Xeven Leads"** everywhere - checked every file, zero
   references to the old name remain. New favicon and PWA icons generated
