@@ -88,10 +88,11 @@ function createKeyRoutes(provider, testFn, envFallbackVar) {
   sub.get("/", (req, res) => {
     const rows = apiKeys.listKeys(req.session.userId, provider).map(toPublicRow);
     const activeRow = rows.find((r) => r.active);
+    const isAdmin = req.session.role === "admin";
     res.json({
       keys: rows,
       activeId: activeRow ? activeRow.id : null,
-      envFallbackAvailable: envFallbackVar ? !!process.env[envFallbackVar] : false,
+      envFallbackAvailable: envFallbackVar && isAdmin ? !!process.env[envFallbackVar] : false,
     });
   });
 

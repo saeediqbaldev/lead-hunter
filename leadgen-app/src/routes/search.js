@@ -105,6 +105,7 @@ router.post("/", async (req, res) => {
       maxResults: requestCount,
       includeRatings: !!includeRatings,
       userId,
+      isAdmin: req.session.role === "admin",
       excludePlaceIds,
     });
     const { places, requestsMade, keyId, exhausted } = searchResult;

@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="Prospect" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=134" />
+<link rel="stylesheet" href="style.css?v=135" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -113,7 +113,7 @@
           </div>
         </div>
 
-        <div class="nav-section" id="navSectionReports">
+        <div class="nav-section open" id="navSectionReports">
           <div class="nav-section-header-row">
             <button class="nav-section-header" id="navReportsBtn" data-section="reports">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/></svg>
@@ -130,7 +130,7 @@
             <span class="nav-caret">▾</span>
           </button>
           <div class="nav-section-body">
-            <button class="nav-leaf nav-leaf-action" data-goto="settings-api" id="navSettingsApi"><i class="bi bi-key"></i> API Keys</button>
+            <button class="nav-leaf nav-leaf-action" data-goto="settings-api" id="navSettingsApi"><i class="bi bi-key"></i> Google Places API</button>
             <button class="nav-leaf nav-leaf-action" data-goto="settings-gemini" id="navSettingsGemini"><i class="bi bi-stars"></i> Gemini AI</button>
             <button class="nav-leaf nav-leaf-action" data-goto="settings-groq" id="navSettingsGroq"><i class="bi bi-lightning-charge-fill"></i> Groq AI</button>
             <button class="nav-leaf nav-leaf-action" data-goto="settings-deepseek" id="navSettingsDeepseek"><i class="bi bi-cpu-fill"></i> DeepSeek AI</button>
@@ -395,12 +395,12 @@
         </div>
       </section>
 
-      <!-- ---------- Settings: API Keys page ---------- -->
+      <!-- ---------- Settings: Google Places API page ---------- -->
       <section class="panel settings-view view-hidden" id="settingsApiView">
         <div class="board-header">
           <div>
-            <h2>API Keys &amp; hunting limits</h2>
-            <div class="scope-line">Add one or more keys, test them, and pick which one is active</div>
+            <h2>Google Places API</h2>
+            <div class="scope-line">Used for hunting - add one or more keys, test them, and pick which one is active</div>
           </div>
         </div>
         <div class="settings-body">
@@ -653,7 +653,7 @@
 
 
 
-  <script src="app.js?v=134"></script>
+  <script src="app.js?v=135"></script>
   <script src="pwa-install.js"></script>
 </body>
 </html>

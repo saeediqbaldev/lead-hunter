@@ -5,12 +5,16 @@ const apiKeys = require("./apiKeys");
 const PLACES_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText";
 
 // Key resolution order: whichever key is marked "active" for this user
-// (Settings UI) -> a single legacy key from before multi-key support existed
-// (only ever applies to the original admin account) -> the
-// GOOGLE_PLACES_API_KEY env var, as a last-resort shared fallback.
-function resolveApiKey(userId) {
+// (Settings UI) -> for the admin account ONLY, a single legacy key from
+// before multi-key support existed, then the GOOGLE_PLACES_API_KEY env var
+// as a last-resort shared fallback. Non-admin users must configure their
+// own key - the shared/legacy fallback never applies to them, so the app
+// can't accidentally run on the admin's credentials for every user.
+function resolveApiKey(userId, isAdmin) {
   const activeKeyRow = apiKeys.getActiveKey(userId);
   if (activeKeyRow) return { value: activeKeyRow.key_value, keyId: activeKeyRow.id };
+
+  if (!isAdmin) return { value: null, keyId: null };
 
   const legacy = getSetting("google_places_api_key");
   if (legacy) return { value: legacy, keyId: null };
@@ -120,12 +124,13 @@ async function searchPlaces({
   maxResults = 20,
   includeRatings = false,
   userId,
+  isAdmin,
   excludePlaceIds = new Set(),
 }) {
-  const { value: apiKey, keyId } = resolveApiKey(userId);
+  const { value: apiKey, keyId } = resolveApiKey(userId, isAdmin);
   if (!apiKey) {
     throw new Error(
-      "No Google Places API key configured. Add one under Settings in the app, or set GOOGLE_PLACES_API_KEY in .env."
+      "No Google Places API key configured. Add one under Settings in the app."
     );
   }
 

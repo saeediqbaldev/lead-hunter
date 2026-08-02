@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.01-13.4";
+const APP_VERSION = "2026.08.01-13.5";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -2554,6 +2554,18 @@ function providerHintIconHtml(provider) {
   return `<i class="bi ${info.icon} provider-hint-icon" title="Generated using ${info.label}"></i>`;
 }
 
+// Shows the AI provider's icon + name if the writeup was AI-generated, or
+// a simple, honest label if it wasn't (checklist/scores are still fully
+// accurate either way - this is just about where the strengths/weaknesses
+// narrative came from).
+function analysisSourceHintHtml(provider) {
+  if (provider && PROVIDER_ICON_INFO[provider]) {
+    const info = PROVIDER_ICON_INFO[provider];
+    return `<span class="analysis-source-hint"><i class="bi ${info.icon}"></i> ${info.label}</span>`;
+  }
+  return `<span class="analysis-source-hint muted"><i class="bi bi-geo-alt-fill"></i> Based on business place info</span>`;
+}
+
 function renderInspectSectionBody(analysis, lead) {
   if (!analysis || analysis.status === "pending") {
     return `<div class="inspect-empty">No inspection has been run yet for this business. Click the search icon above to start.</div>`;
@@ -2583,8 +2595,8 @@ function renderInspectSectionBody(analysis, lead) {
     <div class="score-header-mini">
       <div class="score-ring-mini">${scoreRingSvg(analysis.overallScore, 60)}<div class="score-ring-mini-text">${analysis.overallScore}</div></div>
       <div>
-        <div style="font-family:var(--font-display); font-weight:600; font-size:13px;">Overall score: ${analysis.overallScore}/100 ${providerHintIconHtml(analysis.provider)}</div>
-        <div style="font-size:11.5px; color:var(--text-muted);">Last checked ${analysis.updatedAt || ""}</div>
+        <div style="font-family:var(--font-display); font-weight:600; font-size:13px;">Overall score: ${analysis.overallScore}/100</div>
+        <div style="font-size:11.5px; color:var(--text-muted); display:flex; align-items:center; gap:8px;">Last checked ${analysis.updatedAt || ""} ${analysisSourceHintHtml(analysis.provider)}</div>
       </div>
     </div>
     <div class="category-grid-mini">
@@ -2606,7 +2618,7 @@ function renderInspectSectionBody(analysis, lead) {
       <div class="sw-col-mini strengths"><h4><i class="bi bi-arrow-up-circle-fill"></i> Strengths</h4><ul class="sw-list-mini">${analysis.strengths.map((s) => `<li>${s}</li>`).join("")}</ul></div>
       <div class="sw-col-mini weaknesses"><h4><i class="bi bi-arrow-down-circle-fill"></i> Weaknesses</h4><ul class="sw-list-mini">${analysis.weaknesses.map((s) => `<li>${s}</li>`).join("")}</ul></div>
     </div>`
-        : `<div class="inspect-empty">No AI writeup was generated on this run (checklist and scores above are still fully accurate either way). If you've added a Gemini key since this was last inspected, click <strong>Inspect</strong> again to re-run it with your current key - "Refresh" only re-displays this same saved result, it doesn't start a new check.</div>`
+        : ""
     }
     ${
       analysis.suggestedServices.length
@@ -2698,8 +2710,7 @@ function buildExpandPanelHtml(lead) {
           (p) =>
             `<button type="button" class="ai-provider-tab ${p.value === "" ? "active" : ""}" data-ai-provider="${p.value}" title="${p.label}"><i class="bi ${p.icon}"></i> ${p.label}</button>`
         ).join("")}
-      </div>
-      <div class="gen-controls-mini">
+        <span class="gen-generate-btn-spacer"></span>
         <button type="button" data-action="generate-all" style="background:var(--accent); color:#1a1310; border:none; border-radius:6px; padding:7px 14px; font-size:12px; font-weight:600; cursor:pointer;">
           <i class="bi bi-stars"></i> Generate Content
         </button>
@@ -2837,6 +2848,12 @@ async function toggleLeadExpand(leadId) {
     } else {
       const firstError = Object.values(job.failedPlatforms || {})[0];
       showToast(`Content generation failed: ${firstError || "unknown error"}`, "error");
+      // Also shown persistently in the output area (not just the toast,
+      // which auto-dismisses) so the real underlying error is actually
+      // readable and reportable, not just glimpsed for a few seconds.
+      if (!savedContent.find((c) => c.platform === currentPlatform)) {
+        outputEl.innerHTML = `<div style="color:var(--danger);">${firstError || "Content generation failed - unknown error."}</div>`;
+      }
     }
   }
 
@@ -3207,11 +3224,7 @@ function renderLeads(leads) {
       : `<span class="rating-val" title="Rating Not Pulled — ratings cost extra API quota, so they're only fetched when 'Include ratings' is checked on a hunt"><small>RNP</small></span>`;
 
     row.innerHTML = `
-      <div class="col-sn">${startIndex + index + 1}${
-      lead.has_analysis || lead.has_content
-        ? `<i class="bi bi-check-circle-fill sn-done-hint" title="${lead.has_analysis ? "Inspected" : ""}${lead.has_analysis && lead.has_content ? " · " : ""}${lead.has_content ? "Content generated" : ""}"></i>`
-        : ""
-    }</div>
+      <div class="col-sn">${startIndex + index + 1}</div>
       <div>
         <div class="lead-name-row">
           <span class="lead-name" title="${lead.name}">${lead.name}</span>
@@ -3223,7 +3236,14 @@ function renderLeads(leads) {
       <div><div class="social-row">${socialLinksHtml(lead)}</div></div>
       <div>${ratingHtml}</div>
       <div>${rowStatusDropdownHtml(lead)}</div>
-      <div class="row-actions"><button data-action="delete" data-id="${lead.id}" title="Remove"><i class="bi bi-trash"></i></button></div>
+      <div class="row-actions">
+        <button data-action="delete" data-id="${lead.id}" title="Remove"><i class="bi bi-trash"></i></button>
+        ${
+          lead.has_analysis || lead.has_content
+            ? `<i class="bi bi-check-circle-fill row-done-hint" title="${lead.has_analysis ? "Inspected" : ""}${lead.has_analysis && lead.has_content ? " · " : ""}${lead.has_content ? "Content generated" : ""}"></i>`
+            : ""
+        }
+      </div>
     `;
     recordsBody.appendChild(row);
   });

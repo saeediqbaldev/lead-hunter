@@ -6,6 +6,34 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V13.5
+- **Inspect messaging fixed**: removed the confusing "No AI writeup was
+  generated..." message entirely. Now shows either the AI provider's icon
+  and name (if the writeup was AI-generated) or a simple "Based on
+  business place info" label if not - no more mention of a specific
+  provider or confusing re-inspect instructions.
+- **Generate button repositioned** to the right side, below the tone/
+  length/language row, next to the AI provider selector.
+- **Failed generation errors now persist visibly** in the output area, not
+  just a 5-second toast - if Gemini/DeepSeek generation fails, the real
+  underlying error is now readable and reportable, not just glimpsed.
+- **Refresh buttons hide when their sidebar section is collapsed** -
+  verified via CSS rule tied to the section's open/closed state; Reports
+  (which has no collapsible body) is always treated as open.
+- **Fallback API key now admin-only** - verified with a real test: created
+  an actual non-admin account, confirmed they get a clean "no key
+  configured" error with no fallback, then confirmed the admin account
+  correctly proceeds past that check and attempts a real call using the
+  shared `.env` key (proven by it reaching an actual network attempt, not
+  just a theoretical check).
+- **Inspected/generated checkmark hint resized and repositioned**: now
+  matches the needs icons' exact size (12px) and sits to the right of the
+  trash icon in the actions column, instead of the S/N column - verified
+  with a real browser test checking computed font sizes and DOM order.
+- **Renamed "API Keys" to "Google Places API"** throughout the sidebar and
+  page header, so it's clear this page is specifically about the Places
+  API, not Gemini/Groq/DeepSeek.
+
 ## What's in this V13.4
 **Critical fix**: `src/aiProviders.js` had ended up containing leftover
 test-mock code instead of the real Groq/Gemini/DeepSeek fallback logic -
