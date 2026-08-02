@@ -38,7 +38,7 @@ const LENGTH_GUIDANCE = {
   Concise: "Write an extremely concise message - 1-2 sentences total, as brief as possible while still being complete and natural.",
 };
 
-const LANGUAGES = ["English", "French", "Spanish", "German", "Portuguese", "Arabic", "Chinese"];
+const LANGUAGES = ["English", "French", "Spanish", "German", "Portuguese", "Arabic", "Chinese", "Hebrew", "Hungarian", "Russian", "Italian", "Bengali", "Urdu", "Pashto"];
 
 function buildContentPrompt({ lead, platform, tone, length, analysis, language }) {
   const platformGuidance = PLATFORM_GUIDANCE[platform] || PLATFORM_GUIDANCE.email;

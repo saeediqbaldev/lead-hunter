@@ -430,6 +430,42 @@ CREATE TABLE IF NOT EXISTS outreach_content (
   if (!outreachContentCols.includes("language")) db.exec("ALTER TABLE outreach_content ADD COLUMN language TEXT");
 }
 
+// ---------- Migrate outreach_content's primary key to include language ----------
+// Previously keyed by just (lead_id, platform), meaning generating content
+// in a second language would silently overwrite the first language's saved
+// version. Each language now needs to coexist independently per platform,
+// which requires changing the PRIMARY KEY - SQLite can't ALTER a table to
+// do that directly, so this recreates the table and copies the data across.
+// Detected by checking whether "language" is actually part of the primary
+// key yet (its pk position via PRAGMA table_info), not just whether the
+// column exists.
+{
+  const cols = db.prepare("PRAGMA table_info(outreach_content)").all();
+  const languageCol = cols.find((c) => c.name === "language");
+  const languageIsInPrimaryKey = languageCol && languageCol.pk > 0;
+
+  if (!languageIsInPrimaryKey) {
+    db.exec(`
+      CREATE TABLE outreach_content_new (
+        lead_id INTEGER NOT NULL,
+        platform TEXT NOT NULL,
+        tone TEXT,
+        length TEXT,
+        content TEXT,
+        provider TEXT,
+        language TEXT NOT NULL DEFAULT 'English',
+        generated_at TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (lead_id, platform, language)
+      );
+      INSERT INTO outreach_content_new (lead_id, platform, tone, length, content, provider, language, generated_at)
+        SELECT lead_id, platform, tone, length, content, provider, COALESCE(language, 'English'), generated_at FROM outreach_content;
+      DROP TABLE outreach_content;
+      ALTER TABLE outreach_content_new RENAME TO outreach_content;
+    `);
+    console.log("[migration] outreach_content is now keyed by (lead_id, platform, language) - each language's generated content is preserved independently instead of being overwritten by the next language.");
+  }
+}
+
 // ---------- Async batch content generation job tracking (generates all
 // platforms at once in the background, mirroring the Inspect job pattern -
 // this is what avoids any single HTTP request needing to stay open long

@@ -6,6 +6,46 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V13.6
+- **Content generation now preserves every language independently** - added
+  7 more languages (Hebrew, Hungarian, Russian, Italian, Bengali, Urdu,
+  Pashto) alongside the existing 7. Previously, generating in a second
+  language would silently overwrite the first language's saved content,
+  since the database only tracked one row per lead+platform. Migrated the
+  schema so each language is stored independently - verified end-to-end
+  through a real browser: generated English, switched to Spanish (showed
+  "not generated yet" correctly), generated Spanish, switched back to
+  English, and the original English content was still there untouched.
+- **Fixed the real cause behind the Gemini/DeepSeek errors**, backed by
+  checking the actual current documentation rather than guessing:
+  - DeepSeek's "Insufficient Balance" is a genuine account billing state -
+    their API is pure pay-as-you-go with no free tier at all, confirmed
+    from their own pricing page. A fresh key alone doesn't change that;
+    the account needs funds. Also updated the model name off `deepseek-chat`,
+    which is deprecated.
+  - Gemini's free tier caps out at 10 requests/minute, and generating all
+    6 platforms fired 6 requests back-to-back with no delay - almost
+    certainly the real cause of the 47-second retry (a per-minute reset,
+    not a daily one). Added a 2.5-second throttle between each platform,
+    verified with real timing measurement (6 calls spaced ~2.5s apart,
+    spanning 12.5s total - comfortably under the limit).
+  - Also updated Groq's model off `llama-3.3-70b-versatile`, which Groq
+    deprecated on June 17, 2026 with a hard shutdown of August 16, 2026 -
+    two weeks away as of this release.
+  - Paid/pro-tier keys for any of these three providers will work with no
+    code changes - same authentication mechanism, just higher limits.
+- **Actually fixed the refresh-button-when-collapsed issue this time** -
+  the earlier fix only covered the sidebar accordion's open/closed state.
+  The real bug was a second, separate kind of collapse: the whole sidebar
+  minimizing to icon-only mode, which hid labels and carets but never the
+  refresh button. Verified with a real measurement showing it now
+  correctly hides in that state too.
+- **Reorganized the Catch Log header layout**: the breadcrumb now sits
+  right next to the "Catch log" title instead of far to the right, and the
+  icon buttons (info, grid, filter, export) moved up to that same row,
+  pushed to the far right - verified with a real screenshot matching the
+  requested layout.
+
 ## What's in this V13.5
 - **Inspect messaging fixed**: removed the confusing "No AI writeup was
   generated..." message entirely. Now shows either the AI provider's icon

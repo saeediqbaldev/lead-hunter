@@ -242,7 +242,11 @@ router.delete("/:id/outreach-content/:platform", (req, res) => {
   const lead = getOwnedLead(req.session.userId, req.params.id);
   if (!lead) return res.status(404).json({ error: "Lead not found" });
 
-  db.prepare("DELETE FROM outreach_content WHERE lead_id = ? AND platform = ?").run(req.params.id, req.params.platform);
+  if (req.query.language) {
+    db.prepare("DELETE FROM outreach_content WHERE lead_id = ? AND platform = ? AND language = ?").run(req.params.id, req.params.platform, req.query.language);
+  } else {
+    db.prepare("DELETE FROM outreach_content WHERE lead_id = ? AND platform = ?").run(req.params.id, req.params.platform);
+  }
   res.json({ ok: true });
 });
 

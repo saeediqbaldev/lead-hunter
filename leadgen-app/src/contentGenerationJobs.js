@@ -56,6 +56,13 @@ async function runJob(userId, leadId, lead, tone, length, analysis, platforms, l
     for (const platform of platforms) {
       if (isCancelled(leadId)) return;
 
+      // Throttled to stay well under free-tier per-minute rate limits
+      // (Gemini's free tier allows as few as 10 requests/minute) - firing
+      // all 6 platforms with zero delay between them can approach or
+      // exceed that ceiling on its own, especially if anything else (like
+      // an Inspect run) used the same provider in the same minute.
+      if (platform !== platforms[0]) await new Promise((r) => setTimeout(r, 2500));
+
       upsertJobRow(leadId, { current_step: `Generating ${platform}…` });
       const result = await generateOutreachContent(userId, { lead, platform, tone, length, analysis, signature, language, aiProvider });
 
@@ -64,8 +71,8 @@ async function runJob(userId, leadId, lead, tone, length, analysis, platforms, l
       if (result.ok) {
         db.prepare(
           `INSERT INTO outreach_content (lead_id, platform, tone, length, content, provider, language, generated_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-           ON CONFLICT(lead_id, platform) DO UPDATE SET tone = excluded.tone, length = excluded.length, content = excluded.content, provider = excluded.provider, language = excluded.language, generated_at = excluded.generated_at`
-        ).run(leadId, platform, tone, length || null, result.content, result.provider || null, language || null);
+           ON CONFLICT(lead_id, platform, language) DO UPDATE SET tone = excluded.tone, length = excluded.length, content = excluded.content, provider = excluded.provider, generated_at = excluded.generated_at`
+        ).run(leadId, platform, tone, length || null, result.content, result.provider || null, language || "English");
         completed.push(platform);
       } else {
         failed[platform] = result.error;

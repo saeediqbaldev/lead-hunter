@@ -169,6 +169,7 @@ body {
 .left-col.collapsed .nav-section-label,
 .left-col.collapsed .nav-caret,
 .left-col.collapsed .nav-hint,
+.left-col.collapsed .nav-section-refresh,
 .left-col.collapsed .nav-section-body { display: none !important; }
 .left-col.collapsed .nav-section-header { justify-content: center; padding: 12px 0; }
 
@@ -889,6 +890,7 @@ button#huntBtn:disabled, .primary-btn:disabled { background: var(--border); colo
 .board-header > div:first-child { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 8px 16px; min-width: 0; }
 .board-header h2 { margin: 0; flex-shrink: 0; }
 .scope-line { min-width: 0; overflow-wrap: break-word; word-break: break-word; }
+.board-header-title-group { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; min-width: 0; }
 
 .board-header-row-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .board-header-actions { display: flex; gap: 6px; align-self: flex-start; }

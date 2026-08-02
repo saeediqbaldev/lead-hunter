@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="Prospect" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=135" />
+<link rel="stylesheet" href="style.css?v=136" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -191,12 +191,13 @@
       <section class="panel board-panel view-hidden" id="boardPanel">
 
         <div class="board-header">
-          <div>
-            <h2>Catch log</h2>
-            <div class="scope-line" id="scopeLine">Viewing: <strong>All records</strong></div>
-          </div>
+          <div class="board-header-row-top">
+            <div class="board-header-title-group">
+              <h2>Catch log</h2>
+              <div class="scope-line" id="scopeLine">Viewing: <strong>All records</strong></div>
+            </div>
 
-          <div class="board-header-actions">
+            <div class="board-header-actions">
             <button id="legendInfoBtn" class="icon-toggle-btn" title="What do the status and needs colors mean?">
               <i class="bi bi-info-circle"></i>
             </button>
@@ -223,6 +224,7 @@
                 <a href="#" data-export-view="pdf">PDF</a>
               </div>
             </div>
+          </div>
           </div>
         </div>
 
@@ -653,7 +655,7 @@
 
 
 
-  <script src="app.js?v=135"></script>
+  <script src="app.js?v=136"></script>
   <script src="pwa-install.js"></script>
 </body>
 </html>

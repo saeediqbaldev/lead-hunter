@@ -90,13 +90,18 @@ function createOpenAiCompatibleClient({ label, baseUrl, defaultModel }) {
 const groqClient = createOpenAiCompatibleClient({
   label: "Groq",
   baseUrl: "https://api.groq.com/openai/v1",
-  defaultModel: "llama-3.3-70b-versatile",
+  // llama-3.3-70b-versatile was deprecated (announced June 17, 2026, hard
+  // shutdown August 16, 2026) - openai/gpt-oss-120b is Groq's official
+  // recommended migration target.
+  defaultModel: "openai/gpt-oss-120b",
 });
 
 const deepseekClient = createOpenAiCompatibleClient({
   label: "DeepSeek",
   baseUrl: "https://api.deepseek.com",
-  defaultModel: "deepseek-chat",
+  // deepseek-chat is deprecated (2026/07/24) - deepseek-v4-flash is the
+  // current model; deepseek-chat now maps to its non-thinking mode anyway.
+  defaultModel: "deepseek-v4-flash",
 });
 
 module.exports = { groqClient, deepseekClient, createOpenAiCompatibleClient };

@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.01-13.5";
+const APP_VERSION = "2026.08.02-13.6";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -2496,6 +2496,13 @@ const CONTENT_LANGUAGES = [
   { value: "Portuguese", label: "Portuguese", flag: "🇵🇹" },
   { value: "Arabic", label: "Arabic", flag: "🇸🇦" },
   { value: "Chinese", label: "Chinese", flag: "🇨🇳" },
+  { value: "Hebrew", label: "Hebrew", flag: "🇮🇱" },
+  { value: "Hungarian", label: "Hungarian", flag: "🇭🇺" },
+  { value: "Russian", label: "Russian", flag: "🇷🇺" },
+  { value: "Italian", label: "Italian", flag: "🇮🇹" },
+  { value: "Bengali", label: "Bengali", flag: "🇧🇩" },
+  { value: "Urdu", label: "Urdu", flag: "🇵🇰" },
+  { value: "Pashto", label: "Pashto", flag: "🇦🇫" },
 ];
 
 // "" (Auto) uses the normal fallback chain (Groq -> Gemini -> DeepSeek).
@@ -2772,22 +2779,18 @@ async function toggleLeadExpand(leadId) {
   const progressTextEl = expandRow.querySelector("[data-gen-progress-text]");
 
   function markCompletedDots() {
+    const activeLanguage = languageSelect.value || "English";
     expandRow.querySelectorAll("[data-platform-dot]").forEach((dot) => {
-      const has = savedContent.some((c) => c.platform === dot.dataset.platformDot);
+      const has = savedContent.some((c) => c.platform === dot.dataset.platformDot && (c.language || "English") === activeLanguage);
       dot.classList.toggle("done", has);
     });
-  }
-
-  function updateGenerateButtonLabel() {
-    const generateAllChecked = expandRow.querySelector("[data-generate-all-toggle]").checked;
-    const labelEl = expandRow.querySelector("[data-generate-btn-label]");
-    labelEl.textContent = generateAllChecked ? "Generate Content" : `Generate for ${currentPlatform.charAt(0).toUpperCase() + currentPlatform.slice(1)}`;
   }
 
   function showPlatform(platform) {
     currentPlatform = platform;
     expandRow.querySelectorAll(".platform-tab").forEach((t) => t.classList.toggle("active", t.dataset.platform === platform));
-    const saved = savedContent.find((c) => c.platform === platform);
+    const activeLanguage = languageSelect.value || "English";
+    const saved = savedContent.find((c) => c.platform === platform && (c.language || "English") === activeLanguage);
     const providerHintEl = expandRow.querySelector("[data-gen-provider-hint]");
     if (saved) {
       outputEl.textContent = saved.content;
@@ -2799,15 +2802,15 @@ async function toggleLeadExpand(leadId) {
         lengthSelect.value = saved.length;
         currentLength = saved.length;
       }
-      if (saved.language) languageSelect.value = saved.language;
       providerHintEl.innerHTML = providerHintIconHtml(saved.provider);
     } else {
-      outputEl.innerHTML = `Not generated yet for ${platform}. Pick a tone, length, and language, then click "Generate Content" to write all 6 platforms at once, or switch to a platform that's already been generated.`;
+      outputEl.innerHTML = `Not generated yet for ${platform} in ${activeLanguage}. Pick a tone and length, then click "Generate Content" - or switch to a language/platform combination that's already been generated.`;
       providerHintEl.innerHTML = "";
     }
+    markCompletedDots();
   }
+  languageSelect.addEventListener("change", () => showPlatform(currentPlatform));
   showPlatform("email");
-  markCompletedDots();
 
   expandRow.querySelectorAll(".ai-provider-tab").forEach((tab) => {
     tab.addEventListener("click", () => {
@@ -2960,16 +2963,17 @@ async function toggleLeadExpand(leadId) {
     if (action === "clear-content") {
       const confirmed = await openModal({
         title: `Clear ${currentPlatform} content?`,
-        message: "This deletes the saved content for this platform. This cannot be undone.",
+        message: `This deletes the saved ${languageSelect.value || "English"} content for this platform - other languages are unaffected. This cannot be undone.`,
         confirmText: "Clear",
         danger: true,
       });
       if (!confirmed) return;
-      await api(`/api/leads/${leadId}/outreach-content/${currentPlatform}`, { method: "DELETE" });
-      savedContent = savedContent.filter((c) => c.platform !== currentPlatform);
+      const activeLanguage = languageSelect.value || "English";
+      await api(`/api/leads/${leadId}/outreach-content/${currentPlatform}?language=${encodeURIComponent(activeLanguage)}`, { method: "DELETE" });
+      savedContent = savedContent.filter((c) => !(c.platform === currentPlatform && (c.language || "English") === activeLanguage));
       markCompletedDots();
       showPlatform(currentPlatform);
-      showToast(`Cleared ${currentPlatform} content`, "success");
+      showToast(`Cleared ${currentPlatform} content (${activeLanguage})`, "success");
       return;
     }
 
