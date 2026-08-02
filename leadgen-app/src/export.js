@@ -68,7 +68,7 @@ function sanitizeFilename(name) {
 
 // Keep in sync with public/app.js's APP_VERSION - used in export filenames
 // per the requested "Niche-City-Date-AppVersion" naming convention.
-const APP_VERSION = "2026.08.02-13.6";
+const APP_VERSION = "2026.08.02-13.7";
 
 // Builds a filename like "CarWash-Bali-2026-07-31-11.9" (niche and/or city
 // are omitted from the name if not applicable, e.g. a "current view" export
@@ -113,7 +113,7 @@ function buildNicheCsv(nicheName, catchLogsWithLeads) {
 // ---------- XLSX (true multi-sheet workbook - one real sheet per catch log) ----------
 async function buildNicheXlsx(nicheName, catchLogsWithLeads) {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "Prospect";
+  workbook.creator = "Xeven Leads";
 
   const usedNames = new Set();
   for (const cl of catchLogsWithLeads) {
@@ -329,12 +329,91 @@ function buildNichePdf(nicheName, catchLogsWithLeads) {
   return doc;
 }
 
+// ---------- Reports page export (CSV + PDF, including embedded chart images) ----------
+function buildReportsCsv(summary, timeseries, meta = {}) {
+  const lines = [];
+  lines.push(`Xeven Leads - Reports export`);
+  lines.push(`Range,${meta.rangeLabel || summary.range || "all"}`);
+  lines.push(`Niche,${meta.nicheLabel || "All niches"}`);
+  lines.push(`City,${meta.cityLabel || "All cities"}`);
+  lines.push(`Generated,${new Date().toISOString()}`);
+  lines.push("");
+  lines.push("Status,Count");
+  lines.push(`All Hunted,${summary.total}`);
+  for (const [status, count] of Object.entries(summary.byStatus || {})) {
+    lines.push(`${status},${count}`);
+  }
+
+  if (Array.isArray(timeseries) && timeseries.length) {
+    lines.push("");
+    const statusKeys = Object.keys(timeseries[0]).filter((k) => k !== "date");
+    lines.push(`Date,${statusKeys.join(",")}`);
+    for (const row of timeseries) {
+      lines.push(`${row.date},${statusKeys.map((k) => row[k] ?? 0).join(",")}`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+// chartImages: [{ title, dataUrl }] - dataUrls are PNG data URLs captured
+// client-side from the actual rendered Chart.js canvases (charts only exist
+// in the browser; this is the simplest reliable way to get them into a
+// server-generated PDF without re-implementing charting server-side).
+function buildReportsPdf(summary, timeseries, chartImages = [], meta = {}) {
+  const doc = new PDFDocument({ margin: 36, size: "A4" });
+
+  doc.fontSize(20).fillColor("#111").font("Helvetica-Bold").text("Xeven Leads - Reports", { align: "left" });
+  doc.fontSize(10).font("Helvetica").fillColor("#555");
+  doc.text(`Range: ${meta.rangeLabel || summary.range || "all"}    Niche: ${meta.nicheLabel || "All niches"}    City: ${meta.cityLabel || "All cities"}`);
+  doc.text(`Generated: ${new Date().toLocaleString()}`);
+  doc.moveDown(1);
+
+  // Stats summary table
+  doc.fontSize(13).fillColor("#111").font("Helvetica-Bold").text("Pipeline summary");
+  doc.moveDown(0.3);
+  const statRows = [["All Hunted", String(summary.total)], ...Object.entries(summary.byStatus || {}).map(([k, v]) => [k, String(v)])];
+  const colWidth = 240;
+  const rowH = 20;
+  let y = doc.y;
+  doc.fontSize(9).font("Helvetica");
+  statRows.forEach(([label, value], i) => {
+    const rowY = y + i * rowH;
+    if (rowY > 750) return; // stop if it would run off the first page - full detail is in the CSV export
+    doc.rect(36, rowY, colWidth, rowH).strokeColor("#ddd").lineWidth(0.5).stroke();
+    doc.fillColor("#333").text(label, 42, rowY + 5, { width: colWidth - 80 });
+    doc.fillColor("#111").font("Helvetica-Bold").text(value, 36 + colWidth - 60, rowY + 5, { width: 50, align: "right" });
+    doc.font("Helvetica");
+  });
+  doc.y = y + statRows.length * rowH + 20;
+
+  // Embedded chart images - one per page for clean, readable sizing
+  for (const chart of chartImages) {
+    if (!chart.dataUrl || !chart.dataUrl.startsWith("data:image/")) continue;
+    doc.addPage();
+    doc.fontSize(13).fillColor("#111").font("Helvetica-Bold").text(chart.title || "Chart");
+    doc.moveDown(0.5);
+    try {
+      const base64 = chart.dataUrl.split(",")[1];
+      const imgBuffer = Buffer.from(base64, "base64");
+      doc.image(imgBuffer, 36, doc.y, { fit: [520, 380] });
+    } catch {
+      doc.fontSize(10).fillColor("#a55").text("(Could not embed this chart image)");
+    }
+  }
+
+  doc.end();
+  return doc;
+}
+
 module.exports = {
   buildCatchLogCsv,
   buildNicheCsv,
   buildNicheXlsx,
   buildCatchLogPdf,
   buildNichePdf,
+  buildReportsCsv,
+  buildReportsPdf,
   sanitizeFilename,
   buildExportFilename,
 };

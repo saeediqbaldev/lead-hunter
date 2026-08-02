@@ -73,7 +73,7 @@
   // rather than waiting for an event that will never come.
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
   if (isIOS && !isStandalone()) {
-    textEl.textContent = 'Install Prospect: tap the Share icon, then "Add to Home Screen".';
+    textEl.textContent = 'Install Xeven Leads: tap the Share icon, then "Add to Home Screen".';
     actionBtn.style.display = "none";
     banner.style.display = "flex";
   }

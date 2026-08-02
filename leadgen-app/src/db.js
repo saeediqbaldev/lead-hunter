@@ -309,6 +309,8 @@ if (!leadsTableExists) {
     db.prepare("ALTER TABLE users ADD COLUMN signature TEXT").run();
     db.prepare("UPDATE users SET signature = ? WHERE signature IS NULL").run(defaultSignature);
   }
+  if (!userCols.includes("meeting_link")) db.exec("ALTER TABLE users ADD COLUMN meeting_link TEXT");
+  if (!userCols.includes("website_link")) db.exec("ALTER TABLE users ADD COLUMN website_link TEXT");
 }
 
 // ---------- One catch log per (niche, city): merge any existing duplicates ----------

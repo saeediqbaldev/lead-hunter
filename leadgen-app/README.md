@@ -6,6 +6,39 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V13.7
+- **Rebranded to "Xeven Leads"** everywhere - checked every file, zero
+  references to the old name remain. New favicon and PWA icons generated
+  from the same brand mark (the orange ring/dot) used throughout.
+- **Mobile warning modal fixed** - was getting buried under newer overlays
+  (toast/install-banner) added in later versions; z-index bumped well
+  above both, and repositioned with 2rem margins on every side as
+  requested. Also added a hint about the inspected/content-generated
+  checkmark to the existing status/needs legend popup.
+- **Every user can now update their own username and password** (admin
+  included) from Account Settings, with current-password confirmation
+  required - verified exhaustively via real HTTP and a real non-admin
+  browser session: wrong password rejected, successful change immediately
+  reflected in the session, and confirmed a real login with the new
+  credentials works while the old ones no longer do.
+- **Reports page now exports to CSV and PDF** - the PDF genuinely embeds
+  the actual rendered charts (captured client-side as images, since
+  Chart.js only exists in the browser), not placeholder graphics. Verified
+  through a real browser test: clicking Export PDF produced a real
+  5-page downloadable PDF with correct data and real chart images.
+- **New CTA / Meeting / Website toggles in content generation** - opt-in
+  icons that shape the generated message: CTA weaves in a clear call-to-
+  action, Meeting organically invites a call (with an optional bookable
+  link), Website organically references a demo/reference site (with an
+  optional link). Links are editable inline right in the generation panel
+  and auto-save as your default for next time. Verified end-to-end through
+  a real browser: toggled Meeting on, typed a link, generated, and
+  confirmed the link genuinely reached the AI prompt.
+- **Dark/Light theme shortcut** added next to logout for a one-click
+  switch, without touching the full color-customization page which stays
+  exactly as it was. Verified the toggle correctly switches and persists
+  across a page reload.
+
 ## What's in this V13.6
 - **Content generation now preserves every language independently** - added
   7 more languages (Hebrew, Hungarian, Russian, Italian, Bengali, Urdu,

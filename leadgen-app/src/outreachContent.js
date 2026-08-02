@@ -40,7 +40,7 @@ const LENGTH_GUIDANCE = {
 
 const LANGUAGES = ["English", "French", "Spanish", "German", "Portuguese", "Arabic", "Chinese", "Hebrew", "Hungarian", "Russian", "Italian", "Bengali", "Urdu", "Pashto"];
 
-function buildContentPrompt({ lead, platform, tone, length, analysis, language }) {
+function buildContentPrompt({ lead, platform, tone, length, analysis, language, cta, meeting, meetingLink, website, websiteLink }) {
   const platformGuidance = PLATFORM_GUIDANCE[platform] || PLATFORM_GUIDANCE.email;
   const lengthGuidance = LENGTH_GUIDANCE[length] || "";
   const languageInstruction =
@@ -56,24 +56,49 @@ function buildContentPrompt({ lead, platform, tone, length, analysis, language }
     context += `\n\n(No deep analysis has been run yet for this business - keep the message general but still personalized to their industry and location.)`;
   }
 
+  // Each of these is an opt-in toggle the user picks per generation - only
+  // included in the prompt when actually enabled, so the AI isn't told to
+  // juggle three extra asks it wasn't asked to include.
+  const extraInstructions = [];
+  if (cta) {
+    extraInstructions.push(
+      "Include a clear, specific call-to-action woven naturally into the message (not a generic \"let's connect\") - give the reader one obvious, low-friction next step."
+    );
+  }
+  if (meeting) {
+    extraInstructions.push(
+      meetingLink
+        ? `Naturally invite them to a short meeting/call, and organically include this link for booking one: ${meetingLink} - don't just paste it in isolation, weave it into a sentence.`
+        : "Naturally invite them to a short meeting or call as part of the message - phrase it as a low-pressure invitation, not a demand."
+    );
+  }
+  if (website) {
+    extraInstructions.push(
+      websiteLink
+        ? `Organically mention that a demo/reference website has been put together for them to see the kind of quality to expect, and include this link naturally in a sentence: ${websiteLink}`
+        : "Organically mention that a demo or reference website example is available to show the kind of quality/style to expect, without inventing a specific URL since none was given."
+    );
+  }
+  const extraSection = extraInstructions.length ? `\n\nAlso work these in naturally, without making the message feel like a checklist:\n${extraInstructions.map((s) => `- ${s}`).join("\n")}` : "";
+
   return `You are writing outreach copy on behalf of a marketing agency (Xeven Pixels), reaching out to a local business to offer to help them grow.
 
 ${context}
 
 Tone/approach to use: "${tone}"
 ${platformGuidance}
-${lengthGuidance ? `Length: ${lengthGuidance}` : ""}${languageInstruction}
+${lengthGuidance ? `Length: ${lengthGuidance}` : ""}${languageInstruction}${extraSection}
 
 Write the message now. Requirements:
 - Professional, humanized, natural-sounding - not generic template language a business owner would recognize as spam
 - Reference the specific context above where relevant (don't invent facts not given)
-- Include one strong, clear call-to-action line near the end (e.g. suggesting a short call or reply)
+- End with a natural closing line appropriate to the message${extraInstructions.length ? " (working in the items listed above)" : " (a soft, low-pressure call-to-action)"}
 - Do NOT include a signature or sign-off - that will be added separately
 - Output ONLY the message content itself, nothing else (no preamble, no explanation)`;
 }
 
-async function generateOutreachContent(userId, { lead, platform, tone, length, analysis, signature, language, aiProvider }) {
-  const prompt = buildContentPrompt({ lead, platform, tone, length, analysis, language });
+async function generateOutreachContent(userId, { lead, platform, tone, length, analysis, signature, language, aiProvider, cta, meeting, meetingLink, website, websiteLink }) {
+  const prompt = buildContentPrompt({ lead, platform, tone, length, analysis, language, cta, meeting, meetingLink, website, websiteLink });
   const result = await generateWithFallback(userId, prompt, { onlyProvider: aiProvider || undefined });
   if (!result.ok) return result;
 

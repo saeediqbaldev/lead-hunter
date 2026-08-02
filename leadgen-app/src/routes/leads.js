@@ -206,11 +206,23 @@ router.post("/:id/generate-content/start", (req, res) => {
   const lead = getOwnedLeadWithContext(req.session.userId, req.params.id);
   if (!lead) return res.status(404).json({ error: "Lead not found" });
 
-  const { tone, length, platforms, language, aiProvider } = req.body || {};
+  const { tone, length, platforms, language, aiProvider, cta, meeting, meetingLink, website, websiteLink } = req.body || {};
   if (!tone) return res.status(400).json({ error: "tone is required" });
 
   const analysis = analysisJobs.getAnalysis(Number(req.params.id));
-  const result = contentJobs.startGeneration(req.session.userId, lead, { tone, length, analysis, platforms, language, aiProvider });
+  const result = contentJobs.startGeneration(req.session.userId, lead, {
+    tone,
+    length,
+    analysis,
+    platforms,
+    language,
+    aiProvider,
+    cta,
+    meeting,
+    meetingLink,
+    website,
+    websiteLink,
+  });
   if (result.alreadyRunning) {
     return res.status(409).json({ error: "Content generation is already running for this lead." });
   }

@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.02-13.6";
+const APP_VERSION = "2026.08.02-13.7";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -335,10 +335,60 @@ async function loadSignature() {
 
 navSettingsAccount.addEventListener("click", async () => {
   signatureResult.style.display = "none";
+  document.getElementById("profileResult").style.display = "none";
+  document.getElementById("profileNewUsername").value = "";
+  document.getElementById("profileNewPassword").value = "";
+  document.getElementById("profileCurrentPassword").value = "";
   state.lastNavSection = "settings";
   setContentView("settings-account");
   await loadDailyCap();
   await loadSignature();
+});
+
+document.getElementById("profileSaveBtn").addEventListener("click", async () => {
+  const newUsername = document.getElementById("profileNewUsername").value.trim();
+  const newPassword = document.getElementById("profileNewPassword").value;
+  const currentPassword = document.getElementById("profileCurrentPassword").value;
+  const resultEl = document.getElementById("profileResult");
+  const btn = document.getElementById("profileSaveBtn");
+
+  function showResult(kind, text) {
+    resultEl.style.display = "block";
+    resultEl.className = `settings-result ${kind}`;
+    resultEl.textContent = text;
+  }
+
+  if (!currentPassword) {
+    showResult("bad", "Enter your current password to confirm this change.");
+    return;
+  }
+  if (!newUsername && !newPassword) {
+    showResult("bad", "Enter a new username and/or a new password.");
+    return;
+  }
+
+  btn.disabled = true;
+  try {
+    const res = await api("/api/settings/profile", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ currentPassword, newUsername: newUsername || undefined, newPassword: newPassword || undefined }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Could not update profile");
+
+    document.getElementById("profileNewUsername").value = "";
+    document.getElementById("profileNewPassword").value = "";
+    document.getElementById("profileCurrentPassword").value = "";
+    showResult("ok", `Saved - your username is now "${data.username}".`);
+    showToast("Profile updated", "success");
+    await loadWhoami(); // refresh the displayed username in the topbar, if shown anywhere
+  } catch (err) {
+    showResult("bad", err.message);
+    showToast(`Could not update profile: ${err.message}`, "error");
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 document.getElementById("signatureSaveBtn").addEventListener("click", async () => {
@@ -615,7 +665,32 @@ function applyTheme(theme) {
     root.style.setProperty(key, val);
   }
   currentTheme = { mode, colors: merged };
+  syncThemeShortcutBtn();
 }
+
+function syncThemeShortcutBtn() {
+  const btn = document.getElementById("themeShortcutBtn");
+  if (!btn) return;
+  const isLight = currentTheme.mode === "light";
+  btn.innerHTML = `<i class="bi ${isLight ? "bi-sun-fill" : "bi-moon-stars-fill"}"></i>`;
+  btn.title = isLight ? "Switch to dark mode" : "Switch to light mode";
+}
+
+document.getElementById("themeShortcutBtn").addEventListener("click", async () => {
+  const newMode = currentTheme.mode === "light" ? "dark" : "light";
+  const defaults = newMode === "light" ? LIGHT_THEME_DEFAULTS : DARK_THEME_DEFAULTS;
+  currentTheme = { mode: newMode, colors: { ...defaults } };
+  applyTheme(currentTheme);
+  try {
+    await api("/api/theme", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: currentTheme.mode, colors: currentTheme.colors }),
+    });
+  } catch (err) {
+    console.error("Failed to save theme mode:", err);
+  }
+});
 
 async function loadTheme() {
   try {
@@ -2711,6 +2786,18 @@ function buildExpandPanelHtml(lead) {
           ${CONTENT_LANGUAGES.map((l) => `<option value="${l.value}" ${l.value === "English" ? "selected" : ""}>${l.flag} ${l.label}</option>`).join("")}
         </select>
       </div>
+      <div class="gen-extras-row">
+        <span class="gen-provider-row-label">Add organically:</span>
+        <button type="button" class="gen-extra-toggle" data-extra="cta" title="Weave in a clear call-to-action"><i class="bi bi-megaphone-fill"></i> CTA</button>
+        <button type="button" class="gen-extra-toggle" data-extra="meeting" title="Invite them to a short meeting/call"><i class="bi bi-calendar-event-fill"></i> Meeting</button>
+        <button type="button" class="gen-extra-toggle" data-extra="website" title="Reference a demo/reference website"><i class="bi bi-globe2"></i> Website</button>
+      </div>
+      <div class="gen-extra-link-row" data-extra-link="meeting" style="display:none;">
+        <input type="text" data-meeting-link-input placeholder="Meeting booking link (e.g. https://cal.com/you/15min) - optional" />
+      </div>
+      <div class="gen-extra-link-row" data-extra-link="website" style="display:none;">
+        <input type="text" data-website-link-input placeholder="Demo/reference website link - optional" />
+      </div>
       <div class="gen-provider-row">
         <span class="gen-provider-row-label">AI provider:</span>
         ${AI_PROVIDER_OPTIONS.map(
@@ -2763,6 +2850,9 @@ async function toggleLeadExpand(leadId) {
   let currentLength = "Medium";
   let currentLanguage = "English";
   let currentAiProvider = ""; // "" = Auto (fallback chain)
+  let ctaEnabled = false;
+  let meetingEnabled = false;
+  let websiteEnabled = false;
 
   const inspectBody = expandRow.querySelector("[data-inspect-body]");
   await loadAndRenderInspect(leadId, inspectBody);
@@ -2820,6 +2910,36 @@ async function toggleLeadExpand(leadId) {
     });
   });
 
+  // CTA/Meeting/Website: opt-in toggles that shape how the generated
+  // content is written (organic CTA / meeting invite / website mention).
+  // Meeting and Website reveal an inline link field when turned on -
+  // pre-filled from the user's saved default (Account Settings) but
+  // editable per-generation without needing to leave this panel.
+  expandRow.querySelectorAll(".gen-extra-toggle").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const extra = btn.dataset.extra;
+      if (extra === "cta") {
+        ctaEnabled = !ctaEnabled;
+        btn.classList.toggle("active", ctaEnabled);
+      } else if (extra === "meeting") {
+        meetingEnabled = !meetingEnabled;
+        btn.classList.toggle("active", meetingEnabled);
+        expandRow.querySelector('[data-extra-link="meeting"]').style.display = meetingEnabled ? "block" : "none";
+      } else if (extra === "website") {
+        websiteEnabled = !websiteEnabled;
+        btn.classList.toggle("active", websiteEnabled);
+        expandRow.querySelector('[data-extra-link="website"]').style.display = websiteEnabled ? "block" : "none";
+      }
+    });
+  });
+  api("/api/settings/content-links")
+    .then((res) => res.json())
+    .then((data) => {
+      expandRow.querySelector("[data-meeting-link-input]").value = data.meetingLink || "";
+      expandRow.querySelector("[data-website-link-input]").value = data.websiteLink || "";
+    })
+    .catch(() => {});
+
   async function pollGenerationStatus() {
     const res = await api(`/api/leads/${leadId}/generate-content/status`);
     const job = await res.json();
@@ -2875,6 +2995,11 @@ async function toggleLeadExpand(leadId) {
       language: currentLanguage,
       aiProvider: currentAiProvider || undefined,
       platforms,
+      cta: ctaEnabled || undefined,
+      meeting: meetingEnabled || undefined,
+      meetingLink: meetingEnabled ? expandRow.querySelector("[data-meeting-link-input]").value.trim() || undefined : undefined,
+      website: websiteEnabled || undefined,
+      websiteLink: websiteEnabled ? expandRow.querySelector("[data-website-link-input]").value.trim() || undefined : undefined,
     });
     if (!result.ok) {
       showToast(result.error, "error");
@@ -2886,6 +3011,18 @@ async function toggleLeadExpand(leadId) {
     generateBtn.style.display = "none";
     stopBtn.style.display = "inline-flex";
     progressTextEl.textContent = "Starting…";
+
+    // Remember whichever meeting/website links were just used as the new
+    // default, so the next lead's panel starts pre-filled with them too.
+    if (meetingEnabled || websiteEnabled) {
+      const meetingLinkVal = expandRow.querySelector("[data-meeting-link-input]").value.trim();
+      const websiteLinkVal = expandRow.querySelector("[data-website-link-input]").value.trim();
+      api("/api/settings/content-links", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ meetingLink: meetingLinkVal, websiteLink: websiteLinkVal }),
+      }).catch(() => {});
+    }
 
     await pollGenerationStatus();
     if (!genPollTimer) genPollTimer = setInterval(pollGenerationStatus, 1500);
@@ -3449,6 +3586,79 @@ const REPORT_RANGE_OPTIONS = [
 // Defaults per spec: 1 Day / All niches / All cities
 const reportsFilters = { range: "1d", nicheId: "", cityId: "" };
 let reportsNichesCities = { niches: [], cities: [] };
+
+document.getElementById("reportsExportCsvBtn").addEventListener("click", () => {
+  const params = new URLSearchParams();
+  params.set("range", reportsFilters.range);
+  if (reportsFilters.nicheId) params.set("niche", reportsFilters.nicheId);
+  if (reportsFilters.cityId) params.set("city", reportsFilters.cityId);
+  params.set("nicheLabel", reportsNicheDropdownLabel.textContent.trim());
+  params.set("cityLabel", document.getElementById("reportsCityDropdownLabel").textContent.trim());
+  window.open(`/api/reports/export/csv?${params.toString()}`, "_blank");
+});
+
+document.getElementById("reportsExportPdfBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("reportsExportPdfBtn");
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `<i class="bi bi-hourglass-split"></i> Exporting…`;
+
+  try {
+    // Chart.js canvases only exist in the browser - capture each as a PNG
+    // data URL here and send it to the server to embed in the PDF, rather
+    // than trying to re-render charts server-side.
+    const chartConfigs = [
+      { id: "reportsLineChart", title: "Status trend over time" },
+      { id: "reportsPieChart", title: "Pipeline distribution" },
+      { id: "reportsDonutChart", title: "Status breakdown" },
+      { id: "reportsStatusComparisonChart", title: "All statuses compared" },
+    ];
+    const chartImages = chartConfigs
+      .map((c) => {
+        const canvas = document.getElementById(c.id);
+        if (!canvas || canvas.width === 0) return null;
+        try {
+          return { title: c.title, dataUrl: canvas.toDataURL("image/png") };
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+
+    const params = new URLSearchParams();
+    params.set("range", reportsFilters.range);
+    if (reportsFilters.nicheId) params.set("niche", reportsFilters.nicheId);
+    if (reportsFilters.cityId) params.set("city", reportsFilters.cityId);
+
+    const res = await api(`/api/reports/export/pdf?${params.toString()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        nicheLabel: reportsNicheDropdownLabel.textContent.trim(),
+        cityLabel: document.getElementById("reportsCityDropdownLabel").textContent.trim(),
+        chartImages,
+      }),
+    });
+    if (!res.ok) throw new Error("Could not generate the PDF");
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `xeven-leads-reports-${reportsFilters.range}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    showToast("PDF exported", "success");
+  } catch (err) {
+    showToast(`Could not export PDF: ${err.message}`, "error");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
+  }
+});
+
 let pieChartInstance = null;
 let donutChartInstance = null;
 let lineChartInstance = null;
@@ -3912,7 +4122,7 @@ async function loadReports() {
 // ---------- Init ----------
 (async function init() {
   hideBanner();
-  console.log("Prospect app.js loaded — build " + APP_VERSION);
+  console.log("Xeven Leads app.js loaded — build " + APP_VERSION);
   await loadTheme();
   const versionTag = document.getElementById("versionTag");
   if (versionTag) versionTag.textContent = "build " + APP_VERSION;

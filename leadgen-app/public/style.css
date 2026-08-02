@@ -120,16 +120,14 @@ body {
   #mobileBlockOverlay {
     display: flex;
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    height: 100dvh; /* accounts for mobile browser toolbars, falls back to 100vh above on older browsers */
-    z-index: 9999;
+    top: 2rem;
+    bottom: 2rem;
+    left: 2rem;
+    right: 2rem;
+    z-index: 100000;
     align-items: center;
     justify-content: center;
     background: rgba(18, 16, 14, 0.75);
-    padding: 20px;
     overflow-y: auto;
     box-sizing: border-box;
   }
@@ -1485,5 +1483,27 @@ button:disabled { cursor: not-allowed; }
 .ai-provider-tab:hover { color: var(--text); }
 .ai-provider-tab.active { border-color: var(--accent); color: var(--accent); background: rgba(255,106,61,0.08); }
 
+.gen-extras-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+.gen-extra-toggle {
+  background: var(--panel-raised); border: 1px solid var(--border); color: var(--text-muted);
+  border-radius: 6px; padding: 5px 10px; font-size: 11.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
+}
+.gen-extra-toggle:hover { color: var(--text); }
+.gen-extra-toggle.active { border-color: var(--accent); color: var(--accent); background: rgba(255,106,61,0.08); }
+.gen-extra-link-row { margin: 4px 0 8px 0; }
+.gen-extra-link-row input {
+  width: 100%; background: var(--panel-raised); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); padding: 7px 10px; font-size: 12px;
+}
+
 .analysis-source-hint { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--accent); }
 .analysis-source-hint.muted { color: var(--text-muted); }
+
+.profile-field-label {
+  display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 12px;
+}
+.profile-field-label input {
+  display: block; width: 100%; max-width: 340px; margin-top: 5px;
+  background: var(--panel-raised); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); padding: 8px 10px; font-size: 13px;
+}

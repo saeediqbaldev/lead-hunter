@@ -44,7 +44,8 @@ function isCancelled(leadId) {
   return !job || job.cancelled;
 }
 
-async function runJob(userId, leadId, lead, tone, length, analysis, platforms, language, aiProvider) {
+async function runJob(userId, leadId, lead, platforms, options) {
+  const { tone, length, analysis, language, aiProvider, cta, meeting, meetingLink, website, websiteLink } = options;
   const completed = [];
   const failed = {};
   const userRow = db.prepare("SELECT signature FROM users WHERE id = ?").get(userId);
@@ -64,7 +65,21 @@ async function runJob(userId, leadId, lead, tone, length, analysis, platforms, l
       if (platform !== platforms[0]) await new Promise((r) => setTimeout(r, 2500));
 
       upsertJobRow(leadId, { current_step: `Generating ${platform}…` });
-      const result = await generateOutreachContent(userId, { lead, platform, tone, length, analysis, signature, language, aiProvider });
+      const result = await generateOutreachContent(userId, {
+        lead,
+        platform,
+        tone,
+        length,
+        analysis,
+        signature,
+        language,
+        aiProvider,
+        cta,
+        meeting,
+        meetingLink,
+        website,
+        websiteLink,
+      });
 
       if (isCancelled(leadId)) return;
 
@@ -94,13 +109,13 @@ async function runJob(userId, leadId, lead, tone, length, analysis, platforms, l
   }
 }
 
-function startGeneration(userId, lead, { tone, length, analysis, platforms, language, aiProvider }) {
+function startGeneration(userId, lead, options) {
   const leadId = lead.id;
   if (activeJobs.has(leadId)) return { alreadyRunning: true };
 
-  const targetPlatforms = platforms && platforms.length ? platforms : PLATFORM_LIST;
+  const targetPlatforms = options.platforms && options.platforms.length ? options.platforms : PLATFORM_LIST;
   activeJobs.set(leadId, { cancelled: false });
-  runJob(userId, leadId, lead, tone, length, analysis, targetPlatforms, language, aiProvider); // fire and forget - progress is polled via getJob()
+  runJob(userId, leadId, lead, targetPlatforms, options); // fire and forget - progress is polled via getJob()
   return { alreadyRunning: false };
 }
 

@@ -1,4 +1,5 @@
 const express = require("express");
+const bcrypt = require("bcryptjs");
 const asyncHandler = require("../asyncHandler");
 const { testApiKey: testPlacesKey } = require("../placesApi");
 const { testApiKey: testGeminiKey } = require("../gemini");
@@ -7,6 +8,52 @@ const apiKeys = require("../apiKeys");
 const db = require("../db");
 
 const router = express.Router();
+
+// GET /api/settings/profile -> the logged-in user's own username/role
+router.get("/profile", (req, res) => {
+  const row = db.prepare("SELECT username, role FROM users WHERE id = ?").get(req.session.userId);
+  res.json({ username: row.username, role: row.role });
+});
+
+// PUT /api/settings/profile { currentPassword, newUsername?, newPassword? }
+// Self-service account update - available to every user, admin included.
+// Requires the current password to confirm identity before changing
+// anything, same as any normal "change my account" flow.
+router.put("/profile", (req, res) => {
+  const { currentPassword, newUsername, newPassword } = req.body || {};
+  if (!currentPassword) {
+    return res.status(400).json({ error: "Enter your current password to confirm this change." });
+  }
+  if (!newUsername?.trim() && !newPassword) {
+    return res.status(400).json({ error: "Enter a new username and/or a new password." });
+  }
+  if (newPassword && newPassword.length < 6) {
+    return res.status(400).json({ error: "New password must be at least 6 characters." });
+  }
+
+  const user = db.prepare("SELECT * FROM users WHERE id = ?").get(req.session.userId);
+  if (!bcrypt.compareSync(currentPassword, user.password_hash)) {
+    return res.status(401).json({ error: "Current password is incorrect." });
+  }
+
+  const finalUsername = newUsername?.trim() || user.username;
+
+  try {
+    if (newPassword) {
+      const hash = bcrypt.hashSync(newPassword, 10);
+      db.prepare("UPDATE users SET username = ?, password_hash = ? WHERE id = ?").run(finalUsername, hash, req.session.userId);
+    } else {
+      db.prepare("UPDATE users SET username = ? WHERE id = ?").run(finalUsername, req.session.userId);
+    }
+    req.session.username = finalUsername; // keep the session in sync so whoami reflects the change immediately
+    res.json({ username: finalUsername });
+  } catch (err) {
+    if (String(err.message).includes("UNIQUE")) {
+      return res.status(409).json({ error: "That username is already taken." });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // GET /api/settings/daily-cap -> this user's own daily lead cap
 router.get("/daily-cap", (req, res) => {
@@ -40,6 +87,19 @@ router.put("/page-size", (req, res) => {
   }
   db.prepare("UPDATE users SET page_size = ? WHERE id = ?").run(value, req.session.userId);
   res.json({ pageSize: value });
+});
+
+// GET /api/settings/content-links -> this user's saved default meeting/website links
+router.get("/content-links", (req, res) => {
+  const row = db.prepare("SELECT meeting_link, website_link FROM users WHERE id = ?").get(req.session.userId);
+  res.json({ meetingLink: row.meeting_link || "", websiteLink: row.website_link || "" });
+});
+
+// PUT /api/settings/content-links { meetingLink?, websiteLink? }
+router.put("/content-links", (req, res) => {
+  const { meetingLink, websiteLink } = req.body || {};
+  db.prepare("UPDATE users SET meeting_link = ?, website_link = ? WHERE id = ?").run(meetingLink || null, websiteLink || null, req.session.userId);
+  res.json({ meetingLink: meetingLink || "", websiteLink: websiteLink || "" });
 });
 
 const { DEFAULT_SIGNATURE } = require("../outreachContent");

@@ -1,6 +1,7 @@
 const express = require("express");
 const db = require("../db");
 const apiKeys = require("../apiKeys");
+const { buildReportsCsv, buildReportsPdf } = require("../export");
 
 const router = express.Router();
 
@@ -172,6 +173,65 @@ router.get("/api-usage-history", (req, res) => {
   });
 
   res.json({ days, keys: Object.values(byKey) });
+});
+
+// GET /api/reports/export/csv?range=&niche=&city= -> downloadable CSV of
+// the current filtered view's stats and daily breakdown
+router.get("/export/csv", (req, res) => {
+  const userId = req.session.userId;
+  const { sql, params, range } = buildFilteredQuery(userId, req.query);
+
+  const statusRows = db.prepare(`SELECT l.status, COUNT(*) AS c ${sql} GROUP BY l.status`).all(...params);
+  const byStatus = Object.fromEntries(STATUS_KEYS.map((k) => [k, 0]));
+  let total = 0;
+  for (const row of statusRows) {
+    if (byStatus.hasOwnProperty(row.status)) byStatus[row.status] = row.c;
+    total += row.c;
+  }
+
+  const dayRows = db
+    .prepare(`SELECT date(l.created_at) AS day, l.status, COUNT(*) AS c ${sql} GROUP BY day, l.status ORDER BY day ASC`)
+    .all(...params);
+  const dayMap = new Map();
+  for (const row of dayRows) {
+    if (!dayMap.has(row.day)) dayMap.set(row.day, { date: row.day });
+    dayMap.get(row.day)[row.status] = row.c;
+  }
+  const timeseries = Array.from(dayMap.values());
+
+  const meta = { rangeLabel: range, nicheLabel: req.query.nicheLabel, cityLabel: req.query.cityLabel };
+  const csv = buildReportsCsv({ range, total, byStatus }, timeseries, meta);
+
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="xeven-leads-reports-${range}.csv"`);
+  res.send(csv);
+});
+
+// POST /api/reports/export/pdf { range, niche, city, nicheLabel, cityLabel,
+// chartImages: [{title, dataUrl}] } -> downloadable PDF including the
+// stats summary and the actual rendered charts (captured client-side as
+// PNGs, since Chart.js only exists in the browser - this is the reliable
+// way to get real chart images into a server-generated PDF without
+// re-implementing charting server-side).
+router.post("/export/pdf", (req, res) => {
+  const userId = req.session.userId;
+  const { chartImages, nicheLabel, cityLabel } = req.body || {};
+  const { sql, params, range } = buildFilteredQuery(userId, req.query);
+
+  const statusRows = db.prepare(`SELECT l.status, COUNT(*) AS c ${sql} GROUP BY l.status`).all(...params);
+  const byStatus = Object.fromEntries(STATUS_KEYS.map((k) => [k, 0]));
+  let total = 0;
+  for (const row of statusRows) {
+    if (byStatus.hasOwnProperty(row.status)) byStatus[row.status] = row.c;
+    total += row.c;
+  }
+
+  const meta = { rangeLabel: range, nicheLabel, cityLabel };
+  const doc = buildReportsPdf({ range, total, byStatus }, null, Array.isArray(chartImages) ? chartImages : [], meta);
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="xeven-leads-reports-${range}.pdf"`);
+  doc.pipe(res);
 });
 
 module.exports = router;
