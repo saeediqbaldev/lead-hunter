@@ -297,12 +297,18 @@ router.post("/:id/generate-website/start", (req, res) => {
   const lead = getOwnedLeadWithContext(req.session.userId, req.params.id);
   if (!lead) return res.status(404).json({ error: "Lead not found" });
 
-  const { niche, city, businessName, designStyle, colorPreset, useVisuals } = req.body || {};
+  const { niche, city, businessName, designStyle, colorPreset, services, ctaGoal } = req.body || {};
   if (!businessName || !businessName.trim()) return res.status(400).json({ error: "Business name is required" });
 
   const analysis = analysisJobs.getAnalysis(Number(req.params.id));
   const strengths = analysis?.strengths?.length ? analysis.strengths.join("; ") : null;
-  const weaknesses = analysis?.weaknesses?.length ? analysis.weaknesses.join("; ") : null;
+
+  let parsedSocials = null;
+  try {
+    parsedSocials = lead.socials ? JSON.parse(lead.socials) : null;
+  } catch {
+    parsedSocials = null;
+  }
 
   const { siteId, slug } = siteJobs.startSiteGeneration(req.session.userId, {
     leadId: lead.id,
@@ -311,9 +317,12 @@ router.post("/:id/generate-website/start", (req, res) => {
     businessName: businessName.trim(),
     designStyle,
     colorPreset,
-    useVisuals: useVisuals !== false,
+    services: services || null,
+    ctaGoal: ctaGoal || null,
+    phone: lead.phone || null,
+    address: lead.address || null,
+    socials: parsedSocials,
     strengths,
-    weaknesses,
   });
 
   res.json({ ok: true, siteId, slug });

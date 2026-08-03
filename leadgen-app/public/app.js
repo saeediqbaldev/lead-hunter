@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.02-13.9";
+const APP_VERSION = "2026.08.03-14.0";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -2763,12 +2763,14 @@ async function getWebsiteMeta() {
 
 function siteHistoryItemHtml(site) {
   const url = `${window.location.origin}/site/${site.slug}`;
+  const styleLabel = websiteMetaCache?.designStyles?.find((s) => s.value === site.design_style)?.label || site.design_style;
+  const colorLabel = websiteMetaCache?.colorPresets?.find((c) => c.value === site.color_preset)?.label || site.color_preset;
   if (site.status === "done") {
     return `
       <div class="site-history-item" data-site-id="${site.id}">
         <div class="site-history-info">
           <i class="bi bi-check-circle-fill" style="color:var(--good);"></i>
-          <span>${site.design_style} · ${site.color_preset}</span>
+          <span>${styleLabel} · ${colorLabel}</span>
         </div>
         <div class="site-history-actions">
           <input type="text" readonly value="${url}" data-site-url-input>
@@ -2779,9 +2781,9 @@ function siteHistoryItemHtml(site) {
       </div>`;
   }
   if (site.status === "failed") {
-    return `<div class="site-history-item"><span style="color:var(--danger);"><i class="bi bi-x-circle-fill"></i> ${site.design_style} failed: ${site.error || "unknown error"}</span></div>`;
+    return `<div class="site-history-item"><span style="color:var(--danger);"><i class="bi bi-x-circle-fill"></i> ${styleLabel} failed: ${site.error || "unknown error"}</span></div>`;
   }
-  return `<div class="site-history-item"><span><i class="bi bi-hourglass-split"></i> ${site.design_style} - ${site.current_step || "starting…"}</span></div>`;
+  return `<div class="site-history-item"><span><i class="bi bi-hourglass-split"></i> ${styleLabel} - ${site.current_step || "starting…"}</span></div>`;
 }
 
 async function initWebsitePanel(panel, leadId, lead) {
@@ -2789,7 +2791,7 @@ async function initWebsitePanel(panel, leadId, lead) {
   const meta = await getWebsiteMeta();
 
   panel.innerHTML = `
-    <p class="hint" style="margin-bottom:14px;">Generates a free, no-index landing page you can send alongside cold outreach - a demonstration of what you'd build for them, hosted on a shareable link.</p>
+    <p class="hint" style="margin-bottom:14px;">Generates a free, no-index landing page you can send alongside cold outreach - a full custom page (not just copy), with real photos and working mobile navigation. Takes a bit longer than outreach content since it's a whole page.</p>
 
     <label class="site-field-label">
       Business name
@@ -2799,36 +2801,33 @@ async function initWebsitePanel(panel, leadId, lead) {
       Niche / what they do
       <input type="text" data-site-niche value="${lead.niche_name || ""}">
     </label>
+    <label class="site-field-label">
+      Services offered <small class="optional">(optional - comma separated, e.g. "Exterior wash, Interior detail, Waxing")</small>
+      <input type="text" data-site-services placeholder="Leave blank and the AI will infer typical services for this niche">
+    </label>
+    <label class="site-field-label">
+      Call-to-action goal <small class="optional">(optional)</small>
+      <input type="text" data-site-cta-goal placeholder="e.g. Book Appointment, Get a Free Quote, Request a Consult">
+    </label>
 
-    <div class="site-field-label" style="margin-bottom:6px;">Design style</div>
-    <div class="site-style-grid">
-      ${meta.designStyles
-        .map(
-          (s, i) => `
-        <button type="button" class="site-style-card ${i === 0 ? "active" : ""}" data-style-value="${s.value}">
-          <span class="site-style-name">${s.label}</span>
-          <span class="site-style-desc">${s.description}</span>
-        </button>`
-        )
-        .join("")}
-    </div>
+    <label class="site-field-label">
+      Design style
+      <select data-site-style-select>
+        ${meta.designStyles.map((s) => `<option value="${s.value}" title="${s.description}">${s.label} — ${s.description}</option>`).join("")}
+      </select>
+    </label>
 
-    <div class="site-field-label" style="margin-bottom:6px; margin-top:14px;">Color palette</div>
+    <div class="site-field-label" style="margin-bottom:6px;">Color palette</div>
     <div class="site-color-grid">
       ${meta.colorPresets
         .map(
           (c, i) => `
-        <button type="button" class="site-color-swatch ${i === 0 ? "active" : ""}" data-color-value="${c.value}" title="${c.label}">
-          ${c.swatch.map((hex) => `<span style="background:${hex};"></span>`).join("")}
+        <button type="button" class="site-color-swatch ${c.value === "surprise" ? "surprise-swatch" : ""} ${i === 0 ? "active" : ""}" data-color-value="${c.value}" title="${c.label}">
+          ${c.value === "surprise" ? '<i class="bi bi-shuffle"></i>' : c.swatch.map((hex) => `<span style="background:${hex};"></span>`).join("")}
         </button>`
         )
         .join("")}
     </div>
-
-    <label class="site-visuals-toggle">
-      <input type="checkbox" data-site-use-visuals checked>
-      Include icons and visual accents
-    </label>
 
     <button type="button" data-action="generate-website" class="site-generate-btn"><i class="bi bi-magic"></i> Generate Website</button>
     <button type="button" data-action="stop-website" class="site-generate-btn" style="display:none; background:transparent; color:var(--danger); border:1px solid var(--danger);">Stop</button>
@@ -2843,12 +2842,8 @@ async function initWebsitePanel(panel, leadId, lead) {
   let activeSiteId = null;
   let sitePollTimer = null;
 
-  panel.querySelectorAll(".site-style-card").forEach((card) => {
-    card.addEventListener("click", () => {
-      panel.querySelectorAll(".site-style-card").forEach((c) => c.classList.remove("active"));
-      card.classList.add("active");
-      selectedStyle = card.dataset.styleValue;
-    });
+  panel.querySelector("[data-site-style-select]").addEventListener("change", (e) => {
+    selectedStyle = e.target.value;
   });
   panel.querySelectorAll(".site-color-swatch").forEach((sw) => {
     sw.addEventListener("click", () => {
@@ -2905,7 +2900,8 @@ async function initWebsitePanel(panel, leadId, lead) {
           businessName,
           designStyle: selectedStyle,
           colorPreset: selectedColor,
-          useVisuals: panel.querySelector("[data-site-use-visuals]").checked,
+          services: panel.querySelector("[data-site-services]").value.trim() || null,
+          ctaGoal: panel.querySelector("[data-site-cta-goal]").value.trim() || null,
         }),
       });
       const data = await res.json();

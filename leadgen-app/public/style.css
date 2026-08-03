@@ -1540,6 +1540,13 @@ button:disabled { cursor: not-allowed; }
 .site-color-swatch:hover { border-color: var(--text-muted); }
 .site-color-swatch.active { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(255,106,61,0.25); }
 
+.site-field-label select {
+  display: block; width: 100%; margin-top: 5px; background: var(--panel-raised); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); padding: 8px 10px; font-size: 13px; cursor: pointer;
+}
+.site-color-swatch.surprise-swatch { align-items: center; justify-content: center; background: var(--panel-raised); color: var(--text-muted); font-size: 14px; }
+.site-color-swatch.surprise-swatch.active { color: var(--accent); }
+
 .site-visuals-toggle { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-muted); margin: 16px 0; cursor: pointer; }
 .site-visuals-toggle input { cursor: pointer; }
 

@@ -33,14 +33,18 @@ function availableProviders(userId) {
 }
 
 // Calls generateText on the given provider, normalizing Gemini's slightly
-// different signature (responseSchema) to the same { ok, text, error }
-// shape the OpenAI-compatible clients use.
-async function callProvider(provider, apiKey, prompt, { jsonMode, geminiSchema } = {}) {
+// different signature (responseSchema/maxOutputTokens) to the same
+// { ok, text, error } shape the OpenAI-compatible clients use.
+async function callProvider(provider, apiKey, prompt, { jsonMode, geminiSchema, timeoutMs, maxTokens } = {}) {
   if (provider === "gemini") {
-    return gemini.generateText(apiKey, prompt, geminiSchema ? { responseSchema: geminiSchema } : {});
+    return gemini.generateText(apiKey, prompt, {
+      responseSchema: geminiSchema || undefined,
+      timeoutMs,
+      maxOutputTokens: maxTokens,
+    });
   }
   const client = getClientFor(provider);
-  return client.generateText(apiKey, prompt, { jsonMode });
+  return client.generateText(apiKey, prompt, { jsonMode, timeoutMs, maxTokens });
 }
 
 // Tries each available provider in order until one succeeds. Returns
@@ -51,7 +55,10 @@ async function callProvider(provider, apiKey, prompt, { jsonMode, geminiSchema }
 // instead of "Auto", this restricts the attempt to ONLY that provider -
 // no silent fallback to a different one, so the user's choice is honored
 // exactly rather than quietly substituted.
-async function generateWithFallback(userId, prompt, { jsonMode, geminiSchema, onlyProvider } = {}) {
+// timeoutMs/maxTokens (optional): override the client defaults - used by
+// full-page website generation, which needs much more time and output
+// budget than a short copy snippet.
+async function generateWithFallback(userId, prompt, { jsonMode, geminiSchema, onlyProvider, timeoutMs, maxTokens } = {}) {
   const providers = onlyProvider ? [onlyProvider] : availableProviders(userId);
   if (providers.length === 0) {
     return {
@@ -71,7 +78,7 @@ async function generateWithFallback(userId, prompt, { jsonMode, geminiSchema, on
   const attempts = [];
   for (const provider of providers) {
     const keyRow = apiKeys.getActiveKey(userId, provider);
-    const result = await callProvider(provider, keyRow.key_value, prompt, { jsonMode, geminiSchema });
+    const result = await callProvider(provider, keyRow.key_value, prompt, { jsonMode, geminiSchema, timeoutMs, maxTokens });
     if (result.ok) {
       apiKeys.recordUsage(userId, keyRow.id, { requests: 1 });
       return { ok: true, text: result.text, provider, attempts: [...attempts, { provider, ok: true }] };

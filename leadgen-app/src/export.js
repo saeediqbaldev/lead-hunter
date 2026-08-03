@@ -68,7 +68,7 @@ function sanitizeFilename(name) {
 
 // Keep in sync with public/app.js's APP_VERSION - used in export filenames
 // per the requested "Niche-City-Date-AppVersion" naming convention.
-const APP_VERSION = "2026.08.02-13.9";
+const APP_VERSION = "2026.08.03-14.0";
 
 // Builds a filename like "CarWash-Bali-2026-07-31-11.9" (niche and/or city
 // are omitted from the name if not applicable, e.g. a "current view" export
