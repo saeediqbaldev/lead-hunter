@@ -6,50 +6,6 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
-## What's in this V14.0
-**Website generation rebuilt around your tested prompt.** Replaces the
-3-template system from V13.9 entirely with a single-call, full-page AI
-generator using your validated system prompt - one AI call writes the
-complete HTML/CSS/JS per business, rather than AI writing short copy for
-fixed templates.
-
-- **8 named design styles** (Minimal, Modern, Creative/Bold, Elegant/Luxe,
-  Organic/Warm, Corporate/Professional, Playful, Dark/Gallery), selected
-  via dropdown as requested - verified all 8 appear correctly.
-- **10 color presets plus a "Surprise me" option** that lets the AI choose
-  freely - verified both paths reach the prompt correctly (brand-
-  authoritative hex codes when a preset is picked, no palette instruction
-  when Surprise is selected).
-- **Real photos via LoremFlickr**, keyword-derived per business, no API
-  key or rate limits - baked into the system prompt's hard rules exactly
-  as specified, alongside inline SVG icons, working mobile hamburger
-  navigation, and all the other technical rules from your prompt.
-- **Clean URLs** (`niche/city/business-name`, no random ID) with
-  collision handling verified end-to-end: generating twice for the same
-  business correctly gets `-2` appended on the second one, and both
-  remain independently servable.
-- New optional Services and CTA Goal fields, plus phone/address/social
-  handles now auto-pulled from the lead record into the prompt without
-  needing to re-enter them.
-
-**Two real bugs found and fixed while building this**, on top of the
-core rebuild:
-- The AI request timeout (15-20s) was tuned for short copy snippets, not
-  a full page that can take 30-90s to generate - fixed and verified the
-  longer timeout/token budget actually reaches the AI client. Safe to do
-  because every AI call already runs inside an async job runner, so
-  nothing here reintroduces the reverse-proxy timeout issue from earlier
-  in this project.
-- A lead's social media handles were being passed as an unparsed JSON
-  string instead of a real object to the prompt builder - caught before
-  it shipped.
-
-Verified end-to-end through real HTTP and a real browser session: the
-full business context (palette, style, services, CTA goal, phone,
-socials) all confirmed reaching the AI prompt correctly, slug collision
-handling confirmed with two real generations for the same business, and
-backup/restore reverified against the updated schema values.
-
 ## What's in this V13.9
 **New feature: freebie website generation.** From the Generate panel on any
 lead, "Create Website" opens a new section that generates a free,
