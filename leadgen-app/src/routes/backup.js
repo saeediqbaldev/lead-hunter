@@ -287,8 +287,8 @@ router.post("/import", (req, res) => {
     // rule, keyed by (lead_id, platform, language) same as the table's own
     // primary key (each language is stored independently).
     const insertContent = db.prepare(`
-      INSERT INTO outreach_content (lead_id, platform, tone, length, content, provider, language, generated_at)
-      VALUES (@lead_id, @platform, @tone, @length, @content, @provider, @language, @generated_at)
+      INSERT INTO outreach_content (lead_id, platform, tone, length, content, subject, provider, language, generated_at)
+      VALUES (@lead_id, @platform, @tone, @length, @content, @subject, @provider, @language, @generated_at)
       ON CONFLICT(lead_id, platform, language) DO NOTHING
     `);
     for (const content of backup.outreachContent || []) {
@@ -300,6 +300,7 @@ router.post("/import", (req, res) => {
         tone: content.tone,
         length: content.length,
         content: content.content,
+        subject: content.subject || null,
         provider: content.provider,
         language: content.language || "English",
         generated_at: content.generated_at,

@@ -6,6 +6,32 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V14.3
+- **Subject line separated from email body** - its own field, independently
+  copyable, with its own regenerate button that only touches the subject
+  (using the already-generated body as context so it stays coherent) -
+  verified regenerating the subject leaves the body completely untouched.
+- **Content generation now skips platforms the lead has no channel for** -
+  a lead with only email+Facebook on file now only generates those two,
+  with unavailable platform tabs visibly dimmed and a toast explaining
+  what was skipped - verified end-to-end with a real lead record.
+- **Fixed raw `**markdown**` showing up in generated content** - the
+  generation prompt now explicitly discourages it, and content now
+  renders with real bold/italic on screen while the Copy button produces
+  clean text with no stray symbols - applies to content already generated
+  before this fix too, not just new generations. Caught and fixed a
+  related bug along the way: switching to `<br>`-based line breaks for
+  display would have silently dropped paragraph breaks when copying, if
+  copy hadn't been updated to pull from the original source text.
+- **Fixed the invisible "Download extension" button** - traced to a real
+  CSS specificity bug (`.settings-body a`'s color rule was unintentionally
+  beating the button's own, making its text exactly match its background)
+  - confirmed via computed styles before and after.
+- **Redesigned the SMTP settings section** - grouped into a bordered card,
+  host/port and username/password paired into rows, plus a one-click
+  "Use Hostinger defaults" fill for the standard host/port.
+- **Extension renamed** to "Xeven Lead MailTracker" throughout.
+
 ## What's in this V14.2
 Fixes from real testing of the Contacted feature shipped in V14.1:
 

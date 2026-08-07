@@ -195,7 +195,7 @@ router.get("/:id/outreach-content", (req, res) => {
   if (!lead) return res.status(404).json({ error: "Lead not found" });
 
   const rows = db
-    .prepare("SELECT platform, tone, length, content, provider, language, generated_at FROM outreach_content WHERE lead_id = ?")
+    .prepare("SELECT platform, tone, length, content, subject, provider, language, generated_at FROM outreach_content WHERE lead_id = ?")
     .all(req.params.id);
   res.json({ tones: TONES, lengths: LENGTHS, platforms: PLATFORM_LIST, content: rows });
 });
@@ -204,6 +204,28 @@ router.get("/:id/outreach-content", (req, res) => {
 // platforms is optional - omit it to generate all 6 at once (the normal
 // "Generate Content" button flow), or pass a single-item array to
 // regenerate just one platform.
+// POST /api/leads/:id/regenerate-subject { language?, aiProvider? } -> only
+// regenerates the email subject, using the already-saved body as context
+router.post("/:id/regenerate-subject", async (req, res) => {
+  const lead = getOwnedLeadWithContext(req.session.userId, req.params.id);
+  if (!lead) return res.status(404).json({ error: "Lead not found" });
+
+  const { language, aiProvider } = req.body || {};
+  const targetLanguage = language || "English";
+
+  const row = db
+    .prepare("SELECT content, tone FROM outreach_content WHERE lead_id = ? AND platform = 'email' AND language = ?")
+    .get(req.params.id, targetLanguage);
+  if (!row) return res.status(404).json({ error: "Generate the email body first, then regenerate the subject." });
+
+  const { generateSubjectOnly } = require("../outreachContent");
+  const result = await generateSubjectOnly(req.session.userId, { lead, tone: row.tone || "", language: targetLanguage, body: row.content, aiProvider });
+  if (!result.ok) return res.status(502).json({ error: result.error });
+
+  db.prepare("UPDATE outreach_content SET subject = ? WHERE lead_id = ? AND platform = 'email' AND language = ?").run(result.subject, req.params.id, targetLanguage);
+  res.json({ ok: true, subject: result.subject });
+});
+
 router.post("/:id/generate-content/start", (req, res) => {
   const lead = getOwnedLeadWithContext(req.session.userId, req.params.id);
   if (!lead) return res.status(404).json({ error: "Lead not found" });

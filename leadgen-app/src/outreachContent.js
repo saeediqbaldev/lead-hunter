@@ -23,7 +23,7 @@ const TONES = [
 ];
 
 const PLATFORM_GUIDANCE = {
-  email: "Format as a cold email with a short subject line (prefixed 'Subject:') and a body. Can be a few short paragraphs.",
+  email: "Format as a cold email body only (no subject line here - that's generated separately). Can be a few short paragraphs.",
   facebook: "Format as a Facebook Page message - conversational, 3-5 sentences, no subject line.",
   instagram: "Format as an Instagram DM - short, casual, friendly, 2-4 sentences, no subject line.",
   linkedin: "Format as a LinkedIn connection/message - professional but warm, 3-5 sentences, no subject line.",
@@ -94,7 +94,23 @@ Write the message now. Requirements:
 - Reference the specific context above where relevant (don't invent facts not given)
 - End with a natural closing line appropriate to the message${extraInstructions.length ? " (working in the items listed above)" : " (a soft, low-pressure call-to-action)"}
 - Do NOT include a signature or sign-off - that will be added separately
+- Plain text only - no markdown formatting of any kind (no **asterisks** for bold, no _underscores_ for italics, no # headers, no markdown links). Write it exactly as it should be read, since this goes straight into an email/DM with no markdown rendering.
 - Output ONLY the message content itself, nothing else (no preamble, no explanation)`;
+}
+
+function buildSubjectPrompt({ lead, tone, language, body }) {
+  const languageInstruction = language && language !== "English" ? ` Write it in ${language}.` : "";
+  return `Write ONE short cold-email subject line for this outreach email, in the same "${tone}" tone/approach.${languageInstruction}
+
+Business being contacted: ${lead.name} (${lead.niche_name || "local business"})
+Email body it's paired with:
+${body}
+
+Requirements:
+- Under 8 words, no clickbait, no spam-trigger phrases ("Free!!!", ALL CAPS, excessive punctuation)
+- Specific to this business, not generic ("Quick question", "Following up")
+- Plain text only, no markdown, no quotation marks around it
+- Output ONLY the subject line itself, nothing else`;
 }
 
 async function generateOutreachContent(userId, { lead, platform, tone, length, analysis, signature, language, aiProvider, cta, meeting, meetingLink, website, websiteLink }) {
@@ -103,12 +119,29 @@ async function generateOutreachContent(userId, { lead, platform, tone, length, a
   if (!result.ok) return result;
 
   const sig = signature != null && signature !== "" ? signature : DEFAULT_SIGNATURE;
-  const content = `${result.text.trim()}\n\n${sig}`;
+  const bodyText = result.text.trim();
+
+  if (platform === "email") {
+    const subjectResult = await generateWithFallback(userId, buildSubjectPrompt({ lead, tone, language, body: bodyText }), {
+      onlyProvider: aiProvider || undefined,
+    });
+    const subject = subjectResult.ok ? subjectResult.text.trim().replace(/^["']|["']$/g, "") : `A quick idea for ${lead.name}`;
+    const content = `${bodyText}\n\n${sig}`;
+    return { ok: true, content, subject, provider: result.provider };
+  }
+
+  const content = `${bodyText}\n\n${sig}`;
   return { ok: true, content, provider: result.provider };
+}
+
+async function generateSubjectOnly(userId, { lead, tone, language, body, aiProvider }) {
+  const result = await generateWithFallback(userId, buildSubjectPrompt({ lead, tone, language, body }), { onlyProvider: aiProvider || undefined });
+  if (!result.ok) return result;
+  return { ok: true, subject: result.text.trim().replace(/^["']|["']$/g, ""), provider: result.provider };
 }
 
 const LENGTHS = ["Detailed", "Medium", "Short", "Concise"];
 
 const PLATFORM_LIST = ["email", "facebook", "instagram", "linkedin", "tiktok", "whatsapp"];
 
-module.exports = { TONES, LENGTHS, LANGUAGES, PLATFORM_LIST, PLATFORM_GUIDANCE, DEFAULT_SIGNATURE, buildContentPrompt, generateOutreachContent };
+module.exports = { TONES, LENGTHS, LANGUAGES, PLATFORM_LIST, PLATFORM_GUIDANCE, DEFAULT_SIGNATURE, buildContentPrompt, generateOutreachContent, generateSubjectOnly };

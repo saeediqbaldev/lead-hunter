@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Xeven Leads - Contacted Tracker",
+  "name": "Xeven Lead MailTracker",
   "version": "1.0.0",
   "description": "Adds read/open tracking to emails you compose in Hostinger Webmail, reporting into your Xeven Leads Contacted page.",
   "permissions": ["storage"],

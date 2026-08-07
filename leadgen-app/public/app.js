@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.07-14.2";
+const APP_VERSION = "2026.08.07-14.3";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -323,6 +323,37 @@ function debounce(fn, ms) {
   };
 }
 
+// Escapes HTML special characters before we selectively re-introduce <b>
+// tags below - without this, any literal <, >, or & in the AI's text
+// would be misinterpreted as markup when rendered via innerHTML.
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Converts **bold** markdown (which occasionally slips through despite the
+// generation prompt explicitly discouraging it) into real <b> tags for
+// on-screen display, so the preview actually looks bold instead of
+// showing raw asterisks. Also applied to content generated before this
+// fix existed, not just new generations.
+function renderFormattedContent(text) {
+  const escaped = escapeHtml(text || "");
+  return escaped
+    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+    .replace(/__(.+?)__/g, "<b>$1</b>")
+    .replace(/(?<!\*)\*(?!\*)(.+?)\*(?!\*)/g, "<i>$1</i>")
+    .replace(/(?<!_)_(?!_)(.+?)_(?!_)/g, "<i>$1</i>")
+    .replace(/\n/g, "<br>");
+}
+
+// Strips markdown bold/italic markers entirely for the "Copy" action -
+// plain text can't actually render bold, so leaving the asterisks in would
+// just paste literal "**word**" into whatever the user pastes into.
+function stripMarkdownFormatting(text) {
+  return (text || "").replace(/\*\*(.+?)\*\*/g, "$1").replace(/(?<!\*)\*(?!\*)(.+?)\*(?!\*)/g, "$1").replace(/_{1,2}(.+?)_{1,2}/g, "$1");
+}
+
 // ==================== Contacted (email open/click tracker) ====================
 document.getElementById("navContactedSetup").addEventListener("click", () => {
   state.lastNavSection = "contacted";
@@ -430,11 +461,23 @@ async function loadContactedSetup() {
     <p class="hint">Get an email the moment someone opens or clicks - sent through your own SMTP account.</p>
     <label class="site-visuals-toggle"><input type="checkbox" data-tracker-notify-enabled /> Enable email notifications</label>
     <label class="site-field-label">Send notifications to<input type="text" data-tracker-notify-to placeholder="you@yourdomain.com"></label>
-    <label class="site-field-label">SMTP host<input type="text" data-tracker-smtp-host placeholder="smtp.hostinger.com"></label>
-    <label class="site-field-label">SMTP port<input type="number" data-tracker-smtp-port placeholder="465"></label>
-    <label class="site-field-label">SMTP username<input type="text" data-tracker-smtp-user placeholder="you@yourdomain.com"></label>
-    <label class="site-field-label">SMTP password <small class="optional" data-tracker-smtp-pass-hint></small><input type="password" data-tracker-smtp-pass placeholder="Leave blank to keep the current password"></label>
-    <label class="site-field-label">SMTP "from" address <small class="optional">(optional, defaults to the username)</small><input type="text" data-tracker-smtp-from placeholder="you@yourdomain.com"></label>
+
+    <div class="smtp-card">
+      <div class="smtp-card-head">
+        <span>SMTP connection</span>
+        <button type="button" class="smtp-quickfill-btn" data-action="fill-hostinger-smtp">Use Hostinger defaults</button>
+      </div>
+      <div class="smtp-field-row">
+        <label class="site-field-label">SMTP host<input type="text" data-tracker-smtp-host placeholder="smtp.hostinger.com"></label>
+        <label class="site-field-label smtp-field-narrow">SMTP port<input type="number" data-tracker-smtp-port placeholder="465"></label>
+      </div>
+      <div class="smtp-field-row">
+        <label class="site-field-label">SMTP username<input type="text" data-tracker-smtp-user placeholder="you@yourdomain.com"></label>
+        <label class="site-field-label">SMTP password <small class="optional" data-tracker-smtp-pass-hint></small><input type="password" data-tracker-smtp-pass placeholder="Leave blank to keep current"></label>
+      </div>
+      <label class="site-field-label">SMTP "from" address <small class="optional">(optional, defaults to the username)</small><input type="text" data-tracker-smtp-from placeholder="you@yourdomain.com"></label>
+    </div>
+
     <div style="display:flex; gap:8px;">
       <button type="button" class="small-btn" data-action="save-tracker-settings">Save settings</button>
       <button type="button" class="small-btn" data-action="test-tracker-email">Send test email</button>
@@ -463,6 +506,12 @@ async function loadContactedSetup() {
     body.dataset.listenersAttached = "1";
     body.addEventListener("click", async (e) => {
       const action = e.target.closest("[data-action]")?.dataset.action;
+      if (action === "fill-hostinger-smtp") {
+        body.querySelector("[data-tracker-smtp-host]").value = "smtp.hostinger.com";
+        body.querySelector("[data-tracker-smtp-port]").value = "465";
+        showToast("Filled in Hostinger's standard SMTP host and port - username/password are still your own", "success");
+        return;
+      }
       if (action === "copy-tracker-key") {
         navigator.clipboard?.writeText(body.querySelector("[data-contacted-api-key]").value);
       showToast("API key copied", "success");
@@ -3498,12 +3547,17 @@ function buildExpandPanelHtml(lead) {
         <button type="button" data-action="generate-stop" title="Stop" style="display:none;"><i class="bi bi-stop-circle"></i></button>
       </div>
       <div class="platform-tabs">
-        ${PLATFORMS.map(
-          (p) =>
-            `<button type="button" class="platform-tab ${p.key === "email" ? "active" : ""}" data-platform="${p.key}" title="${p.key}"><i class="bi ${p.icon}"></i><span class="platform-tab-dot" data-platform-dot="${p.key}"></span></button>`
-        ).join("")}
+        ${PLATFORMS.map((p) => {
+          const isAvailable = getAvailablePlatforms(lead).includes(p.key);
+          return `<button type="button" class="platform-tab ${p.key === "email" ? "active" : ""} ${isAvailable ? "" : "platform-tab-unavailable"}" data-platform="${p.key}" title="${isAvailable ? p.key : `${p.key} - no contact info found for this lead, but you can still view/generate it manually`}"><i class="bi ${p.icon}"></i><span class="platform-tab-dot" data-platform-dot="${p.key}"></span></button>`;
+        }).join("")}
       </div>
       <div data-gen-progress style="display:none;" class="inspect-progress"><span class="inspect-spinner"></span> <span data-gen-progress-text></span></div>
+      <div class="gen-subject-row" data-gen-subject-row style="display:none;">
+        <input type="text" data-gen-subject-input placeholder="Subject line…" />
+        <button type="button" data-action="copy-subject" title="Copy subject"><i class="bi bi-clipboard"></i></button>
+        <button type="button" data-action="regenerate-subject" title="Regenerate just the subject"><i class="bi bi-arrow-repeat"></i></button>
+      </div>
       <div class="gen-output-mini" data-gen-output>Pick a tone, length, and language, then click "Generate Content" - writes all 6 platforms at once in the background. Switching tabs afterward just shows what was generated for each, without using any more requests.</div>
       <div class="gen-actions-mini">
         <button type="button" data-action="copy-content"><i class="bi bi-clipboard"></i> Copy</button>
@@ -3577,8 +3631,12 @@ async function toggleLeadExpand(leadId) {
     const activeLanguage = languageSelect.value || "English";
     const saved = savedContent.find((c) => c.platform === platform && (c.language || "English") === activeLanguage);
     const providerHintEl = expandRow.querySelector("[data-gen-provider-hint]");
+    const subjectRow = expandRow.querySelector("[data-gen-subject-row]");
+    const subjectInput = expandRow.querySelector("[data-gen-subject-input]");
+    subjectRow.style.display = platform === "email" ? "flex" : "none";
     if (saved) {
-      outputEl.textContent = saved.content;
+      outputEl.innerHTML = renderFormattedContent(saved.content);
+      if (platform === "email") subjectInput.value = saved.subject || "";
       if (saved.tone) {
         toneSelect.value = saved.tone;
         currentTone = saved.tone;
@@ -3590,6 +3648,7 @@ async function toggleLeadExpand(leadId) {
       providerHintEl.innerHTML = providerHintIconHtml(saved.provider);
     } else {
       outputEl.innerHTML = `Not generated yet for ${platform} in ${activeLanguage}. Pick a tone and length, then click "Generate Content" - or switch to a language/platform combination that's already been generated.`;
+      if (platform === "email") subjectInput.value = "";
       providerHintEl.innerHTML = "";
     }
     markCompletedDots();
@@ -3790,7 +3849,13 @@ async function toggleLeadExpand(leadId) {
     // Generates all 6 platforms in one background job - per spec, no need
     // to click Generate again when switching platform tabs afterward.
     if (action === "generate-all") {
-      await startGeneration(null); // null = all 6 platforms, always
+      const availablePlatforms = getAvailablePlatforms(lead);
+      const targetPlatforms = availablePlatforms.length ? availablePlatforms : ["email"];
+      if (availablePlatforms.length && availablePlatforms.length < PLATFORMS.length) {
+        const skipped = PLATFORMS.map((p) => p.key).filter((p) => !availablePlatforms.includes(p));
+        showToast(`Generating for ${availablePlatforms.join(", ")} - skipping ${skipped.join(", ")} (no contact info found)`, "info");
+      }
+      await startGeneration(targetPlatforms);
       return;
     }
 
@@ -3800,13 +3865,47 @@ async function toggleLeadExpand(leadId) {
     }
 
     if (action === "copy-content") {
-      navigator.clipboard?.writeText(outputEl.textContent || "");
+      const activeLanguage = languageSelect.value || "English";
+      const saved = savedContent.find((c) => c.platform === currentPlatform && (c.language || "English") === activeLanguage);
+      navigator.clipboard?.writeText(stripMarkdownFormatting(saved?.content || ""));
       showToast("Copied to clipboard", "success");
       return;
     }
 
     if (action === "regenerate-content") {
       await startGeneration([currentPlatform]);
+      return;
+    }
+
+    if (action === "copy-subject") {
+      const subjectInput = expandRow.querySelector("[data-gen-subject-input]");
+      navigator.clipboard?.writeText(subjectInput.value || "");
+      showToast("Subject copied", "success");
+      return;
+    }
+
+    if (action === "regenerate-subject") {
+      const btn = e.target.closest("[data-action]");
+      const subjectInput = expandRow.querySelector("[data-gen-subject-input]");
+      btn.classList.add("spinning");
+      try {
+        const res = await api(`/api/leads/${leadId}/regenerate-subject`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ language: languageSelect.value || "English", aiProvider: currentAiProvider || undefined }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Could not regenerate subject");
+        subjectInput.value = data.subject;
+        const activeLanguage = languageSelect.value || "English";
+        const saved = savedContent.find((c) => c.platform === "email" && (c.language || "English") === activeLanguage);
+        if (saved) saved.subject = data.subject;
+        showToast("Subject regenerated", "success");
+      } catch (err) {
+        showToast(err.message, "error");
+      } finally {
+        btn.classList.remove("spinning");
+      }
       return;
     }
 
@@ -3990,6 +4089,26 @@ const SOCIAL_ICON_META = {
 function socialBadge(key) {
   const meta = SOCIAL_ICON_META[key];
   return `<span class="social-badge" style="background:${meta.bg}"><i class="bi ${meta.icon}"></i></span>`;
+}
+
+// Maps each content-generation platform to what "available" means for
+// that lead - email/facebook/instagram/linkedin/tiktok need their matching
+// socials entry; whatsapp needs a phone number (WhatsApp messages go to a
+// number, not a separate handle), checking both the scraped socials.phone
+// and the Google Places phone field since either is a real reachable number.
+function getAvailablePlatforms(lead) {
+  const socials = lead.socials || {};
+  const checks = {
+    email: !!socials.email,
+    facebook: !!socials.facebook,
+    instagram: !!socials.instagram,
+    linkedin: !!socials.linkedin,
+    tiktok: !!socials.tiktok,
+    whatsapp: !!(socials.phone || lead.phone),
+  };
+  return Object.entries(checks)
+    .filter(([, available]) => available)
+    .map(([platform]) => platform);
 }
 
 function socialLinksHtml(lead) {

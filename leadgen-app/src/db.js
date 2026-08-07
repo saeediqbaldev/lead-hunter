@@ -468,6 +468,14 @@ CREATE TABLE IF NOT EXISTS outreach_content (
   }
 }
 
+// Subject line, stored separately from the body - only meaningful for the
+// "email" platform (other platforms like Facebook/Instagram DMs don't
+// have a subject concept), but added to every row's schema for simplicity.
+{
+  const outreachContentCols = db.prepare("PRAGMA table_info(outreach_content)").all().map((c) => c.name);
+  if (!outreachContentCols.includes("subject")) db.exec("ALTER TABLE outreach_content ADD COLUMN subject TEXT");
+}
+
 // ---------- Async batch content generation job tracking (generates all
 // platforms at once in the background, mirroring the Inspect job pattern -
 // this is what avoids any single HTTP request needing to stay open long

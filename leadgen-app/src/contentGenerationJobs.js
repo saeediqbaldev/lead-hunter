@@ -85,9 +85,9 @@ async function runJob(userId, leadId, lead, platforms, options) {
 
       if (result.ok) {
         db.prepare(
-          `INSERT INTO outreach_content (lead_id, platform, tone, length, content, provider, language, generated_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-           ON CONFLICT(lead_id, platform, language) DO UPDATE SET tone = excluded.tone, length = excluded.length, content = excluded.content, provider = excluded.provider, generated_at = excluded.generated_at`
-        ).run(leadId, platform, tone, length || null, result.content, result.provider || null, language || "English");
+          `INSERT INTO outreach_content (lead_id, platform, tone, length, content, subject, provider, language, generated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+           ON CONFLICT(lead_id, platform, language) DO UPDATE SET tone = excluded.tone, length = excluded.length, content = excluded.content, subject = excluded.subject, provider = excluded.provider, generated_at = excluded.generated_at`
+        ).run(leadId, platform, tone, length || null, result.content, result.subject || null, result.provider || null, language || "English");
         completed.push(platform);
       } else {
         failed[platform] = result.error;
