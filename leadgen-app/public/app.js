@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.07-14.3";
+const APP_VERSION = "2026.08.07-14.5";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -355,30 +355,30 @@ function stripMarkdownFormatting(text) {
 }
 
 // ==================== Contacted (email open/click tracker) ====================
-document.getElementById("navContactedSetup").addEventListener("click", () => {
-  state.lastNavSection = "contacted";
-  setContentView("contacted-setup");
-  loadContactedSetup();
+
+document.querySelectorAll("[data-toggle-platform]").forEach((header) => {
+  header.addEventListener("click", () => {
+    const node = header.closest("[data-platform-node]");
+    node.classList.toggle("open");
+  });
 });
-document.getElementById("navContactedTracking").addEventListener("click", () => {
-  state.lastNavSection = "contacted";
-  setContentView("contacted-tracking");
-  loadContactedTracking();
-});
-document.getElementById("navContactedHistory").addEventListener("click", () => {
-  state.lastNavSection = "contacted";
-  setContentView("contacted-history");
-  loadContactedHistory();
-});
-document.getElementById("navContactedReports").addEventListener("click", () => {
-  state.lastNavSection = "contacted";
-  setContentView("contacted-reports");
-  loadContactedReports("7d");
-});
-document.getElementById("navContactedAlerts").addEventListener("click", () => {
-  state.lastNavSection = "contacted";
-  setContentView("contacted-alerts");
-  loadContactedAlerts();
+
+document.querySelectorAll("[data-goto-platform][data-goto-view]").forEach((leaf) => {
+  leaf.addEventListener("click", () => {
+    const platform = leaf.dataset.gotoPlatform;
+    const view = leaf.dataset.gotoView;
+    state.contactedPlatform = platform;
+    state.lastNavSection = "contacted";
+    document.querySelectorAll("[data-goto-platform][data-goto-view]").forEach((l) => l.classList.remove("active"));
+    leaf.classList.add("active");
+    setContentView(`contacted-${view}`);
+    if (view === "setup") loadContactedSetup();
+    else if (view === "tracking") loadContactedTracking();
+    else if (view === "history") loadContactedHistory();
+    else if (view === "reports") loadContactedReports("7d");
+    else if (view === "alerts") loadContactedAlerts();
+    else if (view === "campaigns") loadContactedCampaigns();
+  });
 });
 
 async function refreshCurrentContactedView() {
@@ -394,27 +394,89 @@ async function refreshCurrentContactedView() {
   await refreshContactedUnreadBadge();
 }
 
+let contactedAutoRefreshTimer = null;
+
+async function setupContactedAutoRefresh(intervalSecondsOverride) {
+  if (contactedAutoRefreshTimer) {
+    clearInterval(contactedAutoRefreshTimer);
+    contactedAutoRefreshTimer = null;
+  }
+
+  let seconds = intervalSecondsOverride;
+  if (seconds === undefined) {
+    try {
+      const res = await api("/api/tracker/settings");
+      const data = await res.json();
+      seconds = data.settings?.refresh_interval_seconds || 0;
+    } catch {
+      seconds = 0;
+    }
+  }
+
+  if (!seconds || seconds <= 0) return;
+
+  contactedAutoRefreshTimer = setInterval(() => {
+    // Only actually refresh while the user has a Contacted page open -
+    // otherwise this would keep polling in the background forever even
+    // while they're working in Hunt/Reach Out/somewhere else entirely.
+    if (state.contentView && state.contentView.startsWith("contacted-")) {
+      refreshCurrentContactedView();
+    }
+  }, seconds * 1000);
+}
+setupContactedAutoRefresh();
+
 async function refreshContactedUnreadBadge() {
   try {
-    const res = await api("/api/tracker/notifications/unread-count");
-    const data = await res.json();
-    [document.getElementById("contactedUnreadBadge"), document.getElementById("contactedAlertsUnreadBadge")].forEach((el) => {
-      if (data.count > 0) {
-        el.textContent = data.count > 99 ? "99+" : data.count;
-        el.style.display = "inline-flex";
-      } else {
-        el.style.display = "none";
-      }
-    });
+    const totalRes = await api("/api/tracker/notifications/unread-count");
+    const totalData = await totalRes.json();
+    applyBadgeCount(document.getElementById("contactedUnreadBadge"), totalData.count);
+
+    for (const platform of ["hostinger", "gmail"]) {
+      const res = await api(`/api/tracker/notifications/unread-count?provider=${platform}`);
+      const data = await res.json();
+      applyBadgeCount(document.querySelector(`[data-platform-badge="${platform}"]`), data.count);
+      applyBadgeCount(document.querySelector(`[data-platform-alerts-badge="${platform}"]`), data.count);
+    }
   } catch {
-    // Non-critical - just skip updating the badge this tick.
+    // Non-critical - just skip updating the badges this tick.
+  }
+}
+
+function applyBadgeCount(el, count) {
+  if (!el) return;
+  if (count > 0) {
+    el.textContent = count > 99 ? "99+" : count;
+    el.style.display = "inline-flex";
+  } else {
+    el.style.display = "none";
   }
 }
 refreshContactedUnreadBadge();
 setInterval(refreshContactedUnreadBadge, 30000);
 
 // ---------- Setup page ----------
+const PLATFORM_SETUP_COPY = {
+  hostinger: {
+    title: "Hostinger Mail Setup",
+    scopeLine: "Track opens and clicks on emails you send from Hostinger Webmail - no manual config needed",
+    stepTitle: "Open Hostinger Webmail and compose",
+    stepBody: `A <b>Track</b> toggle appears near the send button - turn it on before sending and this dashboard will show opens and clicks automatically.`,
+  },
+  gmail: {
+    title: "Gmail Setup",
+    scopeLine: "Track opens and clicks on emails you send from Gmail - no manual config needed",
+    stepTitle: "Open Gmail and compose",
+    stepBody: `A <b>Track</b> toggle appears near the send button in the compose window - turn it on before sending and this dashboard will show opens and clicks automatically.`,
+  },
+};
+
 async function loadContactedSetup() {
+  const platform = state.contactedPlatform;
+  const copy = PLATFORM_SETUP_COPY[platform] || PLATFORM_SETUP_COPY.hostinger;
+  document.getElementById("contactedSetupTitle").textContent = copy.title;
+  document.getElementById("contactedSetupScopeLine").textContent = copy.scopeLine;
+
   const body = document.getElementById("contactedSetupBody");
   body.innerHTML = `<p class="hint">Loading…</p>`;
   const res = await api("/api/tracker/setup");
@@ -422,7 +484,7 @@ async function loadContactedSetup() {
 
   body.innerHTML = `
     <h3 class="settings-subheading">What this page is for</h3>
-    <p class="hint">A one-time setup, done once: get your personal API key, install the browser extension it's baked into, and (optionally) turn on email alerts. After this, you won't need to come back here - use <b>Tracking</b>, <b>History</b>, <b>Alerts</b>, and <b>Reports</b> in the sidebar for day-to-day use.</p>
+    <p class="hint">A one-time setup, done once: get your personal API key, install the browser extension it's baked into, and (optionally) turn on email alerts. The same extension and API key cover both Hostinger and Gmail - one install handles both. After this, you won't need to come back here - use <b>Tracking</b>, <b>History</b>, <b>Alerts</b>, and <b>Reports</b> under each platform for day-to-day use.</p>
 
     <h3 class="settings-subheading">Your API key</h3>
     <p class="hint">Identifies your account to the extension - already embedded in the download below, shown here only for reference.</p>
@@ -447,13 +509,35 @@ async function loadContactedSetup() {
       </div>
       <div class="contacted-setup-step">
         <div class="step-num"></div>
-        <div class="step-body"><h4>Open Hostinger Webmail and compose</h4><p>A <b>Track</b> toggle appears near the send button - turn it on before sending and this dashboard will show opens and clicks automatically.</p></div>
+        <div class="step-body"><h4>${copy.stepTitle}</h4><p>${copy.stepBody}</p></div>
       </div>
     </div>
 
     <div class="settings-result bad" style="display:block; background:rgba(232,162,61,0.1); border-color:var(--warn); color:var(--warn);">
       <b>Testing it yourself?</b> Opens from the exact same network you sent from, or opened within the first few seconds, are deliberately not counted - this stops your own Sent-folder preview from falsely marking a message "Opened." Test from a different network/device, or wait a bit before checking. Clicks are never filtered this way, so link clicks always register immediately. Some mail clients also block remote images by default, which prevents opens from registering at all until images are allowed.
     </div>
+
+    <div class="settings-divider"></div>
+
+    <div class="settings-divider"></div>
+
+    <h3 class="settings-subheading">Auto-refresh</h3>
+    <p class="hint">How often Tracking, History, Alerts, and Reports quietly refresh themselves while you have them open. The manual refresh button always works regardless of this setting.</p>
+    <label class="site-field-label">
+      Refresh every
+      <select data-tracker-auto-refresh>
+        <option value="0">Off - refresh manually only</option>
+        <option value="60">1 minute</option>
+        <option value="180">3 minutes</option>
+        <option value="300">5 minutes</option>
+        <option value="900">15 minutes</option>
+        <option value="1800">30 minutes</option>
+        <option value="3600">1 hour</option>
+        <option value="7200">2 hours</option>
+        <option value="21600">6 hours</option>
+        <option value="43200">12 hours</option>
+      </select>
+    </label>
 
     <div class="settings-divider"></div>
 
@@ -488,6 +572,7 @@ async function loadContactedSetup() {
   const settingsRes = await api("/api/tracker/settings");
   const settingsData = await settingsRes.json();
   const s = settingsData.settings || {};
+  body.querySelector("[data-tracker-auto-refresh]").value = String(s.refresh_interval_seconds || 0);
   body.querySelector("[data-tracker-notify-enabled]").checked = !!s.notify_email_enabled;
   body.querySelector("[data-tracker-notify-to]").value = s.notify_email_to || "";
   body.querySelector("[data-tracker-smtp-host]").value = s.smtp_host || "";
@@ -535,6 +620,7 @@ async function loadContactedSetup() {
       const resultEl = document.getElementById("contactedSettingsResult");
       const port = body.querySelector("[data-tracker-smtp-port]").value;
       const payload = {
+        refresh_interval_seconds: parseInt(body.querySelector("[data-tracker-auto-refresh]").value, 10),
         notify_email_enabled: body.querySelector("[data-tracker-notify-enabled]").checked,
         notify_email_to: body.querySelector("[data-tracker-notify-to]").value.trim(),
         smtp_host: body.querySelector("[data-tracker-smtp-host]").value.trim(),
@@ -555,6 +641,7 @@ async function loadContactedSetup() {
         resultEl.textContent = "Settings saved.";
         body.querySelector("[data-tracker-smtp-pass-hint]").textContent = d.settings.smtp_pass_set ? "(a password is already saved)" : "(not set)";
         body.querySelector("[data-tracker-smtp-pass]").value = "";
+        setupContactedAutoRefresh(d.settings.refresh_interval_seconds || 0);
       }
       return;
     }
@@ -574,7 +661,7 @@ async function loadContactedSetup() {
 // ---------- Tracking ledger ----------
 let contactedStatusFilter = "";
 async function loadContactedTracking() {
-  const statsRes = await api("/api/tracker/stats");
+  const statsRes = await api(`/api/tracker/stats?provider=${state.contactedPlatform}`);
   const stats = await statsRes.json();
   const statsRow = document.getElementById("contactedStatsRow");
   const cards = [
@@ -600,6 +687,7 @@ async function renderContactedTable() {
   const search = document.getElementById("contactedSearchInput").value.trim();
   const recipient = document.getElementById("contactedRecipientInput").value.trim();
   const params = new URLSearchParams();
+  params.set("provider", state.contactedPlatform);
   if (contactedStatusFilter) params.set("status", contactedStatusFilter);
   if (search) params.set("search", search);
   if (recipient) params.set("recipient", recipient);
@@ -710,6 +798,7 @@ async function loadContactedHistory() {
   const type = document.getElementById("contactedHistoryTypeSelect").value;
   const search = document.getElementById("contactedHistorySearchInput").value.trim();
   const params = new URLSearchParams();
+  params.set("provider", state.contactedPlatform);
   if (type) params.set("type", type);
   if (search) params.set("search", search);
 
@@ -743,7 +832,7 @@ let contactedTimeseriesChartInstance = null;
 async function loadContactedReports(range) {
   document.querySelectorAll("#contactedReportsRangeGroup .range-pill").forEach((btn) => btn.classList.toggle("active", btn.dataset.range === range));
 
-  const res = await api(`/api/tracker/analytics?range=${range}`);
+  const res = await api(`/api/tracker/analytics?range=${range}&provider=${state.contactedPlatform}`);
   const data = await res.json();
 
   const statsRow = document.getElementById("contactedReportsStatsRow");
@@ -798,6 +887,7 @@ async function loadContactedAlerts() {
   const type = document.getElementById("contactedAlertsTypeSelect").value;
   const unreadOnly = document.getElementById("contactedUnreadOnlyToggle").checked;
   const params = new URLSearchParams();
+  params.set("provider", state.contactedPlatform);
   if (type) params.set("type", type);
   if (unreadOnly) params.set("unread", "true");
 
@@ -842,10 +932,274 @@ async function loadContactedAlerts() {
 document.getElementById("contactedAlertsTypeSelect").addEventListener("change", loadContactedAlerts);
 document.getElementById("contactedUnreadOnlyToggle").addEventListener("change", loadContactedAlerts);
 document.getElementById("contactedMarkAllReadBtn").addEventListener("click", async () => {
-  await api("/api/tracker/notifications/mark-all-read", { method: "POST" });
+  await api("/api/tracker/notifications/mark-all-read", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider: state.contactedPlatform }),
+  });
   loadContactedAlerts();
   refreshContactedUnreadBadge();
 });
+
+// ---------- Campaigns (Auto Send) ----------
+const CAMPAIGN_STATUS_LABEL = {
+  draft: "Draft",
+  running: "Running",
+  paused: "Paused",
+  completed: "Completed",
+  cancelled: "Cancelled",
+};
+
+function campaignProgressBarHtml(c) {
+  const total = c.total_leads || 0;
+  const pct = total > 0 ? Math.round((c.sent_count / total) * 100) : 0;
+  return `
+    <div class="campaign-progress-track"><div class="campaign-progress-fill" style="width:${pct}%;"></div></div>
+    <div class="campaign-progress-label">${c.sent_count}/${total} sent${c.failed_count ? ` · ${c.failed_count} failed` : ""}${c.skipped_count ? ` · ${c.skipped_count} skipped` : ""}</div>
+  `;
+}
+
+async function loadContactedCampaigns() {
+  const res = await api("/api/campaigns");
+  const data = await res.json();
+  const list = document.getElementById("contactedCampaignsList");
+
+  if (!data.campaigns.length) {
+    list.innerHTML = `<p class="hint" style="padding:0 22px;">No campaigns yet - click "New Campaign" to set one up.</p>`;
+    return;
+  }
+
+  list.innerHTML = data.campaigns
+    .map(
+      (c) => `
+    <div class="campaign-card" data-campaign-id="${c.id}">
+      <div class="campaign-card-top">
+        <span class="campaign-name">${c.name}</span>
+        <span class="campaign-status-pill campaign-status-${c.status}">${CAMPAIGN_STATUS_LABEL[c.status] || c.status}</span>
+      </div>
+      ${campaignProgressBarHtml(c)}
+      <div class="campaign-card-meta">Every ${c.min_gap_minutes}-${c.max_gap_minutes} min, up to ${c.max_per_day}/day · Created ${c.created_at}</div>
+    </div>`
+    )
+    .join("");
+
+  list.querySelectorAll(".campaign-card").forEach((card) => {
+    card.addEventListener("click", () => loadCampaignDetail(card.dataset.campaignId));
+  });
+}
+
+document.getElementById("contactedNewCampaignBtn").addEventListener("click", showCampaignCreationForm);
+
+async function showCampaignCreationForm() {
+  setContentView("contacted-campaign-detail");
+  document.getElementById("campaignDetailTitle").textContent = "New Campaign";
+  document.getElementById("campaignDetailScope").textContent = "Set up an automated sending run";
+  document.getElementById("campaignDetailActions").innerHTML = "";
+
+  const [nichesRes] = await Promise.all([api("/api/niches")]);
+  const niches = await nichesRes.json();
+
+  const body = document.getElementById("campaignDetailBody");
+  body.innerHTML = `
+    <label class="site-field-label">Campaign name<input type="text" data-campaign-name placeholder="e.g. Bali Car Washes - August"></label>
+
+    <div class="smtp-field-row">
+      <label class="site-field-label">Niche
+        <select data-campaign-niche>
+          <option value="">Select a niche…</option>
+          ${niches.map((n) => `<option value="${n.id}">${n.name} (${n.lead_count} leads)</option>`).join("")}
+        </select>
+      </label>
+      <label class="site-field-label">City
+        <select data-campaign-city disabled><option value="">Select a niche first…</option></select>
+      </label>
+    </div>
+    <p class="hint" data-campaign-lead-preview></p>
+
+    <label class="site-visuals-toggle"><input type="checkbox" data-campaign-require-inspection checked> Inspect uninspected leads first, before writing their email</label>
+
+    <div class="smtp-field-row">
+      <label class="site-field-label">Tone
+        <select data-campaign-tone>${CONTENT_TONES.map((t) => `<option value="${t}">${t}</option>`).join("")}</select>
+      </label>
+      <label class="site-field-label">Length
+        <select data-campaign-length>${CONTENT_LENGTHS.map((l) => `<option value="${l}" ${l === "Medium" ? "selected" : ""}>${l}</option>`).join("")}</select>
+      </label>
+    </div>
+    <label class="site-field-label">Language
+      <select data-campaign-language>${CONTENT_LANGUAGES.map((l) => `<option value="${l.value}" ${l.value === "English" ? "selected" : ""}>${l.flag} ${l.label}</option>`).join("")}</select>
+    </label>
+
+    <label class="site-visuals-toggle"><input type="checkbox" data-campaign-cta> Weave in a clear call-to-action</label>
+    <label class="site-visuals-toggle"><input type="checkbox" data-campaign-meeting> Invite them to a meeting/call</label>
+    <label class="site-field-label" data-campaign-meeting-link-row style="display:none;">Meeting booking link<input type="text" data-campaign-meeting-link placeholder="https://cal.com/you/15min"></label>
+
+    <div class="settings-divider"></div>
+    <h3 class="settings-subheading">Sending pace</h3>
+    <p class="hint">Kept randomized within this range so sending doesn't look automated to spam filters.</p>
+    <div class="smtp-field-row">
+      <label class="site-field-label">Max per day<input type="number" data-campaign-max-per-day value="100" min="1" max="100"></label>
+      <label class="site-field-label">Gap: min - max minutes
+        <div style="display:flex; gap:6px;">
+          <input type="number" data-campaign-min-gap value="5" min="1" style="width:70px;">
+          <input type="number" data-campaign-max-gap value="10" min="1" style="width:70px;">
+        </div>
+      </label>
+    </div>
+
+    <div style="display:flex; gap:8px; margin-top:12px;">
+      <button type="button" class="site-generate-btn" data-action="create-campaign"><i class="bi bi-send-fill"></i> Create Campaign</button>
+      <button type="button" class="small-btn" data-action="cancel-campaign-form">Cancel</button>
+    </div>
+    <div class="settings-result" id="campaignFormResult" style="display:none;"></div>
+  `;
+
+  body.querySelector("[data-campaign-meeting]").addEventListener("change", (e) => {
+    body.querySelector("[data-campaign-meeting-link-row]").style.display = e.target.checked ? "block" : "none";
+  });
+
+  const nicheSelect = body.querySelector("[data-campaign-niche]");
+  const citySelect = body.querySelector("[data-campaign-city]");
+  const previewEl = body.querySelector("[data-campaign-lead-preview]");
+
+  async function updateLeadPreview() {
+    const catchLogId = citySelect.value;
+    if (!catchLogId) {
+      previewEl.textContent = "";
+      return;
+    }
+    const res = await api(`/api/leads?catchLogId=${catchLogId}&pageSize=1`);
+    const data = await res.json();
+    previewEl.textContent = `${data.total} lead(s) in this city - leads without an email on file will be skipped automatically.`;
+  }
+
+  nicheSelect.addEventListener("change", async () => {
+    const nicheId = nicheSelect.value;
+    citySelect.innerHTML = `<option value="">Loading…</option>`;
+    citySelect.disabled = true;
+    previewEl.textContent = "";
+    if (!nicheId) {
+      citySelect.innerHTML = `<option value="">Select a niche first…</option>`;
+      return;
+    }
+    const res = await api(`/api/catch-logs?nicheId=${nicheId}`);
+    const cities = await res.json();
+    citySelect.innerHTML = `<option value="">Select a city…</option>${cities.map((c) => `<option value="${c.id}">${c.name} (${c.lead_count} leads)</option>`).join("")}`;
+    citySelect.disabled = false;
+  });
+  citySelect.addEventListener("change", updateLeadPreview);
+
+  body.addEventListener("click", async (e) => {
+    const action = e.target.closest("[data-action]")?.dataset.action;
+    if (action === "cancel-campaign-form") {
+      loadContactedCampaigns();
+      setContentView("contacted-campaigns");
+      return;
+    }
+    if (action === "create-campaign") {
+      const resultEl = document.getElementById("campaignFormResult");
+      const payload = {
+        name: body.querySelector("[data-campaign-name]").value.trim(),
+        nicheId: nicheSelect.value || undefined,
+        catchLogId: citySelect.value || undefined,
+        requireInspection: body.querySelector("[data-campaign-require-inspection]").checked,
+        tone: body.querySelector("[data-campaign-tone]").value,
+        length: body.querySelector("[data-campaign-length]").value,
+        language: body.querySelector("[data-campaign-language]").value,
+        cta: body.querySelector("[data-campaign-cta]").checked,
+        meeting: body.querySelector("[data-campaign-meeting]").checked,
+        meetingLink: body.querySelector("[data-campaign-meeting-link]").value.trim() || undefined,
+        maxPerDay: parseInt(body.querySelector("[data-campaign-max-per-day]").value, 10) || 100,
+        minGapMinutes: parseInt(body.querySelector("[data-campaign-min-gap]").value, 10) || 5,
+        maxGapMinutes: parseInt(body.querySelector("[data-campaign-max-gap]").value, 10) || 10,
+      };
+      if (!payload.name) {
+        resultEl.style.display = "block";
+        resultEl.className = "settings-result bad";
+        resultEl.textContent = "Give the campaign a name first.";
+        return;
+      }
+      if (!payload.catchLogId) {
+        resultEl.style.display = "block";
+        resultEl.className = "settings-result bad";
+        resultEl.textContent = "Select a niche and city first.";
+        return;
+      }
+      const res = await api("/api/campaigns", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const data = await res.json();
+      resultEl.style.display = "block";
+      if (!res.ok) {
+        resultEl.className = "settings-result bad";
+        resultEl.textContent = data.error;
+        return;
+      }
+      showToast(`Campaign created - ${data.leadCount} lead(s) queued${data.skippedCount ? `, ${data.skippedCount} skipped (no email on file)` : ""}`, "success");
+      loadCampaignDetail(data.campaignId);
+    }
+  });
+}
+
+async function loadCampaignDetail(campaignId) {
+  setContentView("contacted-campaign-detail");
+  const res = await api(`/api/campaigns/${campaignId}`);
+  const data = await res.json();
+  const { campaign, leads } = data;
+
+  document.getElementById("campaignDetailTitle").textContent = campaign.name;
+  document.getElementById("campaignDetailScope").textContent = `${CAMPAIGN_STATUS_LABEL[campaign.status]}${campaign.pause_reason ? ` - ${campaign.pause_reason}` : ""}`;
+
+  const actionsEl = document.getElementById("campaignDetailActions");
+  const actions = [];
+  if (campaign.status === "draft") actions.push(`<button class="site-generate-btn" data-campaign-action="start">Start</button>`);
+  if (campaign.status === "running") actions.push(`<button class="small-btn" data-campaign-action="pause">Pause</button>`);
+  if (campaign.status === "paused") actions.push(`<button class="site-generate-btn" data-campaign-action="resume">Resume</button>`);
+  if (["draft", "running", "paused"].includes(campaign.status)) actions.push(`<button class="small-btn danger-btn" data-campaign-action="cancel">Cancel</button>`);
+  actions.push(`<button class="icon-toggle-btn" data-campaign-action="back" title="Back to list"><i class="bi bi-arrow-left"></i></button>`);
+  actionsEl.innerHTML = actions.join("");
+
+  actionsEl.querySelectorAll("[data-campaign-action]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const action = btn.dataset.campaignAction;
+      if (action === "back") {
+        loadContactedCampaigns();
+        setContentView("contacted-campaigns");
+        return;
+      }
+      await api(`/api/campaigns/${campaignId}/${action}`, { method: "POST" });
+      showToast(`Campaign ${action}d`, "success");
+      loadCampaignDetail(campaignId);
+    });
+  });
+
+  const bodyEl = document.getElementById("campaignDetailBody");
+  const CAMPAIGN_LEAD_STATUS_ICON = {
+    pending: "bi-hourglass",
+    inspecting: "bi-search",
+    generating: "bi-stars",
+    sending: "bi-send",
+    sent: "bi-check-circle-fill",
+    failed: "bi-x-circle-fill",
+    skipped: "bi-slash-circle",
+  };
+  bodyEl.innerHTML = `
+    <table class="contacted-table">
+      <thead><tr><th>Lead</th><th>Status</th><th>Sent</th><th>Detail</th></tr></thead>
+      <tbody>
+        ${leads
+          .map(
+            (l) => `
+          <tr>
+            <td>${l.lead_name}</td>
+            <td><span class="contacted-status-pill campaign-lead-${l.status}"><i class="bi ${CAMPAIGN_LEAD_STATUS_ICON[l.status] || "bi-circle"}"></i> ${l.status}</span></td>
+            <td>${l.sent_at || "—"}</td>
+            <td>${l.error || ""}</td>
+          </tr>`
+          )
+          .join("")}
+      </tbody>
+    </table>
+  `;
+}
 
 const signatureInput = document.getElementById("signatureInput");
 const signatureResult = document.getElementById("signatureResult");
@@ -1868,6 +2222,7 @@ const state = {
   selectedNicheId: null, // for the Hunt form's niche dropdown
 
   contentView: "huntForm", // "huntForm" | "board" | "reports" - which content panel is shown
+  contactedPlatform: "hostinger", // "hostinger" | "gmail" - which platform's data the Contacted pages show
   mode: "board", // "board" | "outreach"
   page: 1,
   pageSize: 50,
@@ -1911,6 +2266,8 @@ function setContentView(view) {
     "contacted-history": document.getElementById("contactedHistoryView"),
     "contacted-reports": document.getElementById("contactedReportsView"),
     "contacted-alerts": document.getElementById("contactedAlertsView"),
+    "contacted-campaigns": document.getElementById("contactedCampaignsView"),
+    "contacted-campaign-detail": document.getElementById("contactedCampaignDetailView"),
   };
   Object.entries(ALL_VIEWS).forEach(([name, el]) => {
     if (!el) return;

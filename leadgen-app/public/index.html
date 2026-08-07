@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="Xeven Leads" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=143" />
+<link rel="stylesheet" href="style.css?v=145" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -128,14 +128,43 @@
             <button class="nav-section-refresh" data-refresh-section="contacted" title="Refresh Contacted data"><i class="bi bi-arrow-clockwise"></i></button>
           </div>
           <div class="nav-section-body">
-            <button class="nav-leaf nav-leaf-action" data-goto="contacted-tracking" id="navContactedTracking"><i class="bi bi-list-ul"></i> Tracking</button>
-            <button class="nav-leaf nav-leaf-action" data-goto="contacted-history" id="navContactedHistory"><i class="bi bi-clock-history"></i> History</button>
-            <button class="nav-leaf nav-leaf-action" data-goto="contacted-alerts" id="navContactedAlerts">
-              <i class="bi bi-bell"></i> Alerts
-              <span class="unread-badge" id="contactedAlertsUnreadBadge" style="display:none;"></span>
-            </button>
-            <button class="nav-leaf nav-leaf-action" data-goto="contacted-reports" id="navContactedReports"><i class="bi bi-graph-up"></i> Reports</button>
-            <button class="nav-leaf nav-leaf-action" data-goto="contacted-setup" id="navContactedSetup"><i class="bi bi-gear-wide-connected"></i> Hostinger Mail Setup</button>
+            <div class="platform-node open" data-platform-node="hostinger">
+              <button class="platform-node-header" data-toggle-platform="hostinger">
+                <i class="bi bi-envelope-fill"></i>
+                <span>Hostinger</span>
+                <span class="nav-caret platform-caret">▾</span>
+                <span class="unread-badge" data-platform-badge="hostinger" style="display:none;"></span>
+              </button>
+              <div class="platform-node-body">
+                <button class="nav-leaf nav-leaf-action" data-goto-platform="hostinger" data-goto-view="tracking"><i class="bi bi-list-ul"></i> Tracking</button>
+                <button class="nav-leaf nav-leaf-action" data-goto-platform="hostinger" data-goto-view="history"><i class="bi bi-clock-history"></i> History</button>
+                <button class="nav-leaf nav-leaf-action" data-goto-platform="hostinger" data-goto-view="alerts">
+                  <i class="bi bi-bell"></i> Alerts
+                  <span class="unread-badge" data-platform-alerts-badge="hostinger" style="display:none;"></span>
+                </button>
+                <button class="nav-leaf nav-leaf-action" data-goto-platform="hostinger" data-goto-view="reports"><i class="bi bi-graph-up"></i> Reports</button>
+                <button class="nav-leaf nav-leaf-action" data-goto-platform="hostinger" data-goto-view="setup"><i class="bi bi-gear-wide-connected"></i> Setup</button>
+                <button class="nav-leaf nav-leaf-action" data-goto-platform="hostinger" data-goto-view="campaigns"><i class="bi bi-send-fill"></i> Auto Send</button>
+              </div>
+            </div>
+            <div class="platform-node" data-platform-node="gmail">
+              <button class="platform-node-header" data-toggle-platform="gmail">
+                <i class="bi bi-google"></i>
+                <span>Gmail</span>
+                <span class="nav-caret platform-caret">▾</span>
+                <span class="unread-badge" data-platform-badge="gmail" style="display:none;"></span>
+              </button>
+              <div class="platform-node-body">
+                <button class="nav-leaf nav-leaf-action" data-goto-platform="gmail" data-goto-view="tracking"><i class="bi bi-list-ul"></i> Tracking</button>
+                <button class="nav-leaf nav-leaf-action" data-goto-platform="gmail" data-goto-view="history"><i class="bi bi-clock-history"></i> History</button>
+                <button class="nav-leaf nav-leaf-action" data-goto-platform="gmail" data-goto-view="alerts">
+                  <i class="bi bi-bell"></i> Alerts
+                  <span class="unread-badge" data-platform-alerts-badge="gmail" style="display:none;"></span>
+                </button>
+                <button class="nav-leaf nav-leaf-action" data-goto-platform="gmail" data-goto-view="reports"><i class="bi bi-graph-up"></i> Reports</button>
+                <button class="nav-leaf nav-leaf-action" data-goto-platform="gmail" data-goto-view="setup"><i class="bi bi-gear-wide-connected"></i> Setup</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -429,8 +458,8 @@
       <section class="panel view-hidden" id="contactedSetupView">
         <div class="board-header">
           <div>
-            <h2>Hostinger Mail Setup</h2>
-            <div class="scope-line">Track opens and clicks on emails you send from Hostinger Webmail - no manual config needed</div>
+            <h2 id="contactedSetupTitle">Hostinger Mail Setup</h2>
+            <div class="scope-line" id="contactedSetupScopeLine">Track opens and clicks on emails you send from Hostinger Webmail - no manual config needed</div>
           </div>
         </div>
         <div class="settings-body" id="contactedSetupBody">
@@ -551,6 +580,36 @@
           <label class="site-visuals-toggle" style="margin:0;"><input type="checkbox" id="contactedUnreadOnlyToggle" /> Unread only</label>
         </div>
         <div id="contactedAlertsList" class="contacted-alerts-list"></div>
+      </section>
+
+      <!-- ---------- Contacted: Auto Send campaigns (list) ---------- -->
+      <section class="panel view-hidden" id="contactedCampaignsView">
+        <div class="board-header">
+          <div class="board-header-row-top">
+            <div class="board-header-title-group">
+              <h2>Contacted</h2>
+              <div class="scope-line">Auto Send - up to 100 emails/day, spaced 5-10 minutes apart</div>
+            </div>
+            <div class="board-header-actions">
+              <button type="button" id="contactedNewCampaignBtn" class="site-generate-btn"><i class="bi bi-plus-lg"></i> New Campaign</button>
+            </div>
+          </div>
+        </div>
+        <div id="contactedCampaignsList" class="campaigns-list"></div>
+      </section>
+
+      <!-- ---------- Contacted: Campaign detail ---------- -->
+      <section class="panel view-hidden" id="contactedCampaignDetailView">
+        <div class="board-header">
+          <div class="board-header-row-top">
+            <div class="board-header-title-group">
+              <h2 id="campaignDetailTitle">Campaign</h2>
+              <div class="scope-line" id="campaignDetailScope"></div>
+            </div>
+            <div class="board-header-actions" id="campaignDetailActions"></div>
+          </div>
+        </div>
+        <div id="campaignDetailBody" class="campaign-detail-body"></div>
       </section>
 
       <!-- ---------- Settings: Google Places API page ---------- -->
@@ -831,7 +890,7 @@
 
 
 
-  <script src="app.js?v=143"></script>
+  <script src="app.js?v=145"></script>
   <script src="pwa-install.js"></script>
 </body>
 </html>

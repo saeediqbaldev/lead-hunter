@@ -1691,3 +1691,36 @@ a.site-generate-btn { color: #1a1310; }
 .smtp-quickfill-btn:hover { color: var(--accent); border-color: var(--accent); }
 .smtp-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .smtp-field-narrow { max-width: 140px; }
+
+.platform-node { margin-bottom: 2px; }
+.platform-node-header {
+  display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none;
+  color: var(--text-muted); padding: 8px 10px; font-size: 12.5px; font-weight: 600; cursor: pointer; border-radius: 6px; text-align: left;
+}
+.platform-node-header:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+.platform-node-header span:first-of-type { flex: 1; }
+.platform-caret { transition: transform 0.15s ease; }
+.platform-node.open .platform-caret { transform: rotate(180deg); }
+.platform-node-body { display: none; padding-left: 14px; }
+.platform-node.open .platform-node-body { display: block; }
+
+.campaigns-list { padding: 0 22px 22px; display: flex; flex-direction: column; gap: 10px; }
+.campaign-card { background: var(--panel-raised); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; cursor: pointer; }
+.campaign-card:hover { border-color: var(--accent); }
+.campaign-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.campaign-name { font-weight: 600; font-size: 13.5px; }
+.campaign-status-pill { padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; text-transform: capitalize; }
+.campaign-status-draft { background: rgba(154,145,134,0.15); color: var(--text-muted); }
+.campaign-status-running { background: rgba(46,166,110,0.15); color: var(--good); }
+.campaign-status-paused { background: rgba(232,162,61,0.15); color: var(--warn); }
+.campaign-status-completed { background: rgba(255,106,61,0.15); color: var(--accent); }
+.campaign-status-cancelled, .campaign-status-failed { background: rgba(232,100,111,0.15); color: var(--danger); }
+.campaign-progress-track { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin-bottom: 6px; }
+.campaign-progress-fill { height: 100%; background: var(--accent); }
+.campaign-progress-label { font-size: 11.5px; color: var(--text-muted); }
+.campaign-card-meta { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+.campaign-detail-body { padding: 0 22px 22px; }
+.campaign-lead-sent { background: rgba(46,166,110,0.15); color: var(--good); }
+.campaign-lead-failed { background: rgba(232,100,111,0.15); color: var(--danger); }
+.campaign-lead-skipped { background: rgba(154,145,134,0.15); color: var(--text-muted); }
+.campaign-lead-pending, .campaign-lead-inspecting, .campaign-lead-generating, .campaign-lead-sending { background: rgba(232,162,61,0.15); color: var(--warn); }

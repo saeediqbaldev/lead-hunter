@@ -81,6 +81,9 @@ router.post("/api/tracker/emails", requireApiKey, (req, res) => {
 // GET /api/tracker/stats - used by the extension popup
 router.get("/api/tracker/stats", requireSessionOrApiKey, (req, res) => {
   try {
+    const { provider } = req.query;
+    const providerClause = provider ? "AND provider = ?" : "";
+    const providerArgs = provider ? [provider] : [];
     const row = db
       .prepare(
         `SELECT
@@ -89,9 +92,9 @@ router.get("/api/tracker/stats", requireSessionOrApiKey, (req, res) => {
           SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) AS total_unopened,
           SUM(CASE WHEN status = 'clicked' THEN 1 ELSE 0 END) AS total_clicked,
           COALESCE(SUM(open_count), 0) AS total_open_events
-        FROM tracked_emails WHERE user_id = ?`
+        FROM tracked_emails WHERE user_id = ? ${providerClause}`
       )
-      .get(req.trackerUserId);
+      .get(req.trackerUserId, ...providerArgs);
     const openRate = row.total_sent > 0 ? row.total_opened / row.total_sent : 0;
     res.json({ ...row, open_rate: openRate });
   } catch (err) {

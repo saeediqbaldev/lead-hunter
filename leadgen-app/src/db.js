@@ -599,4 +599,54 @@ CREATE INDEX IF NOT EXISTS idx_tracked_notif_read ON tracked_notifications(is_re
   }
 }
 
+// ---------- Automated email campaigns ----------
+// One campaign targets a niche/city scope and a list of leads, working
+// through them one at a time: inspect (if requested and not already
+// done) -> generate content -> send via the user's own Hostinger SMTP,
+// with a randomized 5-10 minute gap between sends to avoid tripping spam
+// detection. Each send reuses the exact same tracking mechanism as the
+// browser extension (pixel + rewritten links), just built server-side
+// instead of client-side, and appended to the Hostinger Sent folder via
+// IMAP so it shows up in the mailbox exactly like a normally-sent email.
+db.exec(`
+CREATE TABLE IF NOT EXISTS email_campaigns (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  niche_id INTEGER,
+  catch_log_id INTEGER,
+  status TEXT NOT NULL DEFAULT 'draft',
+  require_inspection INTEGER NOT NULL DEFAULT 1,
+  tone TEXT,
+  length TEXT,
+  language TEXT DEFAULT 'English',
+  cta INTEGER DEFAULT 0,
+  meeting INTEGER DEFAULT 0,
+  meeting_link TEXT,
+  max_per_day INTEGER NOT NULL DEFAULT 100,
+  min_gap_minutes INTEGER NOT NULL DEFAULT 5,
+  max_gap_minutes INTEGER NOT NULL DEFAULT 10,
+  pause_reason TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  started_at TEXT,
+  paused_at TEXT,
+  completed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_email_campaigns_user ON email_campaigns(user_id);
+CREATE INDEX IF NOT EXISTS idx_email_campaigns_status ON email_campaigns(status);
+
+CREATE TABLE IF NOT EXISTS email_campaign_leads (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  campaign_id INTEGER NOT NULL REFERENCES email_campaigns(id) ON DELETE CASCADE,
+  lead_id INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  tracked_email_id TEXT,
+  error TEXT,
+  sent_at TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_campaign_leads_campaign ON email_campaign_leads(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_campaign_leads_status ON email_campaign_leads(status);
+`);
+
 module.exports = db;

@@ -17,6 +17,8 @@ const themeRoute = require("./src/routes/theme");
 const reportsRoute = require("./src/routes/reports");
 const backupRoute = require("./src/routes/backup");
 const trackerRoute = require("./src/routes/tracker");
+const campaignsRoute = require("./src/routes/campaigns");
+const campaignScheduler = require("./src/campaignScheduler");
 const trackerPublicRoute = require("./src/routes/trackerPublic");
 
 const app = express();
@@ -95,6 +97,7 @@ app.use("/api/reports", requireAuth, reportsRoute);
 app.use("/api/backup", requireAuth, backupRoute);
 app.use("/", trackerPublicRoute);
 app.use("/api/tracker", requireAuth, trackerRoute);
+app.use("/api/campaigns", requireAuth, campaignsRoute);
 
 app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
 
@@ -113,4 +116,6 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Lead-gen app running on port ${PORT}`);
+  campaignScheduler.startScheduler();
+  console.log("[campaign-scheduler] Started - checking every 60s for campaigns due to send.");
 });

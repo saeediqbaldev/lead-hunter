@@ -6,6 +6,77 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V14.5
+**Automated email campaigns - "Auto Send" under Hostinger.** The largest
+single feature in this app's history: pick a niche and city, and it works
+through every lead with an email on file automatically - inspecting
+uninspected ones first if you ask it to, generating personalized content
+with your chosen tone/CTA/meeting link/language, sending through your own
+Hostinger SMTP, and tracking every open and click exactly like a manually
+sent email would be.
+
+- **One send, three consistent copies**: the exact same message that gets
+  emailed is also what appears in your Hostinger Sent folder (via IMAP
+  append) and what's tracked in Contacted - built from a single raw
+  message rather than reconstructed three times, so there's no risk of
+  them drifting apart.
+- **Randomized 5-10 minute gaps** (configurable) between sends, capped at
+  100/day, specifically to avoid looking automated to spam filters.
+- **Inspect-first pipeline**: when requested, a lead gets inspected before
+  its email is written, so the message can reference real findings rather
+  than generic filler - verified this runs in the correct order.
+- **Pause-and-notify on failure, exactly as specified**: a real send
+  failure pauses the whole campaign (not just that lead) rather than
+  silently skipping ahead - verified with a simulated failure. Resuming
+  correctly retries the lead that failed rather than abandoning it -
+  verified the retry succeeds once whatever caused the failure is fixed.
+- **Leads without an email on file are automatically excluded** at
+  campaign creation, with a live count shown before you commit.
+
+Every layer was verified against real database state, not just logs:
+campaign creation and SMTP validation, the full inspect-generate-send
+pipeline, pause-on-failure, resume-and-retry, and the complete UI flow
+end-to-end through a real browser (form → creation → start → running →
+back to list with correct progress shown).
+
+**Two real bugs were caught and fixed during this build, before
+shipping**: a placeholder expression that would have always written a
+null sender field, and (from the previous version's tree restructuring)
+a JavaScript initialization-order bug that only a live browser test
+caught, not a syntax check.
+
+## What's in this V14.4
+**Gmail support added, Contacted restructured into a platform tree.**
+
+- **Sidebar rebuilt as Platform > Subpages**, matching Hunt's niche/city
+  tree pattern: Hostinger and Gmail are now expandable nodes, each with
+  its own Tracking, History, Alerts, Reports, and Setup underneath -
+  verified with a real browser test confirming correct expand/collapse
+  behavior and that each platform's pages only ever show that platform's
+  data (tested with real mixed Hostinger/Gmail records).
+- **Gmail fully wired up**: your `content-script-gmail.js` ported in
+  alongside Hostinger's, one combined extension download covers both (no
+  second install needed) - verified by actually downloading and
+  inspecting the generated zip.
+- **Every backend route is now provider-aware** (`?provider=` filtering
+  added to emails, notifications, analytics, history, and stats) -
+  verified end-to-end with real mixed-platform data.
+- **Auto-refresh timer**, fully working end to end: dropdown with all 9
+  requested intervals (1 min through 12 hours), persists across reload,
+  and the actual timer mechanism verified firing at the correct cadence -
+  and only while a Contacted page is actually open, not polling in the
+  background when you're elsewhere in the app.
+- **Setup page is now platform-aware** - title and instructions correctly
+  switch between Hostinger and Gmail depending on which one you're
+  viewing, while the API key and extension download stay shared (same
+  key, same one-time install, covers both).
+
+**A real bug caught during this build, not after**: partway through the
+sidebar restructuring, a new state initialization ran before the app's
+central state object existed yet (a JS temporal-dead-zone issue) - caught
+via a real browser test (not just a syntax check, which wouldn't have
+caught it) before anything was packaged, fixed, and reverified.
+
 ## What's in this V14.3
 - **Subject line separated from email body** - its own field, independently
   copyable, with its own regenerate button that only touches the subject

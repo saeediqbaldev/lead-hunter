@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const archiver = require("archiver");
 const db = require("../db");
+const { setSetting } = require("../settingsStore");
 const { sendTestEmail } = require("../trackerNotify");
 
 const router = express.Router();
@@ -11,13 +12,17 @@ const router = express.Router();
 // ==================== Emails ====================
 // GET /api/tracker/emails?status=&recipient=&search=&from=&to=&limit=&offset=
 router.get("/emails", (req, res) => {
-  const { status, recipient, search, from, to } = req.query;
+  const { status, recipient, search, from, to, provider } = req.query;
   const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
   const offset = parseInt(req.query.offset, 10) || 0;
   const userId = req.session.userId;
 
   const clauses = ["user_id = ?"];
   const values = [userId];
+  if (provider) {
+    clauses.push("provider = ?");
+    values.push(provider);
+  }
 
   if (status === "opened") {
     clauses.push(`status IN ('opened', 'clicked')`);
@@ -132,7 +137,7 @@ router.post("/emails/bulk-delete", (req, res) => {
 // ==================== Notifications ====================
 // GET /api/tracker/notifications?unread=true&type=open
 router.get("/notifications", (req, res) => {
-  const { unread, type } = req.query;
+  const { unread, type, provider } = req.query;
   const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
   const offset = parseInt(req.query.offset, 10) || 0;
   const userId = req.session.userId;
@@ -143,6 +148,10 @@ router.get("/notifications", (req, res) => {
   if (type === "open" || type === "click") {
     clauses.push("n.type = ?");
     values.push(type);
+  }
+  if (provider) {
+    clauses.push("e.provider = ?");
+    values.push(provider);
   }
 
   try {
@@ -163,10 +172,21 @@ router.get("/notifications", (req, res) => {
   }
 });
 
-// GET /api/tracker/notifications/unread-count
+// GET /api/tracker/notifications/unread-count?provider= - provider is
+// optional; omitted for the top-level Contacted sidebar badge (combined
+// total across every platform), included for a specific platform's own
+// Alerts sub-badge.
 router.get("/notifications/unread-count", (req, res) => {
   try {
-    const row = db.prepare("SELECT COUNT(*) AS count FROM tracked_notifications WHERE is_read = 0 AND user_id = ?").get(req.session.userId);
+    const { provider } = req.query;
+    const row = provider
+      ? db
+          .prepare(
+            `SELECT COUNT(*) AS count FROM tracked_notifications n JOIN tracked_emails e ON e.id = n.email_id
+             WHERE n.is_read = 0 AND n.user_id = ? AND e.provider = ?`
+          )
+          .get(req.session.userId, provider)
+      : db.prepare("SELECT COUNT(*) AS count FROM tracked_notifications WHERE is_read = 0 AND user_id = ?").get(req.session.userId);
     res.json({ count: row.count });
   } catch (err) {
     console.error("Failed to count unread notifications:", err);
@@ -189,10 +209,19 @@ router.patch("/notifications/:id", (req, res) => {
   }
 });
 
-// POST /api/tracker/notifications/mark-all-read
+// POST /api/tracker/notifications/mark-all-read { provider? } - marks
+// everything read if no provider given, or just that platform's if given
 router.post("/notifications/mark-all-read", (req, res) => {
   try {
-    db.prepare("UPDATE tracked_notifications SET is_read = 1 WHERE is_read = 0 AND user_id = ?").run(req.session.userId);
+    const { provider } = req.body || {};
+    if (provider) {
+      db.prepare(
+        `UPDATE tracked_notifications SET is_read = 1
+         WHERE is_read = 0 AND user_id = ? AND email_id IN (SELECT id FROM tracked_emails WHERE provider = ?)`
+      ).run(req.session.userId, provider);
+    } else {
+      db.prepare("UPDATE tracked_notifications SET is_read = 1 WHERE is_read = 0 AND user_id = ?").run(req.session.userId);
+    }
     res.json({ ok: true });
   } catch (err) {
     console.error("Failed to mark all notifications read:", err);
@@ -256,8 +285,8 @@ router.put("/settings", (req, res) => {
   const { refresh_interval_seconds, notify_email_enabled, notify_email_to, smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from } = req.body || {};
   const userId = req.session.userId;
 
-  if (refresh_interval_seconds !== undefined && (!Number.isInteger(refresh_interval_seconds) || refresh_interval_seconds < 0 || refresh_interval_seconds > 3600)) {
-    return res.status(400).json({ error: "refresh_interval_seconds must be 0-3600" });
+  if (refresh_interval_seconds !== undefined && (!Number.isInteger(refresh_interval_seconds) || refresh_interval_seconds < 0 || refresh_interval_seconds > 43200)) {
+    return res.status(400).json({ error: "refresh_interval_seconds must be 0-43200" });
   }
   if (smtp_port !== undefined && smtp_port !== null && (!Number.isInteger(smtp_port) || smtp_port < 1 || smtp_port > 65535)) {
     return res.status(400).json({ error: "smtp_port must be a valid port number" });
@@ -324,25 +353,30 @@ const RANGE_TO_SQL = {
   "1y": { modifier: "-1 year", bucketFmt: "%Y-%m" },
 };
 
-// GET /api/tracker/analytics?range=1d|7d|30d|90d|1y
+// GET /api/tracker/analytics?range=1d|7d|30d|90d|1y&provider=
 router.get("/analytics", (req, res) => {
   const range = RANGE_TO_SQL[req.query.range] ? req.query.range : "7d";
   const { modifier, bucketFmt } = RANGE_TO_SQL[range];
   const userId = req.session.userId;
+  const { provider } = req.query;
+  const providerClause = provider ? "AND e.provider = ?" : "";
+  const providerArgs = provider ? [provider] : [];
 
   try {
     const since = db.prepare(`SELECT datetime('now', ?) AS since`).get(modifier).since;
 
-    const sent = db.prepare("SELECT COUNT(*) AS c FROM tracked_emails WHERE created_at >= ? AND user_id = ?").get(since, userId).c;
+    const sent = db
+      .prepare(`SELECT COUNT(*) AS c FROM tracked_emails e WHERE created_at >= ? AND user_id = ? ${providerClause}`)
+      .get(since, userId, ...providerArgs).c;
     const opens = db
-      .prepare(`SELECT COUNT(*) AS c FROM tracked_opens o JOIN tracked_emails e ON e.id = o.email_id WHERE o.opened_at >= ? AND e.user_id = ?`)
-      .get(since, userId).c;
+      .prepare(`SELECT COUNT(*) AS c FROM tracked_opens o JOIN tracked_emails e ON e.id = o.email_id WHERE o.opened_at >= ? AND e.user_id = ? ${providerClause}`)
+      .get(since, userId, ...providerArgs).c;
     const clicks = db
-      .prepare(`SELECT COUNT(*) AS c FROM tracked_clicks c JOIN tracked_emails e ON e.id = c.email_id WHERE c.clicked_at >= ? AND e.user_id = ?`)
-      .get(since, userId).c;
+      .prepare(`SELECT COUNT(*) AS c FROM tracked_clicks c JOIN tracked_emails e ON e.id = c.email_id WHERE c.clicked_at >= ? AND e.user_id = ? ${providerClause}`)
+      .get(since, userId, ...providerArgs).c;
     const uniqueOpened = db
-      .prepare(`SELECT COUNT(DISTINCT o.email_id) AS c FROM tracked_opens o JOIN tracked_emails e ON e.id = o.email_id WHERE o.opened_at >= ? AND e.user_id = ?`)
-      .get(since, userId).c;
+      .prepare(`SELECT COUNT(DISTINCT o.email_id) AS c FROM tracked_opens o JOIN tracked_emails e ON e.id = o.email_id WHERE o.opened_at >= ? AND e.user_id = ? ${providerClause}`)
+      .get(since, userId, ...providerArgs).c;
     const openRate = sent > 0 ? uniqueOpened / sent : 0;
 
     const timeseries = db
@@ -351,23 +385,23 @@ router.get("/analytics", (req, res) => {
                 SUM(CASE WHEN kind = 'open' THEN 1 ELSE 0 END) AS opens,
                 SUM(CASE WHEN kind = 'click' THEN 1 ELSE 0 END) AS clicks
          FROM (
-           SELECT o.opened_at AS ts, 'open' AS kind FROM tracked_opens o JOIN tracked_emails e ON e.id = o.email_id WHERE o.opened_at >= ? AND e.user_id = ?
+           SELECT o.opened_at AS ts, 'open' AS kind FROM tracked_opens o JOIN tracked_emails e ON e.id = o.email_id WHERE o.opened_at >= ? AND e.user_id = ? ${providerClause}
            UNION ALL
-           SELECT c.clicked_at AS ts, 'click' AS kind FROM tracked_clicks c JOIN tracked_emails e ON e.id = c.email_id WHERE c.clicked_at >= ? AND e.user_id = ?
+           SELECT c.clicked_at AS ts, 'click' AS kind FROM tracked_clicks c JOIN tracked_emails e ON e.id = c.email_id WHERE c.clicked_at >= ? AND e.user_id = ? ${providerClause}
          ) ev GROUP BY 1 ORDER BY 1`
       )
-      .all(since, userId, since, userId);
+      .all(since, userId, ...providerArgs, since, userId, ...providerArgs);
 
     const heatmap = db
       .prepare(
         `SELECT CAST(strftime('%w', ts) AS INTEGER) AS day, CAST(strftime('%H', ts) AS INTEGER) AS hour, COUNT(*) AS count
          FROM (
-           SELECT o.opened_at AS ts FROM tracked_opens o JOIN tracked_emails e ON e.id = o.email_id WHERE o.opened_at >= ? AND e.user_id = ?
+           SELECT o.opened_at AS ts FROM tracked_opens o JOIN tracked_emails e ON e.id = o.email_id WHERE o.opened_at >= ? AND e.user_id = ? ${providerClause}
            UNION ALL
-           SELECT c.clicked_at AS ts FROM tracked_clicks c JOIN tracked_emails e ON e.id = c.email_id WHERE c.clicked_at >= ? AND e.user_id = ?
+           SELECT c.clicked_at AS ts FROM tracked_clicks c JOIN tracked_emails e ON e.id = c.email_id WHERE c.clicked_at >= ? AND e.user_id = ? ${providerClause}
          ) ev GROUP BY 1, 2`
       )
-      .all(since, userId, since, userId);
+      .all(since, userId, ...providerArgs, since, userId, ...providerArgs);
 
     res.json({
       range,
@@ -382,15 +416,19 @@ router.get("/analytics", (req, res) => {
 });
 
 // ==================== History (flat open/click event log) ====================
-// GET /api/tracker/history?type=open|click&search=&from=&to=&limit=&offset=
+// GET /api/tracker/history?type=open|click&search=&from=&to=&limit=&offset=&provider=
 router.get("/history", (req, res) => {
-  const { type, search, from, to } = req.query;
+  const { type, search, from, to, provider } = req.query;
   const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
   const offset = parseInt(req.query.offset, 10) || 0;
   const userId = req.session.userId;
 
   const clauses = ["e.user_id = ?"];
   const values = [userId];
+  if (provider) {
+    clauses.push("e.provider = ?");
+    values.push(provider);
+  }
   if (type === "open" || type === "click") {
     clauses.push("ev.type = ?");
     values.push(type);
@@ -445,6 +483,7 @@ router.get("/setup", (req, res) => {
   }
 
   const backendUrl = `${req.protocol}://${req.get("host")}`;
+  setSetting("app_base_url", backendUrl);
   res.json({ apiKey: row.tracker_api_key, backendUrl });
 });
 
@@ -472,6 +511,7 @@ router.get("/extension-download", (req, res) => {
     row = { tracker_api_key: key };
   }
   const backendUrl = `${req.protocol}://${req.get("host")}`;
+  setSetting("app_base_url", backendUrl);
 
   res.setHeader("Content-Type", "application/zip");
   res.setHeader("Content-Disposition", 'attachment; filename="xeven-leads-contacted-tracker.zip"');
