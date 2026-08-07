@@ -6,6 +6,41 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V14.2
+Fixes from real testing of the Contacted feature shipped in V14.1:
+
+- **Content cut off on Contacted pages, fixed** - all 5 new panels were
+  missing `overflow-y: auto`, which every other panel type in the app
+  sets individually. Verified: scrollHeight now correctly exceeds
+  clientHeight with scrolling enabled, instead of clipping.
+- **Refresh button added** to the Contacted section header, matching
+  Hunt/Reach Out/Pinned exactly (including the header-row + caret
+  structure those use, which Contacted was missing entirely) - refreshes
+  whichever Contacted sub-page is currently open.
+- **Fixed a real bug**: visiting the Hostinger Mail Setup page more than
+  once stacked up an extra click handler each time, so clicking "Send
+  test email" (or any button on that page) fired once per prior visit -
+  this is why it arrived 3-4 times. Verified: after visiting the page 3
+  times, one click now fires exactly 1 request.
+- **Reordered sub-pages** to Tracking, History, Alerts, Reports, Hostinger
+  Mail Setup - moved Setup to the end since it's a one-time step, and
+  rewrote its copy to make its purpose unambiguous (get your API key,
+  install the extension, optionally configure email alerts - then use the
+  other four pages day to day).
+- **Investigated the "Opened" status not updating.** Confirmed real, non-
+  self-tested opens work correctly (verified end-to-end with a genuinely
+  different IP and past the grace window). The most likely explanation
+  for what was seen: opens from the same network you sent from, or
+  checked within the first few seconds, are deliberately not counted -
+  this is what stops your own Sent-folder preview from falsely flagging a
+  message as opened, and only affects opens, not clicks (which is
+  consistent with clicks having worked correctly). Some mail clients also
+  block remote images by default, which would prevent the open pixel from
+  loading at all. Added clear, detailed logging for every pixel hit
+  (recorded or suppressed, and exactly why) so this is easy to confirm
+  going forward - visible in the server's console/Coolify logs. Added a
+  note about this directly on the Setup page too.
+
 ## What's in this V14.1
 **New feature: Contacted - email open/click tracking for Hostinger Webmail.**
 A full port of a standalone Postgres-backed tracker (backend + Chrome

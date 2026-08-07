@@ -1163,6 +1163,7 @@ button#huntBtn:disabled, .primary-btn:disabled { background: var(--border); colo
 
 /* ---------- Reports page ---------- */
 .reports-panel { overflow-y: auto; }
+#contactedSetupView, #contactedTrackingView, #contactedHistoryView, #contactedReportsView, #contactedAlertsView { overflow-y: auto; }
 
 /* ---------- Settings pages (API Keys / Colors / Team) - these class names
    existed in the HTML with zero corresponding CSS, which is exactly why

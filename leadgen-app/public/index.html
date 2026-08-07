@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="Xeven Leads" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=141" />
+<link rel="stylesheet" href="style.css?v=142" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -118,21 +118,24 @@
         </div>
 
         <div class="nav-section" id="navSectionContacted">
-          <button class="nav-section-header" data-section="contacted">
-            <i class="bi bi-envelope-check"></i>
-            <span class="nav-section-label">Contacted</span>
-            <span class="nav-caret">▾</span>
-            <span class="unread-badge" id="contactedUnreadBadge" style="display:none;"></span>
-          </button>
+          <div class="nav-section-header-row">
+            <button class="nav-section-header" data-section="contacted">
+              <i class="bi bi-envelope-check"></i>
+              <span class="nav-section-label">Contacted</span>
+              <span class="nav-caret">▾</span>
+              <span class="unread-badge" id="contactedUnreadBadge" style="display:none;"></span>
+            </button>
+            <button class="nav-section-refresh" data-refresh-section="contacted" title="Refresh Contacted data"><i class="bi bi-arrow-clockwise"></i></button>
+          </div>
           <div class="nav-section-body">
-            <button class="nav-leaf nav-leaf-action" data-goto="contacted-setup" id="navContactedSetup"><i class="bi bi-gear-wide-connected"></i> Hostinger Mail Setup</button>
             <button class="nav-leaf nav-leaf-action" data-goto="contacted-tracking" id="navContactedTracking"><i class="bi bi-list-ul"></i> Tracking</button>
             <button class="nav-leaf nav-leaf-action" data-goto="contacted-history" id="navContactedHistory"><i class="bi bi-clock-history"></i> History</button>
-            <button class="nav-leaf nav-leaf-action" data-goto="contacted-reports" id="navContactedReports"><i class="bi bi-graph-up"></i> Reports</button>
             <button class="nav-leaf nav-leaf-action" data-goto="contacted-alerts" id="navContactedAlerts">
               <i class="bi bi-bell"></i> Alerts
               <span class="unread-badge" id="contactedAlertsUnreadBadge" style="display:none;"></span>
             </button>
+            <button class="nav-leaf nav-leaf-action" data-goto="contacted-reports" id="navContactedReports"><i class="bi bi-graph-up"></i> Reports</button>
+            <button class="nav-leaf nav-leaf-action" data-goto="contacted-setup" id="navContactedSetup"><i class="bi bi-gear-wide-connected"></i> Hostinger Mail Setup</button>
           </div>
         </div>
 
@@ -828,7 +831,7 @@
 
 
 
-  <script src="app.js?v=141"></script>
+  <script src="app.js?v=142"></script>
   <script src="pwa-install.js"></script>
 </body>
 </html>

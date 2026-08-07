@@ -131,6 +131,12 @@ router.get("/t/:id/pixel.png", (req, res) => {
         const isBot = isLikelyBotOrScanner(userAgent);
         const isFirstOpen = !email.first_opened_at;
 
+        console.log(
+          `[tracker-pixel] hit for ${id}: requestIp=${requestIp} senderIp=${email.sender_ip} isSelf=${isSelf} withinGrace=${withinGrace} isBot=${isBot} userAgent="${userAgent}" -> ${
+            !isSelf && !withinGrace && !isBot ? "RECORDING open" : "SUPPRESSED"
+          }`
+        );
+
         if (!isSelf && !withinGrace && !isBot) {
           db.prepare("INSERT INTO tracked_opens (email_id, ip, user_agent) VALUES (?, ?, ?)").run(id, requestIp, userAgent || null);
 

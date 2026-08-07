@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.07-14.1";
+const APP_VERSION = "2026.08.07-14.2";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -350,6 +350,19 @@ document.getElementById("navContactedAlerts").addEventListener("click", () => {
   loadContactedAlerts();
 });
 
+async function refreshCurrentContactedView() {
+  const view = state.contentView;
+  if (view === "contacted-tracking") await loadContactedTracking();
+  else if (view === "contacted-history") await loadContactedHistory();
+  else if (view === "contacted-alerts") await loadContactedAlerts();
+  else if (view === "contacted-reports") {
+    const activeRange = document.querySelector("#contactedReportsRangeGroup .range-pill.active")?.dataset.range || "7d";
+    await loadContactedReports(activeRange);
+  } else if (view === "contacted-setup") await loadContactedSetup();
+  else await loadContactedTracking(); // default landing view when refreshed from elsewhere
+  await refreshContactedUnreadBadge();
+}
+
 async function refreshContactedUnreadBadge() {
   try {
     const res = await api("/api/tracker/notifications/unread-count");
@@ -377,8 +390,11 @@ async function loadContactedSetup() {
   const data = await res.json();
 
   body.innerHTML = `
-    <h3 class="settings-subheading">Your tracking link</h3>
-    <p class="hint">This app's own address and your personal API key - already baked into the extension below, nothing to configure.</p>
+    <h3 class="settings-subheading">What this page is for</h3>
+    <p class="hint">A one-time setup, done once: get your personal API key, install the browser extension it's baked into, and (optionally) turn on email alerts. After this, you won't need to come back here - use <b>Tracking</b>, <b>History</b>, <b>Alerts</b>, and <b>Reports</b> in the sidebar for day-to-day use.</p>
+
+    <h3 class="settings-subheading">Your API key</h3>
+    <p class="hint">Identifies your account to the extension - already embedded in the download below, shown here only for reference.</p>
     <div class="contacted-setup-key-row">
       <input type="text" readonly value="${data.apiKey}" data-contacted-api-key />
       <button type="button" data-action="copy-tracker-key"><i class="bi bi-clipboard"></i> Copy key</button>
@@ -402,6 +418,10 @@ async function loadContactedSetup() {
         <div class="step-num"></div>
         <div class="step-body"><h4>Open Hostinger Webmail and compose</h4><p>A <b>Track</b> toggle appears near the send button - turn it on before sending and this dashboard will show opens and clicks automatically.</p></div>
       </div>
+    </div>
+
+    <div class="settings-result bad" style="display:block; background:rgba(232,162,61,0.1); border-color:var(--warn); color:var(--warn);">
+      <b>Testing it yourself?</b> Opens from the exact same network you sent from, or opened within the first few seconds, are deliberately not counted - this stops your own Sent-folder preview from falsely marking a message "Opened." Test from a different network/device, or wait a bit before checking. Clicks are never filtered this way, so link clicks always register immediately. Some mail clients also block remote images by default, which prevents opens from registering at all until images are allowed.
     </div>
 
     <div class="settings-divider"></div>
@@ -433,10 +453,18 @@ async function loadContactedSetup() {
   body.querySelector("[data-tracker-smtp-from]").value = s.smtp_from || "";
   body.querySelector("[data-tracker-smtp-pass-hint]").textContent = s.smtp_pass_set ? "(a password is already saved)" : "(not set)";
 
-  body.addEventListener("click", async (e) => {
-    const action = e.target.closest("[data-action]")?.dataset.action;
-    if (action === "copy-tracker-key") {
-      navigator.clipboard?.writeText(body.querySelector("[data-contacted-api-key]").value);
+  // Guard against attaching this listener again on a second visit to this
+  // page - body is a static element defined once in index.html and never
+  // recreated, only its innerHTML gets replaced above, so a naive
+  // addEventListener here would stack up one extra handler per visit and
+  // fire every button click that many times (this was the "test email
+  // arrives 3-4 times" bug).
+  if (!body.dataset.listenersAttached) {
+    body.dataset.listenersAttached = "1";
+    body.addEventListener("click", async (e) => {
+      const action = e.target.closest("[data-action]")?.dataset.action;
+      if (action === "copy-tracker-key") {
+        navigator.clipboard?.writeText(body.querySelector("[data-contacted-api-key]").value);
       showToast("API key copied", "success");
       return;
     }
@@ -490,7 +518,8 @@ async function loadContactedSetup() {
       resultEl.textContent = r.ok ? "Test email sent - check your inbox." : d.error;
       return;
     }
-  });
+    });
+  }
 }
 
 // ---------- Tracking ledger ----------
@@ -2939,6 +2968,8 @@ document.querySelectorAll("[data-refresh-section]").forEach((btn) => {
         if (state.mode === "pinned") await loadLeads();
       } else if (section === "reports") {
         await loadReports();
+      } else if (section === "contacted") {
+        await refreshCurrentContactedView();
       }
       showToast("Refreshed", "success");
     } catch (err) {
