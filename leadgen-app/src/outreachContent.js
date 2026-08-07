@@ -10,7 +10,7 @@ const { generateWithFallback } = require("./aiProviders");
 // not hardcoded - this default only applies if a user somehow has no
 // signature saved at all (shouldn't normally happen, since the DB column
 // has a default value applied via migration).
-const DEFAULT_SIGNATURE = "Kind Regards,\n   Saeed Iqbal\n   Ceo | Xeven Pixels\n   https://xevenpixels.com\n   contact@xevenpixels.com";
+const DEFAULT_SIGNATURE = `Kind Regards,<br>&nbsp;&nbsp;&nbsp;<b>Saeed Iqbal</b><br>&nbsp;&nbsp;&nbsp;Ceo | Xeven Pixels<br>&nbsp;&nbsp;&nbsp;<a href="https://xevenpixels.com">https://xevenpixels.com</a><br>&nbsp;&nbsp;&nbsp;contact@xevenpixels.com`;
 
 const TONES = [
   "Personalized Observation",
@@ -165,7 +165,7 @@ async function generateOutreachContent(userId, { lead, platform, tone, length, a
   const result = await generateWithFallback(userId, prompt, { onlyProvider: aiProvider || undefined });
   if (!result.ok) return result;
 
-  const sig = signature != null && signature !== "" ? signature : DEFAULT_SIGNATURE;
+  const signatureHtml = signature != null && signature !== "" ? signature : DEFAULT_SIGNATURE;
   const bodyText = result.text.trim();
 
   if (platform === "email") {
@@ -173,12 +173,10 @@ async function generateOutreachContent(userId, { lead, platform, tone, length, a
       onlyProvider: aiProvider || undefined,
     });
     const subject = subjectResult.ok ? subjectResult.text.trim().replace(/^["']|["']$/g, "") : `A quick idea for ${lead.name}`;
-    const content = `${bodyText}\n\n${sig}`;
-    return { ok: true, content, subject, provider: result.provider };
+    return { ok: true, content: bodyText, signatureHtml, subject, provider: result.provider };
   }
 
-  const content = `${bodyText}\n\n${sig}`;
-  return { ok: true, content, provider: result.provider };
+  return { ok: true, content: bodyText, signatureHtml, provider: result.provider };
 }
 
 async function generateSubjectOnly(userId, { lead, tone, language, body, aiProvider }) {

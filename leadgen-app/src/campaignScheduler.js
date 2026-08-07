@@ -129,6 +129,7 @@ async function processCampaignLead(campaign, campaignLeadRow) {
   const baseUrl = getSetting("app_base_url") || "http://localhost:3000";
   const html = buildTrackedHtmlEmail({
     bodyText: genResult.content,
+    signatureHtml: genResult.signatureHtml,
     pixelUrl: `${baseUrl}/t/${trackedId}/pixel.png`,
     clickBaseUrl: `${baseUrl}/t/${trackedId}/click`,
   });

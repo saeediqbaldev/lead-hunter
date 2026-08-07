@@ -33,7 +33,15 @@ function escapeHtml(text) {
 // redirect (so a link the AI wove into the message, e.g. a meeting link,
 // gets click-tracked exactly like a link the extension would have
 // rewritten in a browser compose window).
-function buildTrackedHtmlEmail({ bodyText, pixelUrl, clickBaseUrl }) {
+function trackSignatureLinks(signatureHtml, clickBaseUrl) {
+  if (!signatureHtml) return "";
+  return signatureHtml.replace(/href\s*=\s*"([^"]+)"/gi, (match, href) => {
+    if (!/^https?:\/\//i.test(href)) return match; // leave mailto:/tel:/relative links untouched
+    return `href="${clickBaseUrl}?url=${encodeURIComponent(href)}"`;
+  });
+}
+
+function buildTrackedHtmlEmail({ bodyText, signatureHtml, pixelUrl, clickBaseUrl }) {
   const paragraphs = String(bodyText || "")
     .split(/\n{2,}/)
     .map((block) => {
@@ -47,10 +55,14 @@ function buildTrackedHtmlEmail({ bodyText, pixelUrl, clickBaseUrl }) {
     })
     .join("\n");
 
+  const trackedSignature = trackSignatureLinks(signatureHtml, clickBaseUrl);
+  const signatureBlock = trackedSignature ? `<div style="margin-top:18px; padding-top:14px; border-top:1px solid #e0e0e0;">${trackedSignature}</div>` : "";
+
   return `<!DOCTYPE html>
 <html>
 <body style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; color: #222; line-height: 1.5; max-width: 600px;">
 ${paragraphs}
+${signatureBlock}
 <img src="${pixelUrl}" width="1" height="1" alt="" style="display:none; width:1px; height:1px; border:0;" />
 </body>
 </html>`;

@@ -6,6 +6,38 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.0
+**Item 7 - a real rich-text signature editor.** Replaces the plain
+textarea with a genuine WYSIWYG editor: bold, italic, underline, links,
+images, bullet lists, and a raw-HTML source toggle for direct control.
+Signatures render with real formatting everywhere they appear - the
+content preview, and actual sent campaign emails.
+
+This required restructuring how the body and signature flow through the
+app - previously they were concatenated into one string early on, which
+would have either broken plain-text escaping or mangled the HTML
+signature. They're now kept separate end-to-end: generation, on-screen
+display (signature fetched live, so an edit is reflected immediately
+without regenerating anything), the Copy button (a plain-text rendering,
+since rich formatting can't survive a clipboard paste anyway), and
+campaign-sent emails (the signature goes in as real HTML, with any links
+inside it click-tracked exactly like links in the body).
+
+**A real bug caught during testing, not after**: the actual default
+signature applied to new accounts lived in a second, separate place in
+the database migration logic that I initially missed updating - it was
+still producing the old plain-text version with literal line breaks
+instead of real HTML. Caught by an end-to-end browser test on a fresh
+account (a syntax check alone would never have found this), fixed, and
+reverified.
+
+Verified with a full pipeline test using a real signature containing
+bold text, a hyperlink, and an image: confirmed the body is correctly
+escaped while the signature renders as genuine HTML (not literal escaped
+tags), confirmed the signature's link is correctly rewritten through the
+click-tracking redirect while keeping its display text, and confirmed
+the image comes through untouched.
+
 ## What's in this V14.9
 Items 3, 5, and 6 from the latest round - completed and verified.
 

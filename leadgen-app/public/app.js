@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.07-14.9";
+const APP_VERSION = "2026.08.07-15.0";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -315,6 +315,24 @@ async function loadApiKeys() {
 
 const navSettingsAccount = document.getElementById("navSettingsAccount");
 
+let cachedSignatureHtml = null;
+async function getCachedSignature() {
+  if (cachedSignatureHtml !== null) return cachedSignatureHtml;
+  try {
+    const res = await api("/api/settings/signature");
+    const data = await res.json();
+    cachedSignatureHtml = data.signature || "";
+  } catch {
+    cachedSignatureHtml = "";
+  }
+  return cachedSignatureHtml;
+}
+// Invalidated whenever the signature is saved, so a change is reflected
+// immediately in already-open lead panels without needing a page reload.
+function invalidateSignatureCache() {
+  cachedSignatureHtml = null;
+}
+
 function debounce(fn, ms) {
   let timer = null;
   return (...args) => {
@@ -330,6 +348,18 @@ function escapeHtml(text) {
   const div = document.createElement("div");
   div.textContent = text;
   return div.innerHTML;
+}
+
+// Strips HTML down to plain text for clipboard copies - rich formatting
+// and images can't survive a plain-text paste anyway, so this just
+// preserves the readable text and turns block-level breaks into newlines.
+function htmlToPlainText(html) {
+  if (!html) return "";
+  const div = document.createElement("div");
+  div.innerHTML = html;
+  div.querySelectorAll("br").forEach((br) => br.replaceWith("\n"));
+  div.querySelectorAll("p, div, li").forEach((el) => el.append("\n"));
+  return div.textContent.replace(/\n{3,}/g, "\n\n").trim();
 }
 
 // Converts **bold** markdown (which occasionally slips through despite the
@@ -1511,8 +1541,10 @@ async function loadCampaignDetail(campaignId) {
   });
 }
 
-const signatureInput = document.getElementById("signatureInput");
+const signatureEditor = document.getElementById("signatureEditor");
+const signatureSourceInput = document.getElementById("signatureSourceInput");
 const signatureResult = document.getElementById("signatureResult");
+let signatureSourceMode = false;
 
 function showSignatureResult(kind, text) {
   signatureResult.style.display = "block";
@@ -1520,11 +1552,62 @@ function showSignatureResult(kind, text) {
   signatureResult.textContent = text;
 }
 
+function getSignatureHtml() {
+  return signatureSourceMode ? signatureSourceInput.value : signatureEditor.innerHTML;
+}
+function setSignatureHtml(html) {
+  signatureEditor.innerHTML = html || "";
+  signatureSourceInput.value = html || "";
+}
+
+document.querySelectorAll("[data-sig-cmd]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    if (signatureSourceMode) return; // formatting commands only make sense in WYSIWYG mode
+    signatureEditor.focus();
+    document.execCommand(btn.dataset.sigCmd, false, null);
+  });
+});
+
+document.querySelectorAll("[data-sig-action]").forEach((btn) => {
+  btn.addEventListener("click", async () => {
+    const action = btn.dataset.sigAction;
+    if (action === "toggle-source") {
+      if (!signatureSourceMode) {
+        signatureSourceInput.value = signatureEditor.innerHTML;
+      } else {
+        signatureEditor.innerHTML = signatureSourceInput.value;
+      }
+      signatureSourceMode = !signatureSourceMode;
+      signatureEditor.style.display = signatureSourceMode ? "none" : "block";
+      signatureSourceInput.style.display = signatureSourceMode ? "block" : "none";
+      return;
+    }
+    if (signatureSourceMode) return;
+    if (action === "link") {
+      const selection = window.getSelection();
+      const hasSelection = selection && selection.toString().length > 0;
+      const url = await openModal({ title: "Insert link", inputLabel: "URL", inputValue: "https://" });
+      if (!url) return;
+      signatureEditor.focus();
+      if (hasSelection) {
+        document.execCommand("createLink", false, url);
+      } else {
+        document.execCommand("insertHTML", false, `<a href="${url}">${url}</a>`);
+      }
+    } else if (action === "image") {
+      const url = await openModal({ title: "Insert image", inputLabel: "Image URL", inputValue: "https://" });
+      if (!url) return;
+      signatureEditor.focus();
+      document.execCommand("insertHTML", false, `<img src="${url}" alt="" />`);
+    }
+  });
+});
+
 async function loadSignature() {
   try {
     const res = await api("/api/settings/signature");
     const data = await res.json();
-    signatureInput.value = data.signature || "";
+    setSignatureHtml(data.signature || "");
   } catch (err) {
     console.error("Failed to load signature:", err);
   }
@@ -1623,11 +1706,12 @@ document.getElementById("signatureSaveBtn").addEventListener("click", async () =
     const res = await api("/api/settings/signature", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ signature: signatureInput.value }),
+      body: JSON.stringify({ signature: getSignatureHtml() }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Could not save signature");
-    showSignatureResult("ok", "Signature saved - used on every outreach message generated from now on.");
+    invalidateSignatureCache();
+    showSignatureResult("ok", "Signature saved - used on every outreach message and campaign email from now on.");
     showToast("Signature saved", "success");
   } catch (err) {
     showSignatureResult("bad", err.message);
@@ -1651,7 +1735,7 @@ document.getElementById("signatureResetBtn").addEventListener("click", async () 
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        signature: "Kind Regards,\n   Saeed Iqbal\n   Ceo | Xeven Pixels\n   https://xevenpixels.com\n   contact@xevenpixels.com",
+        signature: `Kind Regards,<br>&nbsp;&nbsp;&nbsp;<b>Saeed Iqbal</b><br>&nbsp;&nbsp;&nbsp;Ceo | Xeven Pixels<br>&nbsp;&nbsp;&nbsp;<a href="https://xevenpixels.com">https://xevenpixels.com</a><br>&nbsp;&nbsp;&nbsp;contact@xevenpixels.com`,
       }),
     });
     await loadSignature();
@@ -4341,7 +4425,7 @@ async function wireLeadExpandPanel(expandRow, leadId, lead) {
     });
   }
 
-  function showPlatform(platform) {
+  async function showPlatform(platform) {
     currentPlatform = platform;
     expandRow.querySelectorAll(".platform-tab").forEach((t) => t.classList.toggle("active", t.dataset.platform === platform));
     const activeLanguage = languageSelect.value || "English";
@@ -4351,7 +4435,8 @@ async function wireLeadExpandPanel(expandRow, leadId, lead) {
     const subjectInput = expandRow.querySelector("[data-gen-subject-input]");
     subjectRow.style.display = platform === "email" ? "flex" : "none";
     if (saved) {
-      outputEl.innerHTML = renderFormattedContent(saved.content);
+      const signatureHtml = await getCachedSignature();
+      outputEl.innerHTML = `${renderFormattedContent(saved.content)}${signatureHtml ? `<div class="gen-output-signature">${signatureHtml}</div>` : ""}`;
       if (platform === "email") subjectInput.value = saved.subject || "";
       if (saved.tone) {
         toneSelect.value = saved.tone;
@@ -4596,7 +4681,10 @@ async function wireLeadExpandPanel(expandRow, leadId, lead) {
     if (action === "copy-content") {
       const activeLanguage = languageSelect.value || "English";
       const saved = savedContent.find((c) => c.platform === currentPlatform && (c.language || "English") === activeLanguage);
-      navigator.clipboard?.writeText(stripMarkdownFormatting(saved?.content || ""));
+      const signatureHtml = await getCachedSignature();
+      const bodyText = stripMarkdownFormatting(saved?.content || "");
+      const signatureText = htmlToPlainText(signatureHtml);
+      navigator.clipboard?.writeText(signatureText ? `${bodyText}\n\n${signatureText}` : bodyText);
       showToast("Copied to clipboard", "success");
       return;
     }

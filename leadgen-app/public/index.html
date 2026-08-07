@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="Xeven Leads" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=149" />
+<link rel="stylesheet" href="style.css?v=150" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -821,8 +821,23 @@
           <div class="settings-divider"></div>
 
           <h3 class="settings-subheading">Signature</h3>
-          <p class="hint">Appended to the end of every generated outreach message (email and social platforms alike). Plain text - add line breaks, links, or emoji/icons as you like.</p>
-          <textarea id="signatureInput" rows="6" style="width:100%; background:var(--panel-raised); border:1px solid var(--border); border-radius:6px; color:var(--text); padding:10px; font-family:var(--font-mono); font-size:13px; resize:vertical;" placeholder="Kind Regards,&#10;   Your Name&#10;   Your Company&#10;   https://yourwebsite.com&#10;   you@example.com"></textarea>
+          <p class="hint">Appended to the end of every generated outreach message and every campaign email. Fully rich - bold/italic, links, images, and lists are all supported and will render as real formatting in sent emails.</p>
+
+          <div class="sig-editor-toolbar">
+            <button type="button" data-sig-cmd="bold" title="Bold"><i class="bi bi-type-bold"></i></button>
+            <button type="button" data-sig-cmd="italic" title="Italic"><i class="bi bi-type-italic"></i></button>
+            <button type="button" data-sig-cmd="underline" title="Underline"><i class="bi bi-type-underline"></i></button>
+            <span class="sig-toolbar-divider"></span>
+            <button type="button" data-sig-action="link" title="Insert link"><i class="bi bi-link-45deg"></i></button>
+            <button type="button" data-sig-action="image" title="Insert image (by URL)"><i class="bi bi-image"></i></button>
+            <button type="button" data-sig-cmd="insertUnorderedList" title="Bullet list"><i class="bi bi-list-ul"></i></button>
+            <span class="sig-toolbar-divider"></span>
+            <button type="button" data-sig-cmd="removeFormat" title="Clear formatting"><i class="bi bi-eraser"></i></button>
+            <button type="button" data-sig-action="toggle-source" title="Edit raw HTML" class="sig-toolbar-right"><i class="bi bi-code-slash"></i> HTML</button>
+          </div>
+          <div id="signatureEditor" class="sig-editor-surface" contenteditable="true"></div>
+          <textarea id="signatureSourceInput" class="sig-editor-surface sig-editor-source" style="display:none;" spellcheck="false"></textarea>
+
           <div class="signature-actions-row">
             <button id="signatureSaveBtn" class="small-btn">Save signature</button>
             <button id="signatureResetBtn" class="small-btn">Reset to default</button>
@@ -938,7 +953,7 @@
 
 
 
-  <script src="app.js?v=149"></script>
+  <script src="app.js?v=150"></script>
   <script src="pwa-install.js"></script>
 </body>
 </html>
