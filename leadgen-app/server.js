@@ -18,6 +18,7 @@ const reportsRoute = require("./src/routes/reports");
 const backupRoute = require("./src/routes/backup");
 const trackerRoute = require("./src/routes/tracker");
 const campaignsRoute = require("./src/routes/campaigns");
+const notificationsRoute = require("./src/routes/notifications");
 const campaignScheduler = require("./src/campaignScheduler");
 const trackerPublicRoute = require("./src/routes/trackerPublic");
 
@@ -98,6 +99,7 @@ app.use("/api/backup", requireAuth, backupRoute);
 app.use("/", trackerPublicRoute);
 app.use("/api/tracker", requireAuth, trackerRoute);
 app.use("/api/campaigns", requireAuth, campaignsRoute);
+app.use("/api/notifications", requireAuth, notificationsRoute);
 
 app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
 

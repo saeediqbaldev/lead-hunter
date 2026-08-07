@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="Xeven Leads" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=146" />
+<link rel="stylesheet" href="style.css?v=147" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -58,10 +58,27 @@
         </div>
       </div>
       <span class="username-tag" id="usernameTag"></span>
+      <button id="headerNotifBtn" class="small-btn icon-btn-labeled header-notif-btn" title="Notifications">
+        <i class="bi bi-bell"></i>
+        <span class="unread-badge" id="headerNotifBadge" style="display:none;"></span>
+      </button>
       <button id="themeShortcutBtn" class="small-btn icon-btn-labeled" title="Switch to light mode"><i class="bi bi-moon-stars-fill"></i></button>
       <button id="logoutBtn" class="small-btn icon-btn-labeled" title="Log out"><i class="bi bi-power"></i></button>
     </div>
   </header>
+
+  <div id="notifPanelOverlay" class="notif-panel-overlay" style="display:none;">
+    <div class="notif-panel">
+      <div class="notif-panel-head">
+        <h3>Notifications</h3>
+        <div class="notif-panel-head-actions">
+          <button id="notifMarkAllReadBtn" class="icon-toggle-btn" title="Mark all read"><i class="bi bi-check2-all"></i></button>
+          <button id="notifPanelCloseBtn" class="icon-toggle-btn" title="Close"><i class="bi bi-x-lg"></i></button>
+        </div>
+      </div>
+      <div id="notifPanelList" class="notif-panel-list"></div>
+    </div>
+  </div>
 
   <main class="layout">
 
@@ -128,41 +145,45 @@
             <button class="nav-section-refresh" data-refresh-section="contacted" title="Refresh Contacted data"><i class="bi bi-arrow-clockwise"></i></button>
           </div>
           <div class="nav-section-body">
-            <div class="platform-node open" data-platform-node="hostinger">
-              <button class="platform-node-header" data-toggle-platform="hostinger">
-                <i class="bi bi-envelope-fill"></i>
-                <span>Hostinger</span>
-                <span class="nav-caret platform-caret">▾</span>
-                <span class="unread-badge" data-platform-badge="hostinger" style="display:none;"></span>
-              </button>
-              <div class="platform-node-body">
-                <button class="nav-leaf nav-leaf-action" data-goto-platform="hostinger" data-goto-view="tracking"><i class="bi bi-list-ul"></i> Tracking</button>
-                <button class="nav-leaf nav-leaf-action" data-goto-platform="hostinger" data-goto-view="history"><i class="bi bi-clock-history"></i> History</button>
-                <button class="nav-leaf nav-leaf-action" data-goto-platform="hostinger" data-goto-view="alerts">
-                  <i class="bi bi-bell"></i> Alerts
+            <div class="niche-block open" data-platform-node="hostinger">
+              <div class="niche-row" data-toggle-platform="hostinger">
+                <span class="niche-caret">▶</span>
+                <div class="niche-row-main">
+                  <i class="bi bi-envelope-fill"></i>
+                  <span class="niche-name">Hostinger</span>
+                  <span class="unread-badge" data-platform-badge="hostinger" style="display:none;"></span>
+                </div>
+              </div>
+              <div class="catchlog-list">
+                <div class="catchlog-row" data-goto-platform="hostinger" data-goto-view="tracking"><div class="catchlog-name"><i class="bi bi-list-ul"></i> Tracking</div></div>
+                <div class="catchlog-row" data-goto-platform="hostinger" data-goto-view="history"><div class="catchlog-name"><i class="bi bi-clock-history"></i> History</div></div>
+                <div class="catchlog-row" data-goto-platform="hostinger" data-goto-view="alerts">
+                  <div class="catchlog-name"><i class="bi bi-bell"></i> Alerts</div>
                   <span class="unread-badge" data-platform-alerts-badge="hostinger" style="display:none;"></span>
-                </button>
-                <button class="nav-leaf nav-leaf-action" data-goto-platform="hostinger" data-goto-view="reports"><i class="bi bi-graph-up"></i> Reports</button>
-                <button class="nav-leaf nav-leaf-action" data-goto-platform="hostinger" data-goto-view="setup"><i class="bi bi-gear-wide-connected"></i> Setup</button>
-                <button class="nav-leaf nav-leaf-action" data-goto-platform="hostinger" data-goto-view="campaigns"><i class="bi bi-send-fill"></i> Auto Send</button>
+                </div>
+                <div class="catchlog-row" data-goto-platform="hostinger" data-goto-view="reports"><div class="catchlog-name"><i class="bi bi-graph-up"></i> Reports</div></div>
+                <div class="catchlog-row" data-goto-platform="hostinger" data-goto-view="campaigns"><div class="catchlog-name"><i class="bi bi-send-fill"></i> Auto Send</div></div>
+                <div class="catchlog-row" data-goto-platform="hostinger" data-goto-view="setup"><div class="catchlog-name"><i class="bi bi-gear-wide-connected"></i> Setup</div></div>
               </div>
             </div>
-            <div class="platform-node" data-platform-node="gmail">
-              <button class="platform-node-header" data-toggle-platform="gmail">
-                <i class="bi bi-google"></i>
-                <span>Gmail</span>
-                <span class="nav-caret platform-caret">▾</span>
-                <span class="unread-badge" data-platform-badge="gmail" style="display:none;"></span>
-              </button>
-              <div class="platform-node-body">
-                <button class="nav-leaf nav-leaf-action" data-goto-platform="gmail" data-goto-view="tracking"><i class="bi bi-list-ul"></i> Tracking</button>
-                <button class="nav-leaf nav-leaf-action" data-goto-platform="gmail" data-goto-view="history"><i class="bi bi-clock-history"></i> History</button>
-                <button class="nav-leaf nav-leaf-action" data-goto-platform="gmail" data-goto-view="alerts">
-                  <i class="bi bi-bell"></i> Alerts
+            <div class="niche-block" data-platform-node="gmail">
+              <div class="niche-row" data-toggle-platform="gmail">
+                <span class="niche-caret">▶</span>
+                <div class="niche-row-main">
+                  <i class="bi bi-google"></i>
+                  <span class="niche-name">Gmail</span>
+                  <span class="unread-badge" data-platform-badge="gmail" style="display:none;"></span>
+                </div>
+              </div>
+              <div class="catchlog-list">
+                <div class="catchlog-row" data-goto-platform="gmail" data-goto-view="tracking"><div class="catchlog-name"><i class="bi bi-list-ul"></i> Tracking</div></div>
+                <div class="catchlog-row" data-goto-platform="gmail" data-goto-view="history"><div class="catchlog-name"><i class="bi bi-clock-history"></i> History</div></div>
+                <div class="catchlog-row" data-goto-platform="gmail" data-goto-view="alerts">
+                  <div class="catchlog-name"><i class="bi bi-bell"></i> Alerts</div>
                   <span class="unread-badge" data-platform-alerts-badge="gmail" style="display:none;"></span>
-                </button>
-                <button class="nav-leaf nav-leaf-action" data-goto-platform="gmail" data-goto-view="reports"><i class="bi bi-graph-up"></i> Reports</button>
-                <button class="nav-leaf nav-leaf-action" data-goto-platform="gmail" data-goto-view="setup"><i class="bi bi-gear-wide-connected"></i> Setup</button>
+                </div>
+                <div class="catchlog-row" data-goto-platform="gmail" data-goto-view="reports"><div class="catchlog-name"><i class="bi bi-graph-up"></i> Reports</div></div>
+                <div class="catchlog-row" data-goto-platform="gmail" data-goto-view="setup"><div class="catchlog-name"><i class="bi bi-gear-wide-connected"></i> Setup</div></div>
               </div>
             </div>
           </div>
@@ -915,7 +936,7 @@
 
 
 
-  <script src="app.js?v=146"></script>
+  <script src="app.js?v=147"></script>
   <script src="pwa-install.js"></script>
 </body>
 </html>

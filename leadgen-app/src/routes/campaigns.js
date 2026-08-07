@@ -125,11 +125,25 @@ router.get("/:id", (req, res) => {
 
   const leads = db
     .prepare(
-      `SELECT ecl.id, ecl.status, ecl.error, ecl.sent_at, ecl.tracked_email_id, l.name AS lead_name
-       FROM email_campaign_leads ecl JOIN leads l ON l.id = ecl.lead_id
+      `SELECT ecl.id, ecl.status, ecl.error, ecl.sent_at, ecl.tracked_email_id, ecl.created_at,
+              l.id AS lead_id, l.name AS lead_name, l.socials, l.address, l.phone, l.website,
+              te.subject AS sent_subject, te.status AS tracked_status, te.open_count, te.click_count, te.first_opened_at
+       FROM email_campaign_leads ecl
+       JOIN leads l ON l.id = ecl.lead_id
+       LEFT JOIN tracked_emails te ON te.id = ecl.tracked_email_id
        WHERE ecl.campaign_id = ? ORDER BY ecl.id ASC`
     )
-    .all(campaign.id);
+    .all(campaign.id)
+    .map((row) => {
+      let email = null;
+      try {
+        email = JSON.parse(row.socials || "{}").email || null;
+      } catch {
+        email = null;
+      }
+      const { socials, ...rest } = row;
+      return { ...rest, recipient_email: email };
+    });
 
   res.json({ campaign, leads });
 });

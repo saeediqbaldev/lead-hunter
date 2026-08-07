@@ -6,6 +6,26 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V14.7
+**The three remaining UI requests from this round, all completed and verified.**
+
+- **Contacted's sidebar now matches Reach Out's tree exactly** - rather
+  than approximate the look, it reuses Reach Out's actual tree CSS
+  classes directly, so Hostinger/Gmail's connector lines, rotating caret,
+  and spacing are pixel-identical to Hunt and Reach Out, not just similar.
+  Confirmed visually via screenshot.
+- **Campaign rows are now expandable**, showing the actual recipient
+  email in the row itself, and clicking reveals subject line, open/click
+  counts, first-opened time, errors, and contact details - verified
+  end-to-end via browser test (expand, collapse, correct content shown).
+- **A real, unified notification feed** in the header, next to the theme
+  switcher - previously campaign events (paused/completed) only went to
+  the server console and weren't retrievable anywhere in the app. Now
+  they're persisted alongside tracker alerts (opens/clicks, any platform)
+  into one combined, correctly-sorted feed. Verified: badge shows the
+  right unread count, opening the panel shows both notification types
+  together, clicking one marks it read and updates the badge immediately.
+
 ## What's in this V14.6
 **The critical Groq token-limit bug is fixed.** When a similar issue was
 fixed for website generation earlier, a default of 8,000 output tokens

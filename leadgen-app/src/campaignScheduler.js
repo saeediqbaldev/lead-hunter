@@ -20,15 +20,13 @@ function randomGapMs(minMinutes, maxMinutes) {
   return Math.floor(minMs + Math.random() * (maxMs - minMs));
 }
 
-function notifyUser(userId, message) {
-  // Reuses the same tracked_notifications table the tracker already uses
-  // for open/click alerts, so campaign issues show up in the same Alerts
-  // page rather than a separate, easy-to-miss notification surface.
-  // email_id is nullable-in-spirit here (no specific tracked email caused
-  // this), so a lightweight synthetic marker row isn't created - instead
-  // this logs clearly and the campaign's own status/pause_reason is the
-  // source of truth, surfaced directly in the Campaigns UI.
-  console.log(`[campaign] Notice for user ${userId}: ${message}`);
+function notifyUser(userId, { type, title, message, link }) {
+  try {
+    db.prepare("INSERT INTO app_notifications (user_id, type, title, message, link) VALUES (?, ?, ?, ?, ?)").run(userId, type, title, message, link || null);
+  } catch (err) {
+    console.error(`[campaign] Failed to persist notification for user ${userId}:`, err.message);
+  }
+  console.log(`[campaign] Notice for user ${userId}: ${title} - ${message}`);
 }
 
 function countSentToday(campaignId) {
@@ -172,7 +170,12 @@ async function tick() {
 
     if (!nextLead) {
       db.prepare("UPDATE email_campaigns SET status = 'completed', completed_at = datetime('now') WHERE id = ?").run(campaign.id);
-      notifyUser(campaign.user_id, `Campaign "${campaign.name}" finished - every lead has been processed.`);
+      notifyUser(campaign.user_id, {
+        type: "campaign_completed",
+        title: "Campaign finished",
+        message: `"${campaign.name}" - every lead has been processed.`,
+        link: `campaign:${campaign.id}`,
+      });
       continue;
     }
 
@@ -182,7 +185,12 @@ async function tick() {
     } catch (err) {
       db.prepare("UPDATE email_campaign_leads SET status = 'failed', error = ? WHERE id = ?").run(err.message, nextLead.id);
       db.prepare("UPDATE email_campaigns SET status = 'paused', paused_at = datetime('now'), pause_reason = ? WHERE id = ?").run(err.message, campaign.id);
-      notifyUser(campaign.user_id, `Campaign "${campaign.name}" paused: ${err.message}`);
+      notifyUser(campaign.user_id, {
+        type: "campaign_paused",
+        title: "Campaign paused",
+        message: `"${campaign.name}" - ${err.message}`,
+        link: `campaign:${campaign.id}`,
+      });
     } finally {
       busyCampaigns.delete(campaign.id);
     }

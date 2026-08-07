@@ -654,6 +654,26 @@ CREATE INDEX IF NOT EXISTS idx_campaign_leads_campaign ON email_campaign_leads(c
 CREATE INDEX IF NOT EXISTS idx_campaign_leads_status ON email_campaign_leads(status);
 `);
 
+// General-purpose notifications - campaign pause/complete/fail events and
+// anything else that isn't a specific email open/click (those stay in
+// tracked_notifications, which is tightly tied to a specific tracked
+// email). The header notification feed merges both tables so campaign
+// events and tracker alerts show up together in one place.
+db.exec(`
+CREATE TABLE IF NOT EXISTS app_notifications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  message TEXT NOT NULL DEFAULT '',
+  link TEXT,
+  is_read INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_app_notifications_user ON app_notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_app_notifications_read ON app_notifications(is_read);
+`);
+
 {
   const campaignCols = db.prepare("PRAGMA table_info(email_campaigns)").all().map((c) => c.name);
   if (!campaignCols.includes("ai_provider")) db.exec("ALTER TABLE email_campaigns ADD COLUMN ai_provider TEXT DEFAULT ''");

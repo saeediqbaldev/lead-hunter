@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.07-14.6";
+const APP_VERSION = "2026.08.07-14.7";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -425,6 +425,92 @@ async function setupContactedAutoRefresh(intervalSecondsOverride) {
   }, seconds * 1000);
 }
 setupContactedAutoRefresh();
+
+// ==================== Header notification feed ====================
+const NOTIF_TYPE_ICON = {
+  open: "bi-envelope-open-fill",
+  click: "bi-cursor-fill",
+  campaign_paused: "bi-exclamation-triangle-fill",
+  campaign_completed: "bi-check-circle-fill",
+};
+const NOTIF_TYPE_COLOR = {
+  open: "var(--warn)",
+  click: "var(--good)",
+  campaign_paused: "var(--danger)",
+  campaign_completed: "var(--good)",
+};
+
+async function refreshHeaderNotifBadge() {
+  try {
+    const res = await api("/api/notifications/feed/unread-count");
+    const data = await res.json();
+    const badge = document.getElementById("headerNotifBadge");
+    if (data.count > 0) {
+      badge.textContent = data.count > 99 ? "99+" : data.count;
+      badge.style.display = "inline-flex";
+    } else {
+      badge.style.display = "none";
+    }
+  } catch {
+    // Non-critical
+  }
+}
+refreshHeaderNotifBadge();
+setInterval(refreshHeaderNotifBadge, 30000);
+
+async function loadNotifPanel() {
+  const res = await api("/api/notifications/feed?limit=50");
+  const data = await res.json();
+  const list = document.getElementById("notifPanelList");
+
+  if (!data.notifications.length) {
+    list.innerHTML = `<p class="hint" style="padding:16px;">Nothing yet - opens, clicks, and campaign events will show up here.</p>`;
+    return;
+  }
+
+  list.innerHTML = data.notifications
+    .map(
+      (n) => `
+    <div class="notif-item ${n.is_read ? "" : "unread"}" data-notif-source="${n.source}" data-notif-id="${n.id}">
+      <i class="bi ${NOTIF_TYPE_ICON[n.type] || "bi-bell-fill"}" style="color:${NOTIF_TYPE_COLOR[n.type] || "var(--text-muted)"};"></i>
+      <div class="notif-item-body">
+        <div class="notif-item-title">${n.title || ""}</div>
+        <div class="notif-item-msg">${n.message}</div>
+        <div class="notif-item-time">${n.created_at}</div>
+      </div>
+    </div>`
+    )
+    .join("");
+
+  list.querySelectorAll("[data-notif-id]").forEach((item) => {
+    item.addEventListener("click", async () => {
+      if (item.classList.contains("unread")) {
+        await api(`/api/notifications/feed/${item.dataset.notifSource}/${item.dataset.notifId}/read`, { method: "POST" });
+        item.classList.remove("unread");
+        refreshHeaderNotifBadge();
+      }
+    });
+  });
+}
+
+function openNotifPanel() {
+  document.getElementById("notifPanelOverlay").style.display = "flex";
+  loadNotifPanel();
+}
+function closeNotifPanel() {
+  document.getElementById("notifPanelOverlay").style.display = "none";
+}
+
+document.getElementById("headerNotifBtn").addEventListener("click", openNotifPanel);
+document.getElementById("notifPanelCloseBtn").addEventListener("click", closeNotifPanel);
+document.getElementById("notifPanelOverlay").addEventListener("click", (e) => {
+  if (e.target.id === "notifPanelOverlay") closeNotifPanel();
+});
+document.getElementById("notifMarkAllReadBtn").addEventListener("click", async () => {
+  await api("/api/notifications/feed/mark-all-read", { method: "POST" });
+  await loadNotifPanel();
+  refreshHeaderNotifBadge();
+});
 
 async function refreshContactedUnreadBadge() {
   try {
@@ -1236,23 +1322,52 @@ async function loadCampaignDetail(campaignId) {
     skipped: "bi-slash-circle",
   };
   bodyEl.innerHTML = `
-    <table class="contacted-table">
-      <thead><tr><th>Lead</th><th>Status</th><th>Sent</th><th>Detail</th></tr></thead>
+    <table class="contacted-table campaign-detail-table">
+      <thead><tr><th style="width:20px;"></th><th>Lead</th><th>Recipient</th><th>Status</th><th>Sent</th></tr></thead>
       <tbody>
         ${leads
-          .map(
-            (l) => `
-          <tr>
+          .map((l) => {
+            const openInfo = l.open_count != null ? `${l.open_count} open(s)${l.click_count ? `, ${l.click_count} click(s)` : ""}` : "";
+            return `
+          <tr class="campaign-lead-row" data-lead-row-toggle="${l.id}">
+            <td><i class="bi bi-chevron-right campaign-row-chevron" data-chevron="${l.id}"></i></td>
             <td>${l.lead_name}</td>
+            <td>${l.recipient_email || "—"}</td>
             <td><span class="contacted-status-pill campaign-lead-${l.status}"><i class="bi ${CAMPAIGN_LEAD_STATUS_ICON[l.status] || "bi-circle"}"></i> ${l.status}</span></td>
             <td>${l.sent_at || "—"}</td>
-            <td>${l.error || ""}</td>
-          </tr>`
-          )
+          </tr>
+          <tr class="campaign-lead-detail-row" id="campaign-detail-${l.id}" style="display:none;">
+            <td colspan="5">
+              <div class="campaign-lead-detail">
+                ${l.sent_subject ? `<div><b>Subject:</b> ${l.sent_subject}</div>` : ""}
+                ${openInfo ? `<div><b>Engagement:</b> ${openInfo}</div>` : ""}
+                ${l.first_opened_at ? `<div><b>First opened:</b> ${l.first_opened_at}</div>` : ""}
+                ${l.error ? `<div style="color:var(--danger);"><b>Error:</b> ${l.error}</div>` : ""}
+                ${l.website ? `<div><b>Website:</b> ${l.website}</div>` : ""}
+                ${l.phone ? `<div><b>Phone:</b> ${l.phone}</div>` : ""}
+                ${l.address ? `<div><b>Address:</b> ${l.address}</div>` : ""}
+                <div><b>Queued:</b> ${l.created_at}</div>
+                ${!l.sent_subject && !l.error ? `<div class="hint">No further detail yet - this lead hasn't reached content generation.</div>` : ""}
+              </div>
+            </td>
+          </tr>`;
+          })
           .join("")}
       </tbody>
     </table>
   `;
+
+  bodyEl.querySelectorAll("[data-lead-row-toggle]").forEach((row) => {
+    row.addEventListener("click", () => {
+      const id = row.dataset.leadRowToggle;
+      const detailRow = document.getElementById(`campaign-detail-${id}`);
+      const chevron = bodyEl.querySelector(`[data-chevron="${id}"]`);
+      const isOpen = detailRow.style.display !== "none";
+      detailRow.style.display = isOpen ? "none" : "table-row";
+      chevron.classList.toggle("bi-chevron-right", isOpen);
+      chevron.classList.toggle("bi-chevron-down", !isOpen);
+    });
+  });
 }
 
 const signatureInput = document.getElementById("signatureInput");
