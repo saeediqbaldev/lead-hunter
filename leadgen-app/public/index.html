@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="Xeven Leads" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=139" />
+<link rel="stylesheet" href="style.css?v=141" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -114,6 +114,25 @@
           <div class="nav-section-body">
             <p class="nav-hint">Niche → City → pinned leads</p>
             <div id="pinnedTree" class="niches-tree nav-tree"></div>
+          </div>
+        </div>
+
+        <div class="nav-section" id="navSectionContacted">
+          <button class="nav-section-header" data-section="contacted">
+            <i class="bi bi-envelope-check"></i>
+            <span class="nav-section-label">Contacted</span>
+            <span class="nav-caret">▾</span>
+            <span class="unread-badge" id="contactedUnreadBadge" style="display:none;"></span>
+          </button>
+          <div class="nav-section-body">
+            <button class="nav-leaf nav-leaf-action" data-goto="contacted-setup" id="navContactedSetup"><i class="bi bi-gear-wide-connected"></i> Hostinger Mail Setup</button>
+            <button class="nav-leaf nav-leaf-action" data-goto="contacted-tracking" id="navContactedTracking"><i class="bi bi-list-ul"></i> Tracking</button>
+            <button class="nav-leaf nav-leaf-action" data-goto="contacted-history" id="navContactedHistory"><i class="bi bi-clock-history"></i> History</button>
+            <button class="nav-leaf nav-leaf-action" data-goto="contacted-reports" id="navContactedReports"><i class="bi bi-graph-up"></i> Reports</button>
+            <button class="nav-leaf nav-leaf-action" data-goto="contacted-alerts" id="navContactedAlerts">
+              <i class="bi bi-bell"></i> Alerts
+              <span class="unread-badge" id="contactedAlertsUnreadBadge" style="display:none;"></span>
+            </button>
           </div>
         </div>
 
@@ -403,6 +422,134 @@
         </div>
       </section>
 
+      <!-- ---------- Contacted: Hostinger Mail Setup ---------- -->
+      <section class="panel view-hidden" id="contactedSetupView">
+        <div class="board-header">
+          <div>
+            <h2>Hostinger Mail Setup</h2>
+            <div class="scope-line">Track opens and clicks on emails you send from Hostinger Webmail - no manual config needed</div>
+          </div>
+        </div>
+        <div class="settings-body" id="contactedSetupBody">
+          <p class="hint">Loading…</p>
+        </div>
+      </section>
+
+      <!-- ---------- Contacted: Tracking ledger ---------- -->
+      <section class="panel view-hidden" id="contactedTrackingView">
+        <div class="board-header">
+          <div class="board-header-row-top">
+            <div class="board-header-title-group">
+              <h2>Contacted</h2>
+              <div class="scope-line">Tracking</div>
+            </div>
+            <div class="board-header-actions">
+              <button type="button" id="contactedRefreshBtn" class="icon-toggle-btn" title="Refresh"><i class="bi bi-arrow-clockwise"></i></button>
+            </div>
+          </div>
+        </div>
+        <div class="contacted-stats-row" id="contactedStatsRow"></div>
+        <div class="contacted-filters-row">
+          <input type="text" id="contactedSearchInput" placeholder="Search subject…" />
+          <input type="text" id="contactedRecipientInput" placeholder="Filter by recipient…" />
+          <button type="button" id="contactedDeleteSelectedBtn" class="small-btn danger-btn" style="display:none;">Delete selected</button>
+        </div>
+        <div class="contacted-table-wrap">
+          <table class="contacted-table" id="contactedTable">
+            <thead>
+              <tr>
+                <th style="width:28px;"><input type="checkbox" id="contactedSelectAll" /></th>
+                <th>Subject</th>
+                <th>Recipients</th>
+                <th>Status</th>
+                <th>Opens</th>
+                <th>Clicks</th>
+                <th>Sent</th>
+              </tr>
+            </thead>
+            <tbody id="contactedTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ---------- Contacted: History ---------- -->
+      <section class="panel view-hidden" id="contactedHistoryView">
+        <div class="board-header">
+          <div>
+            <h2>Contacted</h2>
+            <div class="scope-line">History - every open and click, in order</div>
+          </div>
+        </div>
+        <div class="contacted-filters-row">
+          <select id="contactedHistoryTypeSelect">
+            <option value="">All events</option>
+            <option value="open">Opens only</option>
+            <option value="click">Clicks only</option>
+          </select>
+          <input type="text" id="contactedHistorySearchInput" placeholder="Search subject…" />
+        </div>
+        <div class="contacted-table-wrap">
+          <table class="contacted-table" id="contactedHistoryTable">
+            <thead>
+              <tr><th>Type</th><th>Subject</th><th>Recipients</th><th>Detail</th><th>When</th></tr>
+            </thead>
+            <tbody id="contactedHistoryTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ---------- Contacted: Reports ---------- -->
+      <section class="panel view-hidden" id="contactedReportsView">
+        <div class="board-header">
+          <div>
+            <h2>Contacted</h2>
+            <div class="scope-line">Reports</div>
+          </div>
+          <div class="reports-filter-group" id="contactedReportsRangeGroup">
+            <button type="button" class="range-pill" data-range="1d">1D</button>
+            <button type="button" class="range-pill active" data-range="7d">7D</button>
+            <button type="button" class="range-pill" data-range="30d">30D</button>
+            <button type="button" class="range-pill" data-range="90d">90D</button>
+            <button type="button" class="range-pill" data-range="1y">1Y</button>
+          </div>
+        </div>
+        <div class="contacted-stats-row" id="contactedReportsStatsRow"></div>
+        <div class="reports-charts-grid">
+          <div class="reports-chart-card reports-line-card">
+            <h3>Opens &amp; clicks over time</h3>
+            <canvas id="contactedTimeseriesChart"></canvas>
+          </div>
+          <div class="reports-chart-card reports-line-card">
+            <h3>Engagement heatmap - day &amp; hour</h3>
+            <div id="contactedHeatmap" class="contacted-heatmap"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- Contacted: Alerts ---------- -->
+      <section class="panel view-hidden" id="contactedAlertsView">
+        <div class="board-header">
+          <div class="board-header-row-top">
+            <div class="board-header-title-group">
+              <h2>Contacted</h2>
+              <div class="scope-line">Alerts</div>
+            </div>
+            <div class="board-header-actions">
+              <button type="button" id="contactedMarkAllReadBtn" class="icon-toggle-btn" title="Mark all read"><i class="bi bi-check2-all"></i></button>
+            </div>
+          </div>
+        </div>
+        <div class="contacted-filters-row">
+          <select id="contactedAlertsTypeSelect">
+            <option value="">All</option>
+            <option value="open">Opens</option>
+            <option value="click">Clicks</option>
+          </select>
+          <label class="site-visuals-toggle" style="margin:0;"><input type="checkbox" id="contactedUnreadOnlyToggle" /> Unread only</label>
+        </div>
+        <div id="contactedAlertsList" class="contacted-alerts-list"></div>
+      </section>
+
       <!-- ---------- Settings: Google Places API page ---------- -->
       <section class="panel settings-view view-hidden" id="settingsApiView">
         <div class="board-header">
@@ -681,7 +828,7 @@
 
 
 
-  <script src="app.js?v=139"></script>
+  <script src="app.js?v=141"></script>
   <script src="pwa-install.js"></script>
 </body>
 </html>

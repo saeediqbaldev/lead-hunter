@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.02-13.9";
+const APP_VERSION = "2026.08.07-14.1";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -314,6 +314,461 @@ async function loadApiKeys() {
 }
 
 const navSettingsAccount = document.getElementById("navSettingsAccount");
+
+function debounce(fn, ms) {
+  let timer = null;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), ms);
+  };
+}
+
+// ==================== Contacted (email open/click tracker) ====================
+document.getElementById("navContactedSetup").addEventListener("click", () => {
+  state.lastNavSection = "contacted";
+  setContentView("contacted-setup");
+  loadContactedSetup();
+});
+document.getElementById("navContactedTracking").addEventListener("click", () => {
+  state.lastNavSection = "contacted";
+  setContentView("contacted-tracking");
+  loadContactedTracking();
+});
+document.getElementById("navContactedHistory").addEventListener("click", () => {
+  state.lastNavSection = "contacted";
+  setContentView("contacted-history");
+  loadContactedHistory();
+});
+document.getElementById("navContactedReports").addEventListener("click", () => {
+  state.lastNavSection = "contacted";
+  setContentView("contacted-reports");
+  loadContactedReports("7d");
+});
+document.getElementById("navContactedAlerts").addEventListener("click", () => {
+  state.lastNavSection = "contacted";
+  setContentView("contacted-alerts");
+  loadContactedAlerts();
+});
+
+async function refreshContactedUnreadBadge() {
+  try {
+    const res = await api("/api/tracker/notifications/unread-count");
+    const data = await res.json();
+    [document.getElementById("contactedUnreadBadge"), document.getElementById("contactedAlertsUnreadBadge")].forEach((el) => {
+      if (data.count > 0) {
+        el.textContent = data.count > 99 ? "99+" : data.count;
+        el.style.display = "inline-flex";
+      } else {
+        el.style.display = "none";
+      }
+    });
+  } catch {
+    // Non-critical - just skip updating the badge this tick.
+  }
+}
+refreshContactedUnreadBadge();
+setInterval(refreshContactedUnreadBadge, 30000);
+
+// ---------- Setup page ----------
+async function loadContactedSetup() {
+  const body = document.getElementById("contactedSetupBody");
+  body.innerHTML = `<p class="hint">Loading…</p>`;
+  const res = await api("/api/tracker/setup");
+  const data = await res.json();
+
+  body.innerHTML = `
+    <h3 class="settings-subheading">Your tracking link</h3>
+    <p class="hint">This app's own address and your personal API key - already baked into the extension below, nothing to configure.</p>
+    <div class="contacted-setup-key-row">
+      <input type="text" readonly value="${data.apiKey}" data-contacted-api-key />
+      <button type="button" data-action="copy-tracker-key"><i class="bi bi-clipboard"></i> Copy key</button>
+      <button type="button" data-action="rotate-tracker-key" title="Generate a new key (breaks any extension already installed)"><i class="bi bi-arrow-repeat"></i></button>
+    </div>
+
+    <a href="/api/tracker/extension-download" class="site-generate-btn" style="display:inline-flex; text-decoration:none; margin-bottom:22px;">
+      <i class="bi bi-download"></i> Download the Chrome extension
+    </a>
+
+    <div class="contacted-setup-steps">
+      <div class="contacted-setup-step">
+        <div class="step-num"></div>
+        <div class="step-body"><h4>Download and unzip</h4><p>Click the button above - it downloads a small .zip with your key already inside it.</p></div>
+      </div>
+      <div class="contacted-setup-step">
+        <div class="step-num"></div>
+        <div class="step-body"><h4>Load it into Chrome</h4><p>Go to <code>chrome://extensions</code>, turn on <b>Developer mode</b> (top right), click <b>Load unpacked</b>, and select the unzipped folder.</p></div>
+      </div>
+      <div class="contacted-setup-step">
+        <div class="step-num"></div>
+        <div class="step-body"><h4>Open Hostinger Webmail and compose</h4><p>A <b>Track</b> toggle appears near the send button - turn it on before sending and this dashboard will show opens and clicks automatically.</p></div>
+      </div>
+    </div>
+
+    <div class="settings-divider"></div>
+
+    <h3 class="settings-subheading">Email notifications</h3>
+    <p class="hint">Get an email the moment someone opens or clicks - sent through your own SMTP account.</p>
+    <label class="site-visuals-toggle"><input type="checkbox" data-tracker-notify-enabled /> Enable email notifications</label>
+    <label class="site-field-label">Send notifications to<input type="text" data-tracker-notify-to placeholder="you@yourdomain.com"></label>
+    <label class="site-field-label">SMTP host<input type="text" data-tracker-smtp-host placeholder="smtp.hostinger.com"></label>
+    <label class="site-field-label">SMTP port<input type="number" data-tracker-smtp-port placeholder="465"></label>
+    <label class="site-field-label">SMTP username<input type="text" data-tracker-smtp-user placeholder="you@yourdomain.com"></label>
+    <label class="site-field-label">SMTP password <small class="optional" data-tracker-smtp-pass-hint></small><input type="password" data-tracker-smtp-pass placeholder="Leave blank to keep the current password"></label>
+    <label class="site-field-label">SMTP "from" address <small class="optional">(optional, defaults to the username)</small><input type="text" data-tracker-smtp-from placeholder="you@yourdomain.com"></label>
+    <div style="display:flex; gap:8px;">
+      <button type="button" class="small-btn" data-action="save-tracker-settings">Save settings</button>
+      <button type="button" class="small-btn" data-action="test-tracker-email">Send test email</button>
+    </div>
+    <div class="settings-result" id="contactedSettingsResult" style="display:none;"></div>
+  `;
+
+  const settingsRes = await api("/api/tracker/settings");
+  const settingsData = await settingsRes.json();
+  const s = settingsData.settings || {};
+  body.querySelector("[data-tracker-notify-enabled]").checked = !!s.notify_email_enabled;
+  body.querySelector("[data-tracker-notify-to]").value = s.notify_email_to || "";
+  body.querySelector("[data-tracker-smtp-host]").value = s.smtp_host || "";
+  body.querySelector("[data-tracker-smtp-port]").value = s.smtp_port || "";
+  body.querySelector("[data-tracker-smtp-user]").value = s.smtp_user || "";
+  body.querySelector("[data-tracker-smtp-from]").value = s.smtp_from || "";
+  body.querySelector("[data-tracker-smtp-pass-hint]").textContent = s.smtp_pass_set ? "(a password is already saved)" : "(not set)";
+
+  body.addEventListener("click", async (e) => {
+    const action = e.target.closest("[data-action]")?.dataset.action;
+    if (action === "copy-tracker-key") {
+      navigator.clipboard?.writeText(body.querySelector("[data-contacted-api-key]").value);
+      showToast("API key copied", "success");
+      return;
+    }
+    if (action === "rotate-tracker-key") {
+      const confirmed = await openModal({
+        title: "Generate a new API key?",
+        message: "Any extension already installed will stop working until you download it again with the new key.",
+        confirmText: "Generate new key",
+        danger: true,
+      });
+      if (!confirmed) return;
+      const r = await api("/api/tracker/setup/rotate-key", { method: "POST" });
+      const d = await r.json();
+      body.querySelector("[data-contacted-api-key]").value = d.apiKey;
+      showToast("New API key generated - download the extension again", "success");
+      return;
+    }
+    if (action === "save-tracker-settings") {
+      const resultEl = document.getElementById("contactedSettingsResult");
+      const port = body.querySelector("[data-tracker-smtp-port]").value;
+      const payload = {
+        notify_email_enabled: body.querySelector("[data-tracker-notify-enabled]").checked,
+        notify_email_to: body.querySelector("[data-tracker-notify-to]").value.trim(),
+        smtp_host: body.querySelector("[data-tracker-smtp-host]").value.trim(),
+        smtp_port: port ? parseInt(port, 10) : null,
+        smtp_user: body.querySelector("[data-tracker-smtp-user]").value.trim(),
+        smtp_from: body.querySelector("[data-tracker-smtp-from]").value.trim(),
+      };
+      const pass = body.querySelector("[data-tracker-smtp-pass]").value;
+      if (pass) payload.smtp_pass = pass;
+      const r = await api("/api/tracker/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const d = await r.json();
+      resultEl.style.display = "block";
+      if (!r.ok) {
+        resultEl.className = "settings-result bad";
+        resultEl.textContent = d.error || "Could not save settings";
+      } else {
+        resultEl.className = "settings-result ok";
+        resultEl.textContent = "Settings saved.";
+        body.querySelector("[data-tracker-smtp-pass-hint]").textContent = d.settings.smtp_pass_set ? "(a password is already saved)" : "(not set)";
+        body.querySelector("[data-tracker-smtp-pass]").value = "";
+      }
+      return;
+    }
+    if (action === "test-tracker-email") {
+      const resultEl = document.getElementById("contactedSettingsResult");
+      const r = await api("/api/tracker/settings/test-email", { method: "POST" });
+      const d = await r.json();
+      resultEl.style.display = "block";
+      resultEl.className = `settings-result ${r.ok ? "ok" : "bad"}`;
+      resultEl.textContent = r.ok ? "Test email sent - check your inbox." : d.error;
+      return;
+    }
+  });
+}
+
+// ---------- Tracking ledger ----------
+let contactedStatusFilter = "";
+async function loadContactedTracking() {
+  const statsRes = await api("/api/tracker/stats");
+  const stats = await statsRes.json();
+  const statsRow = document.getElementById("contactedStatsRow");
+  const cards = [
+    { key: "", label: "Sent", value: stats.total_sent },
+    { key: "opened", label: "Opened", value: stats.total_opened },
+    { key: "sent", label: "Unopened", value: stats.total_unopened },
+    { key: "clicked", label: "Clicked", value: stats.total_clicked },
+  ];
+  statsRow.innerHTML = cards
+    .map((c) => `<div class="contacted-stat-card ${c.key === contactedStatusFilter ? "active" : ""}" data-status-filter="${c.key}"><div class="num">${c.value}</div><div class="label">${c.label}</div></div>`)
+    .join("");
+  statsRow.querySelectorAll("[data-status-filter]").forEach((card) => {
+    card.addEventListener("click", () => {
+      contactedStatusFilter = card.dataset.statusFilter;
+      renderContactedTable();
+    });
+  });
+
+  await renderContactedTable();
+}
+
+async function renderContactedTable() {
+  const search = document.getElementById("contactedSearchInput").value.trim();
+  const recipient = document.getElementById("contactedRecipientInput").value.trim();
+  const params = new URLSearchParams();
+  if (contactedStatusFilter) params.set("status", contactedStatusFilter);
+  if (search) params.set("search", search);
+  if (recipient) params.set("recipient", recipient);
+
+  const res = await api(`/api/tracker/emails?${params.toString()}`);
+  const data = await res.json();
+  const tbody = document.getElementById("contactedTableBody");
+
+  if (!data.emails.length) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding:24px;">No tracked emails yet - send one with the extension's Track toggle on.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = data.emails
+    .map(
+      (email) => `
+    <tr class="contacted-row" data-email-id="${email.id}">
+      <td><input type="checkbox" class="contacted-row-check" data-email-id="${email.id}" onclick="event.stopPropagation()"></td>
+      <td>${email.subject || "(no subject)"}</td>
+      <td>${email.recipients.join(", ")}</td>
+      <td><span class="contacted-status-pill ${email.status}">${email.status}</span></td>
+      <td>${email.open_count}</td>
+      <td>${email.click_count}</td>
+      <td>${email.created_at}</td>
+    </tr>`
+    )
+    .join("");
+
+  tbody.querySelectorAll(".contacted-row").forEach((row) => {
+    row.addEventListener("click", () => openContactedDetail(row.dataset.emailId));
+  });
+  updateContactedBulkDeleteVisibility();
+}
+
+function updateContactedBulkDeleteVisibility() {
+  const checked = document.querySelectorAll(".contacted-row-check:checked");
+  document.getElementById("contactedDeleteSelectedBtn").style.display = checked.length ? "inline-flex" : "none";
+}
+
+document.getElementById("contactedSearchInput").addEventListener("input", debounce(renderContactedTable, 300));
+document.getElementById("contactedRecipientInput").addEventListener("input", debounce(renderContactedTable, 300));
+document.getElementById("contactedRefreshBtn").addEventListener("click", loadContactedTracking);
+document.getElementById("contactedSelectAll").addEventListener("change", (e) => {
+  document.querySelectorAll(".contacted-row-check").forEach((cb) => (cb.checked = e.target.checked));
+  updateContactedBulkDeleteVisibility();
+});
+document.getElementById("contactedTableBody").addEventListener("change", (e) => {
+  if (e.target.classList.contains("contacted-row-check")) updateContactedBulkDeleteVisibility();
+});
+document.getElementById("contactedDeleteSelectedBtn").addEventListener("click", async () => {
+  const ids = Array.from(document.querySelectorAll(".contacted-row-check:checked")).map((cb) => cb.dataset.emailId);
+  if (!ids.length) return;
+  const confirmed = await openModal({ title: `Delete ${ids.length} tracked email(s)?`, message: "This also deletes their open/click history. This cannot be undone.", confirmText: "Delete", danger: true });
+  if (!confirmed) return;
+  await api("/api/tracker/emails/bulk-delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
+  showToast("Deleted", "success");
+  loadContactedTracking();
+});
+
+async function openContactedDetail(emailId) {
+  const res = await api(`/api/tracker/emails/${emailId}`);
+  const data = await res.json();
+  const existing = document.querySelector(".contacted-detail-panel");
+  if (existing) existing.remove();
+
+  const panel = document.createElement("div");
+  panel.className = "contacted-detail-panel";
+  panel.innerHTML = `
+    <button class="contacted-detail-close" data-action="close-detail">&times;</button>
+    <h3 style="margin-top:0;">${data.email.subject || "(no subject)"}</h3>
+    <p class="hint">To: ${data.email.recipients.join(", ")}</p>
+    <p class="hint">Sent ${data.email.created_at}</p>
+    <label class="site-field-label">Notes<textarea data-detail-notes rows="3" style="width:100%; background:var(--panel-raised); border:1px solid var(--border); border-radius:6px; color:var(--text); padding:8px;">${data.email.notes || ""}</textarea></label>
+    <button type="button" class="small-btn" data-action="save-detail-notes">Save note</button>
+    <div class="settings-divider"></div>
+    <h4>Opens (${data.opens.length})</h4>
+    ${data.opens.map((o) => `<div class="contacted-detail-event"><b>${o.opened_at}</b><br>${o.ip || "unknown IP"}</div>`).join("") || `<p class="hint">No opens yet.</p>`}
+    <h4>Clicks (${data.clicks.length})</h4>
+    ${data.clicks.map((c) => `<div class="contacted-detail-event"><b>${c.clicked_at}</b><br>${c.url}</div>`).join("") || `<p class="hint">No clicks yet.</p>`}
+    <div class="settings-divider"></div>
+    <button type="button" class="small-btn danger-btn" data-action="delete-detail-email">Delete this tracked email</button>
+  `;
+  document.body.appendChild(panel);
+  requestAnimationFrame(() => panel.classList.add("open"));
+
+  panel.addEventListener("click", async (e) => {
+    const action = e.target.closest("[data-action]")?.dataset.action;
+    if (action === "close-detail") {
+      panel.classList.remove("open");
+      setTimeout(() => panel.remove(), 250);
+    } else if (action === "save-detail-notes") {
+      const notes = panel.querySelector("[data-detail-notes]").value;
+      await api(`/api/tracker/emails/${emailId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ notes }) });
+      showToast("Note saved", "success");
+    } else if (action === "delete-detail-email") {
+      const confirmed = await openModal({ title: "Delete this tracked email?", message: "This cannot be undone.", confirmText: "Delete", danger: true });
+      if (!confirmed) return;
+      await api(`/api/tracker/emails/${emailId}`, { method: "DELETE" });
+      panel.remove();
+      showToast("Deleted", "success");
+      loadContactedTracking();
+    }
+  });
+}
+
+// ---------- History ----------
+async function loadContactedHistory() {
+  const type = document.getElementById("contactedHistoryTypeSelect").value;
+  const search = document.getElementById("contactedHistorySearchInput").value.trim();
+  const params = new URLSearchParams();
+  if (type) params.set("type", type);
+  if (search) params.set("search", search);
+
+  const res = await api(`/api/tracker/history?${params.toString()}`);
+  const data = await res.json();
+  const tbody = document.getElementById("contactedHistoryTableBody");
+
+  if (!data.events.length) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding:24px;">No events yet.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = data.events
+    .map(
+      (ev) => `
+    <tr>
+      <td><span class="contacted-status-pill ${ev.type === "open" ? "opened" : "clicked"}">${ev.type}</span></td>
+      <td>${ev.subject || "(no subject)"}</td>
+      <td>${ev.recipients.join(", ")}</td>
+      <td>${ev.type === "click" ? ev.url : ev.ip || ""}</td>
+      <td>${ev.ts}</td>
+    </tr>`
+    )
+    .join("");
+}
+document.getElementById("contactedHistoryTypeSelect").addEventListener("change", loadContactedHistory);
+document.getElementById("contactedHistorySearchInput").addEventListener("input", debounce(loadContactedHistory, 300));
+
+// ---------- Reports ----------
+let contactedTimeseriesChartInstance = null;
+async function loadContactedReports(range) {
+  document.querySelectorAll("#contactedReportsRangeGroup .range-pill").forEach((btn) => btn.classList.toggle("active", btn.dataset.range === range));
+
+  const res = await api(`/api/tracker/analytics?range=${range}`);
+  const data = await res.json();
+
+  const statsRow = document.getElementById("contactedReportsStatsRow");
+  const s = data.summary;
+  statsRow.innerHTML = [
+    { label: "Sent", value: s.sent },
+    { label: "Opens", value: s.opens },
+    { label: "Clicks", value: s.clicks },
+    { label: "Unique opened", value: s.unique_opened },
+    { label: "Open rate", value: `${Math.round(s.open_rate * 100)}%` },
+  ]
+    .map((c) => `<div class="contacted-stat-card"><div class="num">${c.value}</div><div class="label">${c.label}</div></div>`)
+    .join("");
+
+  const ctx = document.getElementById("contactedTimeseriesChart").getContext("2d");
+  if (contactedTimeseriesChartInstance) contactedTimeseriesChartInstance.destroy();
+  contactedTimeseriesChartInstance = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: data.timeseries.map((t) => t.bucket),
+      datasets: [
+        { label: "Opens", data: data.timeseries.map((t) => t.opens), borderColor: "#e8a23d", backgroundColor: "rgba(232,162,61,0.12)", tension: 0.3, fill: true },
+        { label: "Clicks", data: data.timeseries.map((t) => t.clicks), borderColor: "#2ea66e", backgroundColor: "rgba(46,166,110,0.12)", tension: 0.3, fill: true },
+      ],
+    },
+    options: { responsive: true, plugins: { legend: { labels: { color: getComputedStyle(document.documentElement).getPropertyValue("--text") } } }, scales: { x: { ticks: { color: "#9a9186" } }, y: { ticks: { color: "#9a9186" }, beginAtZero: true } } },
+  });
+
+  const heatmapEl = document.getElementById("contactedHeatmap");
+  const grid = new Map(data.heatmap.map((h) => [`${h.day}-${h.hour}`, h.count]));
+  const maxCount = Math.max(1, ...data.heatmap.map((h) => h.count));
+  const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  let html = `<div class="hm-label"></div>`;
+  for (let h = 0; h < 24; h += 1) html += `<div class="hm-label">${h % 6 === 0 ? h : ""}</div>`;
+  for (let d = 0; d < 7; d += 1) {
+    html += `<div class="hm-label">${dayLabels[d]}</div>`;
+    for (let h = 0; h < 24; h += 1) {
+      const count = grid.get(`${d}-${h}`) || 0;
+      const alpha = count === 0 ? 0 : 0.15 + 0.85 * (count / maxCount);
+      html += `<div class="hm-cell" style="background:rgba(255,106,61,${alpha});" title="${dayLabels[d]} ${h}:00 - ${count} event(s)"></div>`;
+    }
+  }
+  heatmapEl.innerHTML = html;
+}
+document.getElementById("contactedReportsRangeGroup").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-range]");
+  if (btn) loadContactedReports(btn.dataset.range);
+});
+
+// ---------- Alerts ----------
+async function loadContactedAlerts() {
+  const type = document.getElementById("contactedAlertsTypeSelect").value;
+  const unreadOnly = document.getElementById("contactedUnreadOnlyToggle").checked;
+  const params = new URLSearchParams();
+  if (type) params.set("type", type);
+  if (unreadOnly) params.set("unread", "true");
+
+  const res = await api(`/api/tracker/notifications?${params.toString()}`);
+  const data = await res.json();
+  const list = document.getElementById("contactedAlertsList");
+
+  if (!data.notifications.length) {
+    list.innerHTML = `<p class="hint">No notifications yet.</p>`;
+    return;
+  }
+
+  list.innerHTML = data.notifications
+    .map(
+      (n) => `
+    <div class="contacted-alert-item ${n.is_read ? "" : "unread"}" data-notif-id="${n.id}">
+      <i class="bi ${n.is_read ? "bi-bell" : "bi-bell-fill"} contacted-alert-bell ${n.is_read ? "" : "unread"}" data-action="toggle-read" title="Toggle read"></i>
+      <div class="msg">${n.message}<div class="meta">${n.created_at}</div></div>
+      <button class="del" data-action="delete-notif" title="Delete"><i class="bi bi-x-lg"></i></button>
+    </div>`
+    )
+    .join("");
+
+  list.querySelectorAll("[data-action]").forEach((el) => {
+    el.addEventListener("click", async (e) => {
+      const item = e.target.closest("[data-notif-id]");
+      const id = item.dataset.notifId;
+      const action = el.dataset.action;
+      if (action === "toggle-read") {
+        const isUnread = el.classList.contains("unread");
+        await api(`/api/tracker/notifications/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ is_read: isUnread }) });
+        loadContactedAlerts();
+        refreshContactedUnreadBadge();
+      } else if (action === "delete-notif") {
+        await api(`/api/tracker/notifications/${id}`, { method: "DELETE" });
+        loadContactedAlerts();
+        refreshContactedUnreadBadge();
+      }
+    });
+  });
+}
+document.getElementById("contactedAlertsTypeSelect").addEventListener("change", loadContactedAlerts);
+document.getElementById("contactedUnreadOnlyToggle").addEventListener("change", loadContactedAlerts);
+document.getElementById("contactedMarkAllReadBtn").addEventListener("click", async () => {
+  await api("/api/tracker/notifications/mark-all-read", { method: "POST" });
+  loadContactedAlerts();
+  refreshContactedUnreadBadge();
+});
+
 const signatureInput = document.getElementById("signatureInput");
 const signatureResult = document.getElementById("signatureResult");
 
@@ -1373,6 +1828,11 @@ function setContentView(view) {
     "settings-team": document.getElementById("settingsTeamView"),
     "settings-account": document.getElementById("settingsAccountView"),
     "settings-limits": document.getElementById("settingsLimitsView"),
+    "contacted-setup": document.getElementById("contactedSetupView"),
+    "contacted-tracking": document.getElementById("contactedTrackingView"),
+    "contacted-history": document.getElementById("contactedHistoryView"),
+    "contacted-reports": document.getElementById("contactedReportsView"),
+    "contacted-alerts": document.getElementById("contactedAlertsView"),
   };
   Object.entries(ALL_VIEWS).forEach(([name, el]) => {
     if (!el) return;
@@ -2763,12 +3223,14 @@ async function getWebsiteMeta() {
 
 function siteHistoryItemHtml(site) {
   const url = `${window.location.origin}/site/${site.slug}`;
+  const styleLabel = websiteMetaCache?.designStyles?.find((s) => s.value === site.design_style)?.label || site.design_style;
+  const colorLabel = websiteMetaCache?.colorPresets?.find((c) => c.value === site.color_preset)?.label || site.color_preset;
   if (site.status === "done") {
     return `
       <div class="site-history-item" data-site-id="${site.id}">
         <div class="site-history-info">
           <i class="bi bi-check-circle-fill" style="color:var(--good);"></i>
-          <span>${site.design_style} · ${site.color_preset}</span>
+          <span>${styleLabel} · ${colorLabel}</span>
         </div>
         <div class="site-history-actions">
           <input type="text" readonly value="${url}" data-site-url-input>
@@ -2779,9 +3241,9 @@ function siteHistoryItemHtml(site) {
       </div>`;
   }
   if (site.status === "failed") {
-    return `<div class="site-history-item"><span style="color:var(--danger);"><i class="bi bi-x-circle-fill"></i> ${site.design_style} failed: ${site.error || "unknown error"}</span></div>`;
+    return `<div class="site-history-item"><span style="color:var(--danger);"><i class="bi bi-x-circle-fill"></i> ${styleLabel} failed: ${site.error || "unknown error"}</span></div>`;
   }
-  return `<div class="site-history-item"><span><i class="bi bi-hourglass-split"></i> ${site.design_style} - ${site.current_step || "starting…"}</span></div>`;
+  return `<div class="site-history-item"><span><i class="bi bi-hourglass-split"></i> ${styleLabel} - ${site.current_step || "starting…"}</span></div>`;
 }
 
 async function initWebsitePanel(panel, leadId, lead) {
@@ -2789,7 +3251,7 @@ async function initWebsitePanel(panel, leadId, lead) {
   const meta = await getWebsiteMeta();
 
   panel.innerHTML = `
-    <p class="hint" style="margin-bottom:14px;">Generates a free, no-index landing page you can send alongside cold outreach - a demonstration of what you'd build for them, hosted on a shareable link.</p>
+    <p class="hint" style="margin-bottom:14px;">Generates a free, no-index landing page you can send alongside cold outreach - a full custom page (not just copy), with real photos and working mobile navigation. Takes a bit longer than outreach content since it's a whole page.</p>
 
     <label class="site-field-label">
       Business name
@@ -2799,36 +3261,33 @@ async function initWebsitePanel(panel, leadId, lead) {
       Niche / what they do
       <input type="text" data-site-niche value="${lead.niche_name || ""}">
     </label>
+    <label class="site-field-label">
+      Services offered <small class="optional">(optional - comma separated, e.g. "Exterior wash, Interior detail, Waxing")</small>
+      <input type="text" data-site-services placeholder="Leave blank and the AI will infer typical services for this niche">
+    </label>
+    <label class="site-field-label">
+      Call-to-action goal <small class="optional">(optional)</small>
+      <input type="text" data-site-cta-goal placeholder="e.g. Book Appointment, Get a Free Quote, Request a Consult">
+    </label>
 
-    <div class="site-field-label" style="margin-bottom:6px;">Design style</div>
-    <div class="site-style-grid">
-      ${meta.designStyles
-        .map(
-          (s, i) => `
-        <button type="button" class="site-style-card ${i === 0 ? "active" : ""}" data-style-value="${s.value}">
-          <span class="site-style-name">${s.label}</span>
-          <span class="site-style-desc">${s.description}</span>
-        </button>`
-        )
-        .join("")}
-    </div>
+    <label class="site-field-label">
+      Design style
+      <select data-site-style-select>
+        ${meta.designStyles.map((s) => `<option value="${s.value}" title="${s.description}">${s.label} — ${s.description}</option>`).join("")}
+      </select>
+    </label>
 
-    <div class="site-field-label" style="margin-bottom:6px; margin-top:14px;">Color palette</div>
+    <div class="site-field-label" style="margin-bottom:6px;">Color palette</div>
     <div class="site-color-grid">
       ${meta.colorPresets
         .map(
           (c, i) => `
-        <button type="button" class="site-color-swatch ${i === 0 ? "active" : ""}" data-color-value="${c.value}" title="${c.label}">
-          ${c.swatch.map((hex) => `<span style="background:${hex};"></span>`).join("")}
+        <button type="button" class="site-color-swatch ${c.value === "surprise" ? "surprise-swatch" : ""} ${i === 0 ? "active" : ""}" data-color-value="${c.value}" title="${c.label}">
+          ${c.value === "surprise" ? '<i class="bi bi-shuffle"></i>' : c.swatch.map((hex) => `<span style="background:${hex};"></span>`).join("")}
         </button>`
         )
         .join("")}
     </div>
-
-    <label class="site-visuals-toggle">
-      <input type="checkbox" data-site-use-visuals checked>
-      Include icons and visual accents
-    </label>
 
     <button type="button" data-action="generate-website" class="site-generate-btn"><i class="bi bi-magic"></i> Generate Website</button>
     <button type="button" data-action="stop-website" class="site-generate-btn" style="display:none; background:transparent; color:var(--danger); border:1px solid var(--danger);">Stop</button>
@@ -2843,12 +3302,8 @@ async function initWebsitePanel(panel, leadId, lead) {
   let activeSiteId = null;
   let sitePollTimer = null;
 
-  panel.querySelectorAll(".site-style-card").forEach((card) => {
-    card.addEventListener("click", () => {
-      panel.querySelectorAll(".site-style-card").forEach((c) => c.classList.remove("active"));
-      card.classList.add("active");
-      selectedStyle = card.dataset.styleValue;
-    });
+  panel.querySelector("[data-site-style-select]").addEventListener("change", (e) => {
+    selectedStyle = e.target.value;
   });
   panel.querySelectorAll(".site-color-swatch").forEach((sw) => {
     sw.addEventListener("click", () => {
@@ -2905,7 +3360,8 @@ async function initWebsitePanel(panel, leadId, lead) {
           businessName,
           designStyle: selectedStyle,
           colorPreset: selectedColor,
-          useVisuals: panel.querySelector("[data-site-use-visuals]").checked,
+          services: panel.querySelector("[data-site-services]").value.trim() || null,
+          ctaGoal: panel.querySelector("[data-site-cta-goal]").value.trim() || null,
         }),
       });
       const data = await res.json();

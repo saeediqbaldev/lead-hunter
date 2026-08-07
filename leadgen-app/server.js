@@ -16,6 +16,8 @@ const usersRoute = require("./src/routes/users");
 const themeRoute = require("./src/routes/theme");
 const reportsRoute = require("./src/routes/reports");
 const backupRoute = require("./src/routes/backup");
+const trackerRoute = require("./src/routes/tracker");
+const trackerPublicRoute = require("./src/routes/trackerPublic");
 
 const app = express();
 
@@ -91,6 +93,8 @@ app.use("/api/users", requireAuth, requireAdmin, usersRoute);
 app.use("/api/theme", requireAuth, themeRoute);
 app.use("/api/reports", requireAuth, reportsRoute);
 app.use("/api/backup", requireAuth, backupRoute);
+app.use("/", trackerPublicRoute);
+app.use("/api/tracker", requireAuth, trackerRoute);
 
 app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
 

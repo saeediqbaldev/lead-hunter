@@ -2,11 +2,11 @@
 // DeepSeek both use this exact shape (only the base URL, default model, and
 // auth header value differ), so one implementation serves both instead of
 // duplicating the same fetch/parse/timeout logic twice.
-const REQUEST_TIMEOUT_MS = 15000;
+const DEFAULT_TIMEOUT_MS = 15000;
 
-async function fetchWithTimeout(url, options = {}) {
+async function fetchWithTimeout(url, options = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   const startedAt = Date.now();
   try {
     const res = await fetch(url, { ...options, signal: controller.signal });
@@ -47,20 +47,25 @@ function createOpenAiCompatibleClient({ label, baseUrl, defaultModel }) {
     }
   }
 
-  async function generateText(apiKey, prompt, { jsonMode } = {}) {
+  async function generateText(apiKey, prompt, { jsonMode, timeoutMs, maxTokens } = {}) {
     const body = {
       model: defaultModel,
       messages: [{ role: "user", content: prompt }],
+      max_tokens: maxTokens || 8000,
     };
     if (jsonMode) body.response_format = { type: "json_object" };
 
     try {
-      const res = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify(body),
-        __providerLabel: label,
-      });
+      const res = await fetchWithTimeout(
+        `${baseUrl}/chat/completions`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+          body: JSON.stringify(body),
+          __providerLabel: label,
+        },
+        timeoutMs || DEFAULT_TIMEOUT_MS
+      );
 
       if (!res.ok) {
         const errText = await res.text();

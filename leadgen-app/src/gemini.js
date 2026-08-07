@@ -4,24 +4,18 @@
 // text-generation calls - no need for a heavier SDK dependency for this.
 const GEMINI_MODEL = "gemini-2.5-flash";
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
-// Kept deliberately conservative - well under typical reverse-proxy default
-// timeouts (commonly 30-60s for nginx/Traefik setups like Coolify uses) so
-// THIS timeout fires and returns a clean JSON error before the proxy's own
-// timeout can intervene and return an HTML error page instead, which is
-// what produces "Unexpected token '<'" on the client (attempting to
-// JSON-parse an HTML response).
-const REQUEST_TIMEOUT_MS = 20000;
+// Default stays conservative for short calls (business-analysis writeup,
+// short copy). Every caller of generateText already runs inside an async
+// job runner (Inspect, content generation, website generation all poll
+// for progress rather than blocking the browser-facing request), so a
+// longer timeout no longer risks the reverse-proxy timeout that motivated
+// keeping this short originally - callers needing more time (a full HTML
+// page can genuinely take 30-90s to generate) pass their own timeoutMs.
+const DEFAULT_TIMEOUT_MS = 20000;
 
-// A plain fetch() with no timeout can hang indefinitely if Gemini is slow
-// to respond - and structured JSON-schema generation genuinely can take a
-// while. Most reverse proxies (Coolify/Traefik included) kill idle
-// connections around 60s, which would cut the request mid-flight and
-// surface as a generic connection failure on the client with no useful
-// error message. This wraps every Gemini call with an explicit timeout so
-// a slow response fails cleanly and quickly instead.
-async function fetchWithTimeout(url, options = {}) {
+async function fetchWithTimeout(url, options = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   const startedAt = Date.now();
   try {
     const res = await fetch(url, { ...options, signal: controller.signal });
@@ -66,20 +60,26 @@ async function testApiKey(apiKey) {
 // Generates plain text from a prompt. Returns { ok, text, error }.
 // responseSchema (optional) requests structured JSON output directly from
 // the model instead of us having to parse free-form text.
-async function generateText(apiKey, prompt, { responseSchema } = {}) {
+async function generateText(apiKey, prompt, { responseSchema, timeoutMs, maxOutputTokens } = {}) {
   const body = {
     contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: { maxOutputTokens: maxOutputTokens || 8000 },
   };
   if (responseSchema) {
-    body.generationConfig = { responseMimeType: "application/json", responseSchema };
+    body.generationConfig.responseMimeType = "application/json";
+    body.generationConfig.responseSchema = responseSchema;
   }
 
   try {
-    const res = await fetchWithTimeout(`${GEMINI_BASE}/models/${GEMINI_MODEL}:generateContent`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      body: JSON.stringify(body),
-    });
+    const res = await fetchWithTimeout(
+      `${GEMINI_BASE}/models/${GEMINI_MODEL}:generateContent`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+        body: JSON.stringify(body),
+      },
+      timeoutMs || DEFAULT_TIMEOUT_MS
+    );
 
     if (!res.ok) {
       const errText = await res.text();
@@ -104,7 +104,7 @@ async function generateText(apiKey, prompt, { responseSchema } = {}) {
     return { ok: true, text };
   } catch (err) {
     const timedOut = err.name === "AbortError";
-    return { ok: false, error: timedOut ? "Gemini took too long to respond (over 20s) - try again, or try a shorter length setting." : `Could not reach Gemini: ${err.message}` };
+    return { ok: false, error: timedOut ? "Gemini took too long to respond - try again, or try a shorter length setting." : `Could not reach Gemini: ${err.message}` };
   }
 }
 

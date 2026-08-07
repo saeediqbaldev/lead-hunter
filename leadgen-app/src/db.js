@@ -508,4 +508,87 @@ CREATE TABLE IF NOT EXISTS generated_sites (
 );
 `);
 
+// ---------- Email open/click tracker (the "Contacted" feature) ----------
+// Ported from a standalone Postgres-backed app into this app's own SQLite
+// database - same tracking model (pixel + link-rewrite, self-open and
+// bot/scanner filtering, notifications, SMTP alerts), but every table is
+// scoped per-user (user_id) since this app has multiple users and the
+// original was single-admin. id on tracked_emails stays a UUID string
+// (generated in JS) rather than an integer, to match the format already
+// baked into the browser extension's tracking-pixel/click URLs.
+db.exec(`
+CREATE TABLE IF NOT EXISTS tracked_emails (
+  id TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  subject TEXT NOT NULL DEFAULT '',
+  recipients TEXT NOT NULL DEFAULT '[]',
+  sender TEXT,
+  sender_ip TEXT,
+  notes TEXT NOT NULL DEFAULT '',
+  provider TEXT NOT NULL DEFAULT 'hostinger',
+  status TEXT NOT NULL DEFAULT 'sent',
+  open_count INTEGER NOT NULL DEFAULT 0,
+  click_count INTEGER NOT NULL DEFAULT 0,
+  first_opened_at TEXT,
+  last_opened_at TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_tracked_emails_user ON tracked_emails(user_id);
+CREATE INDEX IF NOT EXISTS idx_tracked_emails_created_at ON tracked_emails(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS tracked_opens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email_id TEXT NOT NULL REFERENCES tracked_emails(id) ON DELETE CASCADE,
+  opened_at TEXT DEFAULT (datetime('now')),
+  ip TEXT,
+  user_agent TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_tracked_opens_email ON tracked_opens(email_id);
+
+CREATE TABLE IF NOT EXISTS tracked_clicks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email_id TEXT NOT NULL REFERENCES tracked_emails(id) ON DELETE CASCADE,
+  url TEXT NOT NULL,
+  clicked_at TEXT DEFAULT (datetime('now')),
+  ip TEXT,
+  user_agent TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_tracked_clicks_email ON tracked_clicks(email_id);
+
+CREATE TABLE IF NOT EXISTS tracked_notifications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email_id TEXT NOT NULL REFERENCES tracked_emails(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL,
+  type TEXT NOT NULL,
+  url TEXT,
+  message TEXT NOT NULL DEFAULT '',
+  is_read INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_tracked_notif_user ON tracked_notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_tracked_notif_read ON tracked_notifications(is_read);
+`);
+
+// Per-user tracker settings + the auto-generated API key the extension
+// authenticates with - lives on the users table alongside signature/
+// meeting_link/etc, matching this app's existing per-user-settings pattern
+// rather than the original's single global settings row.
+{
+  const userCols = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
+  const trackerCols = {
+    tracker_api_key: "TEXT",
+    tracker_refresh_interval: "INTEGER DEFAULT 15",
+    tracker_notify_email_enabled: "INTEGER DEFAULT 0",
+    tracker_notify_email_to: "TEXT",
+    tracker_smtp_host: "TEXT",
+    tracker_smtp_port: "INTEGER",
+    tracker_smtp_user: "TEXT",
+    tracker_smtp_pass: "TEXT",
+    tracker_smtp_from: "TEXT",
+  };
+  for (const [col, type] of Object.entries(trackerCols)) {
+    if (!userCols.includes(col)) db.exec(`ALTER TABLE users ADD COLUMN ${col} ${type}`);
+  }
+}
+
 module.exports = db;

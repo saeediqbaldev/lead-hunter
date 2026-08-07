@@ -6,6 +6,90 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V14.1
+**New feature: Contacted - email open/click tracking for Hostinger Webmail.**
+A full port of a standalone Postgres-backed tracker (backend + Chrome
+extension) into this app, merged into its own database rather than run as
+a second service - genuinely zero manual setup in code or Coolify.
+
+- **New "Contacted" section** in the sidebar below Pinned, with five pages:
+  Hostinger Mail Setup, Tracking, History, Reports, and Alerts.
+- **Zero manual setup**: your API key generates itself the first time you
+  open the setup page, and the extension downloads as a ready-to-load zip
+  with your key and this app's own domain already baked in as its
+  defaults - no `.env`, no options-page typing, no Coolify config. Verified
+  by actually downloading, unzipping, and inspecting the generated files -
+  confirmed the real values were substituted correctly with zero leftover
+  placeholder tokens.
+- **Per-user, not single-admin**: unlike the original tool, tracked emails,
+  API keys, and notification settings are all scoped to whichever user is
+  logged in - verified with a second real account that it can't see the
+  first user's tracked emails at all.
+- **Same tracking mechanics as the original**, ported faithfully: pixel +
+  link-rewrite tracking, self-open filtering (own IP + grace period) and
+  bot/scanner filtering (mail security gateways, link-preview bots) so
+  those don't falsely mark a message as opened - both verified with real
+  simulated hits confirming they're correctly suppressed.
+- **Full dashboard**: ledger with filters, search, bulk delete, and a
+  detail panel with notes and open/click history; a flat History log;
+  Reports with range-filtered stats, a line chart, and a day/hour
+  engagement heatmap; and Alerts with an unread badge, verified end-to-end
+  including mark-all-read correctly clearing it.
+- **Email notifications** on open/click, sent through your own SMTP
+  account, configurable entirely from the Setup page.
+- Scoped to Hostinger Webmail only per current requirements - the ported
+  code is structured so Zoho/Gmail support (present in the original) could
+  be added back later without a rearchitecture.
+
+Every piece - pixel/click logging, self-open and bot filtering, per-user
+isolation, the setup/download flow, and all five dashboard pages - was
+verified with real HTTP requests and real browser sessions, not just read
+through.
+
+## What's in this V14.0
+**Website generation rebuilt around your tested prompt.** Replaces the
+3-template system from V13.9 entirely with a single-call, full-page AI
+generator using your validated system prompt - one AI call writes the
+complete HTML/CSS/JS per business, rather than AI writing short copy for
+fixed templates.
+
+- **8 named design styles** (Minimal, Modern, Creative/Bold, Elegant/Luxe,
+  Organic/Warm, Corporate/Professional, Playful, Dark/Gallery), selected
+  via dropdown as requested - verified all 8 appear correctly.
+- **10 color presets plus a "Surprise me" option** that lets the AI choose
+  freely - verified both paths reach the prompt correctly (brand-
+  authoritative hex codes when a preset is picked, no palette instruction
+  when Surprise is selected).
+- **Real photos via LoremFlickr**, keyword-derived per business, no API
+  key or rate limits - baked into the system prompt's hard rules exactly
+  as specified, alongside inline SVG icons, working mobile hamburger
+  navigation, and all the other technical rules from your prompt.
+- **Clean URLs** (`niche/city/business-name`, no random ID) with
+  collision handling verified end-to-end: generating twice for the same
+  business correctly gets `-2` appended on the second one, and both
+  remain independently servable.
+- New optional Services and CTA Goal fields, plus phone/address/social
+  handles now auto-pulled from the lead record into the prompt without
+  needing to re-enter them.
+
+**Two real bugs found and fixed while building this**, on top of the
+core rebuild:
+- The AI request timeout (15-20s) was tuned for short copy snippets, not
+  a full page that can take 30-90s to generate - fixed and verified the
+  longer timeout/token budget actually reaches the AI client. Safe to do
+  because every AI call already runs inside an async job runner, so
+  nothing here reintroduces the reverse-proxy timeout issue from earlier
+  in this project.
+- A lead's social media handles were being passed as an unparsed JSON
+  string instead of a real object to the prompt builder - caught before
+  it shipped.
+
+Verified end-to-end through real HTTP and a real browser session: the
+full business context (palette, style, services, CTA goal, phone,
+socials) all confirmed reaching the AI prompt correctly, slug collision
+handling confirmed with two real generations for the same business, and
+backup/restore reverified against the updated schema values.
+
 ## What's in this V13.9
 **New feature: freebie website generation.** From the Generate panel on any
 lead, "Create Website" opens a new section that generates a free,
