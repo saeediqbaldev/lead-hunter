@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.07-14.7";
+const APP_VERSION = "2026.08.07-14.9";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -891,6 +891,14 @@ async function openContactedDetail(emailId) {
     <h3 style="margin-top:0;">${data.email.subject || "(no subject)"}</h3>
     <p class="hint">To: ${data.email.recipients.join(", ")}</p>
     <p class="hint">Sent ${data.email.created_at}</p>
+    <div class="settings-divider"></div>
+    <h4>Message</h4>
+    ${
+      data.email.body_html
+        ? `<iframe class="contacted-detail-body-frame" srcdoc="${escapeHtml(data.email.body_html)}" sandbox=""></iframe>`
+        : `<p class="hint">No content captured for this email - it was sent manually via the ${data.email.provider} extension, which only reports tracking metadata, not the message body.</p>`
+    }
+    <div class="settings-divider"></div>
     <label class="site-field-label">Notes<textarea data-detail-notes rows="3" style="width:100%; background:var(--panel-raised); border:1px solid var(--border); border-radius:6px; color:var(--text); padding:8px;">${data.email.notes || ""}</textarea></label>
     <button type="button" class="small-btn" data-action="save-detail-notes">Save note</button>
     <div class="settings-divider"></div>
@@ -945,7 +953,7 @@ async function loadContactedHistory() {
   tbody.innerHTML = data.events
     .map(
       (ev) => `
-    <tr>
+    <tr class="contacted-row" data-history-email-id="${ev.email_id}">
       <td><span class="contacted-status-pill ${ev.type === "open" ? "opened" : "clicked"}">${ev.type}</span></td>
       <td>${ev.subject || "(no subject)"}</td>
       <td>${ev.recipients.join(", ")}</td>
@@ -954,6 +962,10 @@ async function loadContactedHistory() {
     </tr>`
     )
     .join("");
+
+  tbody.querySelectorAll("[data-history-email-id]").forEach((row) => {
+    row.addEventListener("click", () => openContactedDetail(row.dataset.historyEmailId));
+  });
 }
 document.getElementById("contactedHistoryTypeSelect").addEventListener("change", loadContactedHistory);
 document.getElementById("contactedHistorySearchInput").addEventListener("input", debounce(loadContactedHistory, 300));
@@ -1036,7 +1048,7 @@ async function loadContactedAlerts() {
       (n) => `
     <div class="contacted-alert-item ${n.is_read ? "" : "unread"}" data-notif-id="${n.id}">
       <i class="bi ${n.is_read ? "bi-bell" : "bi-bell-fill"} contacted-alert-bell ${n.is_read ? "" : "unread"}" data-action="toggle-read" title="Toggle read"></i>
-      <div class="msg">${n.message}<div class="meta">${n.created_at}</div></div>
+      <div class="msg" data-action="view-email" data-email-id="${n.email_id}" style="cursor:pointer;">${n.message}<div class="meta">${n.created_at}</div></div>
       <button class="del" data-action="delete-notif" title="Delete"><i class="bi bi-x-lg"></i></button>
     </div>`
     )
@@ -1047,7 +1059,9 @@ async function loadContactedAlerts() {
       const item = e.target.closest("[data-notif-id]");
       const id = item.dataset.notifId;
       const action = el.dataset.action;
-      if (action === "toggle-read") {
+      if (action === "view-email") {
+        openContactedDetail(el.dataset.emailId);
+      } else if (action === "toggle-read") {
         const isUnread = el.classList.contains("unread");
         await api(`/api/tracker/notifications/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ is_read: isUnread }) });
         loadContactedAlerts();
@@ -1279,6 +1293,97 @@ async function showCampaignCreationForm() {
   });
 }
 
+function showCampaignEditForm(campaign) {
+  setContentView("contacted-campaign-detail");
+  document.getElementById("campaignDetailTitle").textContent = `Edit: ${campaign.name}`;
+  document.getElementById("campaignDetailScope").textContent = "Reconfigure this campaign - the lead scope (niche/city) can't be changed after creation";
+  document.getElementById("campaignDetailActions").innerHTML = `<button class="icon-toggle-btn" data-campaign-action="cancel-edit" title="Back"><i class="bi bi-arrow-left"></i></button>`;
+  document.getElementById("campaignDetailActions").querySelector("[data-campaign-action]").addEventListener("click", () => loadCampaignDetail(campaign.id));
+
+  const body = document.getElementById("campaignDetailBody");
+  body.innerHTML = `
+    <label class="site-field-label">Campaign name<input type="text" data-edit-name value="${campaign.name}"></label>
+    <label class="site-visuals-toggle"><input type="checkbox" data-edit-require-inspection ${campaign.require_inspection ? "checked" : ""}> Inspect uninspected leads first, before writing their email</label>
+    <div class="smtp-field-row">
+      <label class="site-field-label">Tone
+        <select data-edit-tone>${CONTENT_TONES.map((t) => `<option value="${t}" ${t === campaign.tone ? "selected" : ""}>${t}</option>`).join("")}</select>
+      </label>
+      <label class="site-field-label">Length
+        <select data-edit-length>${CONTENT_LENGTHS.map((l) => `<option value="${l}" ${l === campaign.length ? "selected" : ""}>${l}</option>`).join("")}</select>
+      </label>
+    </div>
+    <label class="site-field-label">Language
+      <select data-edit-language>${CONTENT_LANGUAGES.map((l) => `<option value="${l.value}" ${l.value === campaign.language ? "selected" : ""}>${l.flag} ${l.label}</option>`).join("")}</select>
+    </label>
+    <label class="site-field-label">AI provider
+      <select data-edit-ai-provider>
+        <option value="" ${!campaign.ai_provider ? "selected" : ""}>Auto</option>
+        <option value="groq" ${campaign.ai_provider === "groq" ? "selected" : ""}>Groq</option>
+        <option value="gemini" ${campaign.ai_provider === "gemini" ? "selected" : ""}>Gemini</option>
+        <option value="deepseek" ${campaign.ai_provider === "deepseek" ? "selected" : ""}>DeepSeek</option>
+      </select>
+    </label>
+    <label class="site-visuals-toggle"><input type="checkbox" data-edit-cta ${campaign.cta ? "checked" : ""}> Weave in a clear call-to-action</label>
+    <label class="site-visuals-toggle"><input type="checkbox" data-edit-meeting ${campaign.meeting ? "checked" : ""}> Invite them to a meeting/call</label>
+    <label class="site-field-label" data-edit-meeting-link-row style="${campaign.meeting ? "" : "display:none;"}">Meeting booking link<input type="text" data-edit-meeting-link value="${campaign.meeting_link || ""}"></label>
+    <div class="settings-divider"></div>
+    <h3 class="settings-subheading">Sending pace</h3>
+    <div class="smtp-field-row">
+      <label class="site-field-label">Max per day<input type="number" data-edit-max-per-day value="${campaign.max_per_day}" min="1" max="100"></label>
+      <label class="site-field-label">Gap: min - max minutes
+        <div style="display:flex; gap:6px;">
+          <input type="number" data-edit-min-gap value="${campaign.min_gap_minutes}" min="1" style="width:70px;">
+          <input type="number" data-edit-max-gap value="${campaign.max_gap_minutes}" min="1" style="width:70px;">
+        </div>
+      </label>
+    </div>
+    <div style="display:flex; gap:8px; margin-top:12px;">
+      <button type="button" class="site-generate-btn" data-action="save-campaign-edit">Save changes</button>
+      <button type="button" class="small-btn" data-action="cancel-campaign-edit">Cancel</button>
+    </div>
+    <div class="settings-result" id="campaignEditResult" style="display:none;"></div>
+  `;
+
+  body.querySelector("[data-edit-meeting]").addEventListener("change", (e) => {
+    body.querySelector("[data-edit-meeting-link-row]").style.display = e.target.checked ? "block" : "none";
+  });
+
+  body.addEventListener("click", async (e) => {
+    const action = e.target.closest("[data-action]")?.dataset.action;
+    if (action === "cancel-campaign-edit") {
+      loadCampaignDetail(campaign.id);
+      return;
+    }
+    if (action === "save-campaign-edit") {
+      const payload = {
+        name: body.querySelector("[data-edit-name]").value.trim(),
+        requireInspection: body.querySelector("[data-edit-require-inspection]").checked,
+        tone: body.querySelector("[data-edit-tone]").value,
+        length: body.querySelector("[data-edit-length]").value,
+        language: body.querySelector("[data-edit-language]").value,
+        aiProvider: body.querySelector("[data-edit-ai-provider]").value,
+        cta: body.querySelector("[data-edit-cta]").checked,
+        meeting: body.querySelector("[data-edit-meeting]").checked,
+        meetingLink: body.querySelector("[data-edit-meeting-link]").value.trim(),
+        maxPerDay: parseInt(body.querySelector("[data-edit-max-per-day]").value, 10) || 100,
+        minGapMinutes: parseInt(body.querySelector("[data-edit-min-gap]").value, 10) || 5,
+        maxGapMinutes: parseInt(body.querySelector("[data-edit-max-gap]").value, 10) || 10,
+      };
+      const res = await api(`/api/campaigns/${campaign.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const data = await res.json();
+      const resultEl = document.getElementById("campaignEditResult");
+      if (!res.ok) {
+        resultEl.style.display = "block";
+        resultEl.className = "settings-result bad";
+        resultEl.textContent = data.error;
+        return;
+      }
+      showToast("Campaign updated", "success");
+      loadCampaignDetail(campaign.id);
+    }
+  });
+}
+
 async function loadCampaignDetail(campaignId) {
   setContentView("contacted-campaign-detail");
   const res = await api(`/api/campaigns/${campaignId}`);
@@ -1293,7 +1398,9 @@ async function loadCampaignDetail(campaignId) {
   if (campaign.status === "draft") actions.push(`<button class="site-generate-btn" data-campaign-action="start">Start</button>`);
   if (campaign.status === "running") actions.push(`<button class="small-btn" data-campaign-action="pause">Pause</button>`);
   if (campaign.status === "paused") actions.push(`<button class="site-generate-btn" data-campaign-action="resume">Resume</button>`);
+  if (["draft", "paused"].includes(campaign.status)) actions.push(`<button class="small-btn" data-campaign-action="edit">Edit</button>`);
   if (["draft", "running", "paused"].includes(campaign.status)) actions.push(`<button class="small-btn danger-btn" data-campaign-action="cancel">Cancel</button>`);
+  actions.push(`<button class="small-btn danger-btn" data-campaign-action="delete">Delete</button>`);
   actions.push(`<button class="icon-toggle-btn" data-campaign-action="back" title="Back to list"><i class="bi bi-arrow-left"></i></button>`);
   actionsEl.innerHTML = actions.join("");
 
@@ -1301,6 +1408,24 @@ async function loadCampaignDetail(campaignId) {
     btn.addEventListener("click", async () => {
       const action = btn.dataset.campaignAction;
       if (action === "back") {
+        loadContactedCampaigns();
+        setContentView("contacted-campaigns");
+        return;
+      }
+      if (action === "edit") {
+        showCampaignEditForm(campaign);
+        return;
+      }
+      if (action === "delete") {
+        const confirmed = await openModal({
+          title: `Delete "${campaign.name}"?`,
+          message: `This removes the campaign and its lead queue. Emails already sent stay visible in Tracking/History - this only deletes the campaign record itself. This cannot be undone.`,
+          confirmText: "Delete",
+          danger: true,
+        });
+        if (!confirmed) return;
+        await api(`/api/campaigns/${campaignId}`, { method: "DELETE" });
+        showToast("Campaign deleted", "success");
         loadContactedCampaigns();
         setContentView("contacted-campaigns");
         return;
@@ -1329,7 +1454,7 @@ async function loadCampaignDetail(campaignId) {
           .map((l) => {
             const openInfo = l.open_count != null ? `${l.open_count} open(s)${l.click_count ? `, ${l.click_count} click(s)` : ""}` : "";
             return `
-          <tr class="campaign-lead-row" data-lead-row-toggle="${l.id}">
+          <tr class="campaign-lead-row" data-lead-row-toggle="${l.id}" data-lead-id="${l.lead_id}">
             <td><i class="bi bi-chevron-right campaign-row-chevron" data-chevron="${l.id}"></i></td>
             <td>${l.lead_name}</td>
             <td>${l.recipient_email || "—"}</td>
@@ -1347,7 +1472,10 @@ async function loadCampaignDetail(campaignId) {
                 ${l.phone ? `<div><b>Phone:</b> ${l.phone}</div>` : ""}
                 ${l.address ? `<div><b>Address:</b> ${l.address}</div>` : ""}
                 <div><b>Queued:</b> ${l.created_at}</div>
-                ${!l.sent_subject && !l.error ? `<div class="hint">No further detail yet - this lead hasn't reached content generation.</div>` : ""}
+              </div>
+              <div class="settings-divider"></div>
+              <div class="campaign-full-panel-wrap" data-full-expand-container="${l.id}">
+                <p class="hint" style="padding:8px 0;">Loading Inspection / Content / Website details for this lead…</p>
               </div>
             </td>
           </tr>`;
@@ -1358,14 +1486,27 @@ async function loadCampaignDetail(campaignId) {
   `;
 
   bodyEl.querySelectorAll("[data-lead-row-toggle]").forEach((row) => {
-    row.addEventListener("click", () => {
+    row.addEventListener("click", async () => {
       const id = row.dataset.leadRowToggle;
+      const leadId = row.dataset.leadId;
       const detailRow = document.getElementById(`campaign-detail-${id}`);
       const chevron = bodyEl.querySelector(`[data-chevron="${id}"]`);
       const isOpen = detailRow.style.display !== "none";
       detailRow.style.display = isOpen ? "none" : "table-row";
       chevron.classList.toggle("bi-chevron-right", isOpen);
       chevron.classList.toggle("bi-chevron-down", !isOpen);
+
+      const container = document.querySelector(`[data-full-expand-container="${id}"]`);
+      if (!isOpen && container && !container.dataset.loaded) {
+        container.dataset.loaded = "1";
+        try {
+          const lead = await api(`/api/leads/${leadId}`).then((r) => r.json());
+          container.innerHTML = buildExpandPanelHtml(lead);
+          await wireLeadExpandPanel(container, Number(leadId), lead);
+        } catch (err) {
+          container.innerHTML = `<p class="hint" style="color:var(--danger);">Could not load this lead's details: ${err.message}</p>`;
+        }
+      }
     });
   });
 }
@@ -4045,6 +4186,16 @@ async function initWebsitePanel(panel, leadId, lead) {
 
 function buildExpandPanelHtml(lead) {
   return `
+    <div class="expand-section" data-owner-name-section>
+      <label class="site-field-label" style="margin:0;">
+        Owner/contact name <small class="optional">(optional - used for "Hi [name]" in outreach; falls back to the business name if left blank)</small>
+        <div style="display:flex; gap:6px; margin-top:5px;">
+          <input type="text" data-owner-name-input value="${lead.owner_name || ""}" placeholder="e.g. Sarah Mueller" style="flex:1;">
+          <button type="button" class="small-btn" data-action="save-owner-name">Save</button>
+        </div>
+      </label>
+    </div>
+
     <div class="expand-section" data-inspect-section>
       <div class="expand-section-head">
         <span class="expand-section-title"><i class="bi bi-clipboard-data"></i> Business Inspection</span>
@@ -4148,6 +4299,17 @@ async function toggleLeadExpand(leadId) {
   expandRow.innerHTML = buildExpandPanelHtml(lead);
   row.after(expandRow);
 
+  await wireLeadExpandPanel(expandRow, leadId, lead);
+}
+
+// The full Inspect / Generate Content / Freebie Website wiring for a
+// lead's expand panel - deliberately independent of any specific board
+// or table (only needs the already-built expandRow element, the lead ID,
+// and the lead object itself), so it can be reused anywhere a lead's
+// expand panel needs to appear - the Reach Out/Hunt board via
+// toggleLeadExpand above, and campaign lead rows via
+// toggleCampaignLeadExpand elsewhere.
+async function wireLeadExpandPanel(expandRow, leadId, lead) {
   let currentPlatform = "email";
   let currentTone = "";
   let currentLength = "Medium";
@@ -4354,6 +4516,19 @@ async function toggleLeadExpand(leadId) {
           await initWebsitePanel(panel, leadId, lead);
         }
       }
+      return;
+    }
+
+    if (action === "save-owner-name") {
+      const input = expandRow.querySelector("[data-owner-name-input]");
+      const value = input.value.trim();
+      await api(`/api/leads/${leadId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ownerName: value || null }),
+      });
+      lead.owner_name = value || null;
+      showToast("Owner name saved", "success");
       return;
     }
 

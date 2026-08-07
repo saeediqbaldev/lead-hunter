@@ -182,4 +182,60 @@ router.post("/:id/cancel", requireOwnedCampaign, (req, res) => {
   res.json({ ok: true });
 });
 
+// PUT /api/campaigns/:id - edit/rename/reconfig. Only allowed for draft or
+// paused campaigns - a running campaign is actively being processed by
+// the scheduler, and changing its settings mid-flight could race with an
+// in-progress send (e.g. changing the tone while a lead is mid-generation).
+// Pause it first if it needs adjusting.
+router.put("/:id", requireOwnedCampaign, (req, res) => {
+  if (!["draft", "paused"].includes(req.campaign.status)) {
+    return res.status(400).json({ error: "Pause a running campaign before editing it." });
+  }
+  const { name, requireInspection, tone, length, language, cta, meeting, meetingLink, aiProvider, maxPerDay, minGapMinutes, maxGapMinutes } = req.body || {};
+  if (name !== undefined && !name.trim()) return res.status(400).json({ error: "Campaign name can't be empty" });
+
+  db.prepare(
+    `UPDATE email_campaigns SET
+      name = COALESCE(?, name),
+      require_inspection = COALESCE(?, require_inspection),
+      tone = COALESCE(?, tone),
+      length = COALESCE(?, length),
+      language = COALESCE(?, language),
+      cta = COALESCE(?, cta),
+      meeting = COALESCE(?, meeting),
+      meeting_link = ?,
+      ai_provider = COALESCE(?, ai_provider),
+      max_per_day = COALESCE(?, max_per_day),
+      min_gap_minutes = COALESCE(?, min_gap_minutes),
+      max_gap_minutes = COALESCE(?, max_gap_minutes)
+     WHERE id = ?`
+  ).run(
+    name !== undefined ? name.trim() : null,
+    requireInspection !== undefined ? (requireInspection ? 1 : 0) : null,
+    tone ?? null,
+    length ?? null,
+    language ?? null,
+    cta !== undefined ? (cta ? 1 : 0) : null,
+    meeting !== undefined ? (meeting ? 1 : 0) : null,
+    meetingLink !== undefined ? meetingLink || null : req.campaign.meeting_link,
+    aiProvider !== undefined ? aiProvider : null,
+    maxPerDay !== undefined ? Math.min(maxPerDay, 100) : null,
+    minGapMinutes ?? null,
+    maxGapMinutes ?? null,
+    req.campaign.id
+  );
+
+  const updated = db.prepare("SELECT * FROM email_campaigns WHERE id = ?").get(req.campaign.id);
+  res.json({ ok: true, campaign: updated });
+});
+
+// DELETE /api/campaigns/:id - fully removes the campaign and its per-lead
+// queue (cascades via the foreign key). Tracked emails already sent are
+// untouched - they remain visible in Tracking/History regardless, since
+// deleting the campaign shouldn't erase evidence of what was actually sent.
+router.delete("/:id", requireOwnedCampaign, (req, res) => {
+  db.prepare("DELETE FROM email_campaigns WHERE id = ?").run(req.campaign.id);
+  res.json({ ok: true });
+});
+
 module.exports = router;

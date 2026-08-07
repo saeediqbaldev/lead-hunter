@@ -140,7 +140,9 @@ async function processCampaignLead(campaign, campaignLeadRow) {
     throw new Error(sendResult.error);
   }
 
+  db.prepare("UPDATE tracked_emails SET body_html = ? WHERE id = ?").run(html, trackedId);
   db.prepare("UPDATE email_campaign_leads SET status = 'sent', tracked_email_id = ?, sent_at = datetime('now') WHERE id = ?").run(trackedId, campaignLeadRow.id);
+  db.prepare("UPDATE leads SET status = 'contacted' WHERE id = ? AND status IN ('new', 'shortlisted')").run(lead.id);
   return { ok: true, skipped: false };
 }
 

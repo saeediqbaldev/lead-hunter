@@ -7,6 +7,20 @@
 
 const URL_PATTERN = /(https?:\/\/[^\s<>")]+)/g;
 
+// Common sentence-ending/list punctuation that a URL regex will greedily
+// swallow if it happens to appear immediately after a link with no space
+// (e.g. "book here: https://cal.com/you/15min." - the AI writes normal
+// prose, so a trailing period is expected, not an edge case). Strips any
+// of these off the END of a matched URL and returns them separately so
+// they can be placed back into the surrounding text instead of the href.
+const TRAILING_PUNCTUATION = /[.,;:!?)\]]+$/;
+
+function splitTrailingPunctuation(url) {
+  const match = url.match(TRAILING_PUNCTUATION);
+  if (!match) return { cleanUrl: url, trailing: "" };
+  return { cleanUrl: url.slice(0, -match[0].length), trailing: match[0] };
+}
+
 function escapeHtml(text) {
   return String(text || "")
     .replace(/&/g, "&amp;")
@@ -25,8 +39,9 @@ function buildTrackedHtmlEmail({ bodyText, pixelUrl, clickBaseUrl }) {
     .map((block) => {
       const withLineBreaks = escapeHtml(block).replace(/\n/g, "<br>");
       const withTrackedLinks = withLineBreaks.replace(URL_PATTERN, (url) => {
-        const trackedHref = `${clickBaseUrl}?url=${encodeURIComponent(url)}`;
-        return `<a href="${trackedHref}">${url}</a>`;
+        const { cleanUrl, trailing } = splitTrailingPunctuation(url);
+        const trackedHref = `${clickBaseUrl}?url=${encodeURIComponent(cleanUrl)}`;
+        return `<a href="${trackedHref}">${cleanUrl}</a>${trailing}`;
       });
       return `<p style="margin:0 0 14px 0;">${withTrackedLinks}</p>`;
     })

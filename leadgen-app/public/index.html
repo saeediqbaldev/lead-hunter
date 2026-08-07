@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="Xeven Leads" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=147" />
+<link rel="stylesheet" href="style.css?v=149" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -145,6 +145,7 @@
             <button class="nav-section-refresh" data-refresh-section="contacted" title="Refresh Contacted data"><i class="bi bi-arrow-clockwise"></i></button>
           </div>
           <div class="nav-section-body">
+            <div class="nav-tree">
             <div class="niche-block open" data-platform-node="hostinger">
               <div class="niche-row" data-toggle-platform="hostinger">
                 <span class="niche-caret">▶</span>
@@ -185,6 +186,7 @@
                 <div class="catchlog-row" data-goto-platform="gmail" data-goto-view="reports"><div class="catchlog-name"><i class="bi bi-graph-up"></i> Reports</div></div>
                 <div class="catchlog-row" data-goto-platform="gmail" data-goto-view="setup"><div class="catchlog-name"><i class="bi bi-gear-wide-connected"></i> Setup</div></div>
               </div>
+            </div>
             </div>
           </div>
         </div>
@@ -476,7 +478,7 @@
       </section>
 
       <!-- ---------- Contacted: Hostinger Mail Setup ---------- -->
-      <section class="panel view-hidden" id="contactedSetupView">
+      <section class="panel simple-panel view-hidden" id="contactedSetupView">
         <div class="board-header">
           <div>
             <h2 id="contactedSetupTitle">Hostinger Mail Setup</h2>
@@ -489,7 +491,7 @@
       </section>
 
       <!-- ---------- Contacted: Tracking ledger ---------- -->
-      <section class="panel view-hidden" id="contactedTrackingView">
+      <section class="panel simple-panel view-hidden" id="contactedTrackingView">
         <div class="board-header">
           <div class="board-header-row-top">
             <div class="board-header-title-group">
@@ -526,7 +528,7 @@
       </section>
 
       <!-- ---------- Contacted: History ---------- -->
-      <section class="panel view-hidden" id="contactedHistoryView">
+      <section class="panel simple-panel view-hidden" id="contactedHistoryView">
         <div class="board-header">
           <div>
             <h2>Contacted</h2>
@@ -552,7 +554,7 @@
       </section>
 
       <!-- ---------- Contacted: Reports ---------- -->
-      <section class="panel view-hidden" id="contactedReportsView">
+      <section class="panel simple-panel view-hidden" id="contactedReportsView">
         <div class="board-header">
           <div>
             <h2>Contacted</h2>
@@ -580,7 +582,7 @@
       </section>
 
       <!-- ---------- Contacted: Alerts ---------- -->
-      <section class="panel view-hidden" id="contactedAlertsView">
+      <section class="panel simple-panel view-hidden" id="contactedAlertsView">
         <div class="board-header">
           <div class="board-header-row-top">
             <div class="board-header-title-group">
@@ -604,7 +606,7 @@
       </section>
 
       <!-- ---------- Contacted: Auto Send campaigns (list) ---------- -->
-      <section class="panel view-hidden" id="contactedCampaignsView">
+      <section class="panel simple-panel view-hidden" id="contactedCampaignsView">
         <div class="board-header">
           <div class="board-header-row-top">
             <div class="board-header-title-group">
@@ -620,7 +622,7 @@
       </section>
 
       <!-- ---------- Contacted: Campaign detail ---------- -->
-      <section class="panel view-hidden" id="contactedCampaignDetailView">
+      <section class="panel simple-panel view-hidden" id="contactedCampaignDetailView">
         <div class="board-header">
           <div class="board-header-row-top">
             <div class="board-header-title-group">
@@ -936,7 +938,7 @@
 
 
 
-  <script src="app.js?v=147"></script>
+  <script src="app.js?v=149"></script>
   <script src="pwa-install.js"></script>
 </body>
 </html>

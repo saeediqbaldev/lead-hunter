@@ -6,6 +6,65 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V14.9
+Items 3, 5, and 6 from the latest round - completed and verified.
+
+- **Campaign lead rows now show full Inspection/Content/Website details**,
+  not just campaign-specific status - clicking a row loads the same
+  Inspect/Generate Content/Freebie Website panel used everywhere else in
+  the app, so you can see exactly what was done for that lead during the
+  campaign. Built by carefully extracting the shared wiring logic out of
+  the Reach Out board's 357-line expand function - verified the original
+  board still works identically afterward.
+  - **A real bug caught before shipping**: adding a new single-lead API
+    route would have silently broken the Pinned board and website-
+    generation status polling, since Express matches routes in
+    definition order and a wildcard placed too early shadows everything
+    more specific below it. Fixed and verified with distinct error
+    messages proving each request now reaches its correct handler.
+  - A lead's pipeline status now automatically advances to "Contacted"
+    the moment a campaign successfully sends to them.
+- **Email content is now visible in History, Tracking, and Alerts** - not
+  just metadata. Rows are clickable and show the actual sent message in a
+  sandboxed preview, for campaign-sent emails (which the app generates
+  and therefore has the content for). Manually-sent emails via the
+  extension show a clear note instead, since only tracking metadata is
+  ever reported for those.
+- **Smarter, more human outreach writing**:
+  - Uses the lead's actual owner name for the salutation when you've set
+    one (new editable field on each lead), falling back to a cleaned-up
+    business short name otherwise - tested against real German/English
+    business names with legal suffixes, ampersands, and hyphens until it
+    produced clean results across the board.
+  - SSL/HTTPS findings are now de-emphasized rather than leading the
+    pitch - still mentioned when relevant, just not as the main hook.
+  - Rewrote the writing-style instructions to push for concrete figures
+    and a problem-first framing, per your request.
+
+## What's in this V14.8
+Progress on the latest round of fixes - items 1, 2, and 4 complete and
+verified; items 3, 5, 6, 7 still ahead.
+
+- **Content-cutoff fixed properly this time**: the campaign panels had the
+  exact same missing-overflow bug as before. Rather than patch it again,
+  replaced the fragile "remember to list every panel ID" approach with a
+  reusable `simple-panel` class - any current or future Contacted page
+  just needs the class, not a CSS update.
+- **Sidebar tree now genuinely scrolls within itself**: Contacted's
+  Hostinger/Gmail tree was missing the same wrapper Hunt/Reach Out/Pinned
+  already use for this - fixed, and verified the expanded section now
+  correctly fills remaining height and scrolls internally rather than
+  pushing Reports/Settings out of reach.
+- **Fixed the broken-link bug**: a link immediately followed by
+  punctuation (e.g. "book here: https://cal.com/you/15min.") was
+  including the trailing period as part of the URL, breaking it. Verified
+  across periods, commas, and parentheses.
+- **Full campaign management**: campaigns can now be renamed, reconfigured
+  (tone/length/language/CTA/meeting/provider/pacing), and deleted -
+  verified end-to-end including that editing is correctly blocked while a
+  campaign is actively running (pause first) and correctly cascades on
+  delete with zero orphaned records left behind.
+
 ## What's in this V14.7
 **The three remaining UI requests from this round, all completed and verified.**
 

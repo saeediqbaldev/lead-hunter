@@ -387,6 +387,7 @@ CREATE TABLE IF NOT EXISTS api_key_daily_usage (
 {
   const leadCols = db.prepare("PRAGMA table_info(leads)").all().map((c) => c.name);
   if (!leadCols.includes("pinned")) db.exec("ALTER TABLE leads ADD COLUMN pinned INTEGER DEFAULT 0");
+  if (!leadCols.includes("owner_name")) db.exec("ALTER TABLE leads ADD COLUMN owner_name TEXT");
 }
 
 // ---------- Business deep-analysis (Reach Out "Inspect" feature) ----------
@@ -541,6 +542,7 @@ CREATE TABLE IF NOT EXISTS tracked_emails (
   click_count INTEGER NOT NULL DEFAULT 0,
   first_opened_at TEXT,
   last_opened_at TEXT,
+  body_html TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_tracked_emails_user ON tracked_emails(user_id);
@@ -677,6 +679,11 @@ CREATE INDEX IF NOT EXISTS idx_app_notifications_read ON app_notifications(is_re
 {
   const campaignCols = db.prepare("PRAGMA table_info(email_campaigns)").all().map((c) => c.name);
   if (!campaignCols.includes("ai_provider")) db.exec("ALTER TABLE email_campaigns ADD COLUMN ai_provider TEXT DEFAULT ''");
+}
+
+{
+  const trackedEmailCols = db.prepare("PRAGMA table_info(tracked_emails)").all().map((c) => c.name);
+  if (!trackedEmailCols.includes("body_html")) db.exec("ALTER TABLE tracked_emails ADD COLUMN body_html TEXT");
 }
 
 // One-time fix: the auto-refresh interval used to default to 15 (inherited

@@ -1167,7 +1167,15 @@ button#huntBtn:disabled, .primary-btn:disabled { background: var(--border); colo
 
 /* ---------- Reports page ---------- */
 .reports-panel { overflow-y: auto; }
-#contactedSetupView, #contactedTrackingView, #contactedHistoryView, #contactedReportsView, #contactedAlertsView { overflow-y: auto; }
+/* Any "simple" panel (a section with class="panel simple-panel") gets
+   scrolling for free - added once here rather than needing every new
+   panel's ID appended to a list that's easy to forget (this exact bug
+   has recurred twice: once for the original 5 Contacted panels, again
+   for the 2 campaign panels added after that fix). board-panel/
+   reports-panel manage their own internal scroll layout and are
+   deliberately NOT included - forcing overflow on those would conflict
+   with their own header+scrollable-body structure. */
+.panel.simple-panel { overflow-y: auto; }
 
 /* ---------- Settings pages (API Keys / Colors / Team) - these class names
    existed in the HTML with zero corresponding CSS, which is exactly why
@@ -1758,3 +1766,5 @@ a.site-generate-btn { color: #1a1310; }
 .notif-item-title { font-size: 12.5px; font-weight: 600; color: var(--text); }
 .notif-item-msg { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 .notif-item-time { font-size: 10.5px; color: var(--text-muted); margin-top: 4px; opacity: 0.7; }
+
+.contacted-detail-body-frame { width: 100%; height: 320px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }

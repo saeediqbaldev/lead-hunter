@@ -116,7 +116,7 @@ function getOwnedLead(userId, leadId) {
 // PATCH /api/leads/:id  { status?, notes? }
 router.patch("/:id", (req, res) => {
   const { id } = req.params;
-  const { status, notes, pinned } = req.body;
+  const { status, notes, pinned, ownerName } = req.body;
 
   const existing = getOwnedLead(req.session.userId, id);
   if (!existing) return res.status(404).json({ error: "Lead not found" });
@@ -124,8 +124,9 @@ router.patch("/:id", (req, res) => {
   const newStatus = status !== undefined ? status : existing.status;
   const newNotes = notes !== undefined ? notes : existing.notes;
   const newPinned = pinned !== undefined ? (pinned ? 1 : 0) : existing.pinned;
+  const newOwnerName = ownerName !== undefined ? ownerName : existing.owner_name;
 
-  db.prepare("UPDATE leads SET status = ?, notes = ?, pinned = ? WHERE id = ?").run(newStatus, newNotes, newPinned, id);
+  db.prepare("UPDATE leads SET status = ?, notes = ?, pinned = ?, owner_name = ? WHERE id = ?").run(newStatus, newNotes, newPinned, newOwnerName, id);
   res.json(rowToLead(db.prepare("SELECT * FROM leads WHERE id = ?").get(id)));
 });
 
@@ -390,6 +391,18 @@ router.delete("/generated-sites/:siteId", (req, res) => {
   if (!row) return res.status(404).json({ error: "Not found" });
   db.prepare("DELETE FROM generated_sites WHERE id = ?").run(req.params.siteId);
   res.json({ ok: true });
+});
+
+// GET /api/leads/:id - full lead detail, needed anywhere a lead's expand
+// panel is rendered outside the main board (which already has leads
+// preloaded in memory from its own list fetch). Deliberately placed last
+// among GET routes - a bare /:id wildcard would otherwise shadow every
+// more specific route above it (e.g. /pinned/list, /export/:format),
+// since Express matches in definition order.
+router.get("/:id", (req, res) => {
+  const lead = getOwnedLeadWithContext(req.session.userId, req.params.id);
+  if (!lead) return res.status(404).json({ error: "Lead not found" });
+  res.json(lead);
 });
 
 module.exports = router;
