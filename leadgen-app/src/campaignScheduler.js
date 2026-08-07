@@ -38,12 +38,12 @@ function countSentToday(campaignId) {
   return row.c;
 }
 
-async function waitForInspection(userId, lead) {
+async function waitForInspection(userId, lead, aiProvider) {
   const existing = analysisJobs.getAnalysis(lead.id);
   if (existing && existing.status === "done") return existing;
 
   if (!existing || (existing.status !== "running" && existing.status !== "pending")) {
-    analysisJobs.startAnalysis(userId, lead);
+    analysisJobs.startAnalysis(userId, lead, aiProvider);
   }
 
   const start = Date.now();
@@ -81,11 +81,21 @@ async function processCampaignLead(campaign, campaignLeadRow) {
     return { ok: true, skipped: true };
   }
 
+  // Resolve which AI provider to use: an explicit campaign-level choice
+  // wins, otherwise fall back to whatever the user has saved as their
+  // default for each step (content vs inspection can differ), otherwise
+  // Auto (the normal fallback chain).
+  const userProviderPrefs = db
+    .prepare("SELECT preferred_content_provider, preferred_inspection_provider FROM users WHERE id = ?")
+    .get(campaign.user_id);
+  const inspectionProvider = campaign.ai_provider || userProviderPrefs?.preferred_inspection_provider || undefined;
+  const contentProvider = campaign.ai_provider || userProviderPrefs?.preferred_content_provider || undefined;
+
   // Step 1: inspect first, if requested and not already done
   let analysis = null;
   if (campaign.require_inspection) {
     db.prepare("UPDATE email_campaign_leads SET status = 'inspecting' WHERE id = ?").run(campaignLeadRow.id);
-    analysis = await waitForInspection(campaign.user_id, lead);
+    analysis = await waitForInspection(campaign.user_id, lead, inspectionProvider);
   } else {
     analysis = analysisJobs.getAnalysis(lead.id);
   }
@@ -104,6 +114,7 @@ async function processCampaignLead(campaign, campaignLeadRow) {
     cta: !!campaign.cta,
     meeting: !!campaign.meeting,
     meetingLink: campaign.meeting_link,
+    aiProvider: contentProvider,
   });
   if (!genResult.ok) throw new Error(`Content generation failed: ${genResult.error}`);
 

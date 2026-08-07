@@ -51,7 +51,13 @@ function createOpenAiCompatibleClient({ label, baseUrl, defaultModel }) {
     const body = {
       model: defaultModel,
       messages: [{ role: "user", content: prompt }],
-      max_tokens: maxTokens || 8000,
+      // 2000 is generous for short content (a full email, a subject line,
+      // a JSON-structured analysis writeup) while staying well clear of
+      // Groq's free-tier 8,000 tokens-per-minute ceiling even combined
+      // with prompt tokens - callers that genuinely need more (website
+      // generation) pass their own larger, provider-aware value and are
+      // unaffected by this default.
+      max_tokens: maxTokens || 2000,
     };
     if (jsonMode) body.response_format = { type: "json_object" };
 

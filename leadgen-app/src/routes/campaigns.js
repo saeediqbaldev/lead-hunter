@@ -23,6 +23,7 @@ router.post("/", (req, res) => {
     maxPerDay,
     minGapMinutes,
     maxGapMinutes,
+    aiProvider,
   } = req.body || {};
 
   if (!name || !name.trim()) return res.status(400).json({ error: "Campaign name is required" });
@@ -71,8 +72,8 @@ router.post("/", (req, res) => {
 
   const info = db
     .prepare(
-      `INSERT INTO email_campaigns (user_id, name, niche_id, catch_log_id, require_inspection, tone, length, language, cta, meeting, meeting_link, max_per_day, min_gap_minutes, max_gap_minutes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO email_campaigns (user_id, name, niche_id, catch_log_id, require_inspection, tone, length, language, cta, meeting, meeting_link, ai_provider, max_per_day, min_gap_minutes, max_gap_minutes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       userId,
@@ -86,6 +87,7 @@ router.post("/", (req, res) => {
       cta ? 1 : 0,
       meeting ? 1 : 0,
       meetingLink || null,
+      aiProvider || "",
       Math.min(maxPerDay || 100, 100),
       minGapMinutes || 5,
       maxGapMinutes || 10

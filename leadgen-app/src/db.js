@@ -311,6 +311,8 @@ if (!leadsTableExists) {
   }
   if (!userCols.includes("meeting_link")) db.exec("ALTER TABLE users ADD COLUMN meeting_link TEXT");
   if (!userCols.includes("website_link")) db.exec("ALTER TABLE users ADD COLUMN website_link TEXT");
+  if (!userCols.includes("preferred_content_provider")) db.exec("ALTER TABLE users ADD COLUMN preferred_content_provider TEXT DEFAULT ''");
+  if (!userCols.includes("preferred_inspection_provider")) db.exec("ALTER TABLE users ADD COLUMN preferred_inspection_provider TEXT DEFAULT ''");
 }
 
 // ---------- One catch log per (niche, city): merge any existing duplicates ----------
@@ -585,7 +587,7 @@ CREATE INDEX IF NOT EXISTS idx_tracked_notif_read ON tracked_notifications(is_re
   const userCols = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
   const trackerCols = {
     tracker_api_key: "TEXT",
-    tracker_refresh_interval: "INTEGER DEFAULT 15",
+    tracker_refresh_interval: "INTEGER DEFAULT 0",
     tracker_notify_email_enabled: "INTEGER DEFAULT 0",
     tracker_notify_email_to: "TEXT",
     tracker_smtp_host: "TEXT",
@@ -593,6 +595,8 @@ CREATE INDEX IF NOT EXISTS idx_tracked_notif_read ON tracked_notifications(is_re
     tracker_smtp_user: "TEXT",
     tracker_smtp_pass: "TEXT",
     tracker_smtp_from: "TEXT",
+    gmail_smtp_user: "TEXT",
+    gmail_smtp_app_password: "TEXT",
   };
   for (const [col, type] of Object.entries(trackerCols)) {
     if (!userCols.includes(col)) db.exec(`ALTER TABLE users ADD COLUMN ${col} ${type}`);
@@ -623,6 +627,7 @@ CREATE TABLE IF NOT EXISTS email_campaigns (
   cta INTEGER DEFAULT 0,
   meeting INTEGER DEFAULT 0,
   meeting_link TEXT,
+  ai_provider TEXT DEFAULT '',
   max_per_day INTEGER NOT NULL DEFAULT 100,
   min_gap_minutes INTEGER NOT NULL DEFAULT 5,
   max_gap_minutes INTEGER NOT NULL DEFAULT 10,
@@ -648,5 +653,18 @@ CREATE TABLE IF NOT EXISTS email_campaign_leads (
 CREATE INDEX IF NOT EXISTS idx_campaign_leads_campaign ON email_campaign_leads(campaign_id);
 CREATE INDEX IF NOT EXISTS idx_campaign_leads_status ON email_campaign_leads(status);
 `);
+
+{
+  const campaignCols = db.prepare("PRAGMA table_info(email_campaigns)").all().map((c) => c.name);
+  if (!campaignCols.includes("ai_provider")) db.exec("ALTER TABLE email_campaigns ADD COLUMN ai_provider TEXT DEFAULT ''");
+}
+
+// One-time fix: the auto-refresh interval used to default to 15 (inherited
+// from the original standalone tracker's different set of intervals), but
+// this app's actual dropdown only offers 0/60/180/300/900/1800/3600/7200/
+// 21600/43200 - 15 was never a value the dropdown could display, so it
+// silently showed as unselected. Reset any row still sitting on that
+// stale, never-actually-chosen default back to 0 (Off).
+db.prepare("UPDATE users SET tracker_refresh_interval = 0 WHERE tracker_refresh_interval = 15").run();
 
 module.exports = db;

@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.07-14.5";
+const APP_VERSION = "2026.08.07-14.6";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -471,6 +471,101 @@ const PLATFORM_SETUP_COPY = {
   },
 };
 
+// Attaches every Setup-page click handler exactly once, regardless of
+// which platform (Hostinger or Gmail) happens to load this shared body
+// element first - body is a static element defined once in index.html
+// and never recreated, only its innerHTML gets replaced per platform, so
+// a naive addEventListener would either stack up duplicate handlers on
+// repeat visits, or (the actual bug this fixes) only ever attach for
+// whichever platform's setup page was viewed first, leaving the other
+// platform's buttons with no working handler at all.
+function attachSetupListenersOnce(body) {
+  if (body.dataset.listenersAttached) return;
+  body.dataset.listenersAttached = "1";
+  body.addEventListener("click", async (e) => {
+    const action = e.target.closest("[data-action]")?.dataset.action;
+    if (action === "save-gmail-settings") {
+      const resultEl = document.getElementById("contactedSettingsResult");
+      const payload = { gmailUser: body.querySelector("[data-gmail-user]").value.trim() };
+      const pass = body.querySelector("[data-gmail-app-password]").value.trim();
+      if (pass) payload.appPassword = pass;
+      const r = await api("/api/tracker/gmail-settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const d = await r.json();
+      resultEl.style.display = "block";
+      resultEl.className = `settings-result ${r.ok ? "ok" : "bad"}`;
+      resultEl.textContent = r.ok ? "Gmail settings saved." : d.error;
+      if (r.ok) {
+        body.querySelector("[data-gmail-pass-hint]").textContent = d.appPasswordSet ? "(a password is already saved)" : "(not set)";
+        body.querySelector("[data-gmail-app-password]").value = "";
+      }
+      return;
+    }
+    if (action === "fill-hostinger-smtp") {
+      body.querySelector("[data-tracker-smtp-host]").value = "smtp.hostinger.com";
+      body.querySelector("[data-tracker-smtp-port]").value = "465";
+      showToast("Filled in Hostinger's standard SMTP host and port - username/password are still your own", "success");
+      return;
+    }
+    if (action === "copy-tracker-key") {
+      navigator.clipboard?.writeText(body.querySelector("[data-contacted-api-key]").value);
+      showToast("API key copied", "success");
+      return;
+    }
+    if (action === "rotate-tracker-key") {
+      const confirmed = await openModal({
+        title: "Generate a new API key?",
+        message: "Any extension already installed will stop working until you download it again with the new key.",
+        confirmText: "Generate new key",
+        danger: true,
+      });
+      if (!confirmed) return;
+      const r = await api("/api/tracker/setup/rotate-key", { method: "POST" });
+      const d = await r.json();
+      body.querySelector("[data-contacted-api-key]").value = d.apiKey;
+      showToast("New API key generated - download the extension again", "success");
+      return;
+    }
+    if (action === "save-tracker-settings") {
+      const resultEl = document.getElementById("contactedSettingsResult");
+      const port = body.querySelector("[data-tracker-smtp-port]").value;
+      const payload = {
+        refresh_interval_seconds: parseInt(body.querySelector("[data-tracker-auto-refresh]").value, 10),
+        notify_email_enabled: body.querySelector("[data-tracker-notify-enabled]").checked,
+        notify_email_to: body.querySelector("[data-tracker-notify-to]").value.trim(),
+        smtp_host: body.querySelector("[data-tracker-smtp-host]").value.trim(),
+        smtp_port: port ? parseInt(port, 10) : null,
+        smtp_user: body.querySelector("[data-tracker-smtp-user]").value.trim(),
+        smtp_from: body.querySelector("[data-tracker-smtp-from]").value.trim(),
+      };
+      const pass = body.querySelector("[data-tracker-smtp-pass]").value;
+      if (pass) payload.smtp_pass = pass;
+      const r = await api("/api/tracker/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const d = await r.json();
+      resultEl.style.display = "block";
+      if (!r.ok) {
+        resultEl.className = "settings-result bad";
+        resultEl.textContent = d.error || "Could not save settings";
+      } else {
+        resultEl.className = "settings-result ok";
+        resultEl.textContent = "Settings saved.";
+        body.querySelector("[data-tracker-smtp-pass-hint]").textContent = d.settings.smtp_pass_set ? "(a password is already saved)" : "(not set)";
+        body.querySelector("[data-tracker-smtp-pass]").value = "";
+        setupContactedAutoRefresh(d.settings.refresh_interval_seconds || 0);
+      }
+      return;
+    }
+    if (action === "test-tracker-email") {
+      const resultEl = document.getElementById("contactedSettingsResult");
+      const r = await api("/api/tracker/settings/test-email", { method: "POST" });
+      const d = await r.json();
+      resultEl.style.display = "block";
+      resultEl.className = `settings-result ${r.ok ? "ok" : "bad"}`;
+      resultEl.textContent = r.ok ? "Test email sent - check your inbox." : d.error;
+      return;
+    }
+  });
+}
+
 async function loadContactedSetup() {
   const platform = state.contactedPlatform;
   const copy = PLATFORM_SETUP_COPY[platform] || PLATFORM_SETUP_COPY.hostinger;
@@ -541,6 +636,19 @@ async function loadContactedSetup() {
 
     <div class="settings-divider"></div>
 
+    ${
+      platform === "gmail"
+        ? `
+    <h3 class="settings-subheading">Gmail sending</h3>
+    <p class="hint">Gmail requires a Google <b>App Password</b> rather than your regular account password for programmatic access - <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">create one here</a> (2-Step Verification must be turned on for your Google account first).</p>
+    <div class="smtp-card">
+      <label class="site-field-label">Gmail address<input type="text" data-gmail-user placeholder="you@gmail.com"></label>
+      <label class="site-field-label">App Password <small class="optional" data-gmail-pass-hint></small><input type="password" data-gmail-app-password placeholder="16-character app password"></label>
+    </div>
+    <button type="button" class="small-btn" data-action="save-gmail-settings">Save Gmail settings</button>
+    <div class="settings-result" id="contactedSettingsResult" style="display:none;"></div>
+    `
+        : `
     <h3 class="settings-subheading">Email notifications</h3>
     <p class="hint">Get an email the moment someone opens or clicks - sent through your own SMTP account.</p>
     <label class="site-visuals-toggle"><input type="checkbox" data-tracker-notify-enabled /> Enable email notifications</label>
@@ -567,7 +675,18 @@ async function loadContactedSetup() {
       <button type="button" class="small-btn" data-action="test-tracker-email">Send test email</button>
     </div>
     <div class="settings-result" id="contactedSettingsResult" style="display:none;"></div>
+    `
+    }
   `;
+
+  if (platform === "gmail") {
+    const gmailRes = await api("/api/tracker/gmail-settings");
+    const gmailData = await gmailRes.json();
+    body.querySelector("[data-gmail-user]").value = gmailData.gmailUser || "";
+    body.querySelector("[data-gmail-pass-hint]").textContent = gmailData.appPasswordSet ? "(a password is already saved)" : "(not set)";
+    attachSetupListenersOnce(body);
+    return;
+  }
 
   const settingsRes = await api("/api/tracker/settings");
   const settingsData = await settingsRes.json();
@@ -581,81 +700,7 @@ async function loadContactedSetup() {
   body.querySelector("[data-tracker-smtp-from]").value = s.smtp_from || "";
   body.querySelector("[data-tracker-smtp-pass-hint]").textContent = s.smtp_pass_set ? "(a password is already saved)" : "(not set)";
 
-  // Guard against attaching this listener again on a second visit to this
-  // page - body is a static element defined once in index.html and never
-  // recreated, only its innerHTML gets replaced above, so a naive
-  // addEventListener here would stack up one extra handler per visit and
-  // fire every button click that many times (this was the "test email
-  // arrives 3-4 times" bug).
-  if (!body.dataset.listenersAttached) {
-    body.dataset.listenersAttached = "1";
-    body.addEventListener("click", async (e) => {
-      const action = e.target.closest("[data-action]")?.dataset.action;
-      if (action === "fill-hostinger-smtp") {
-        body.querySelector("[data-tracker-smtp-host]").value = "smtp.hostinger.com";
-        body.querySelector("[data-tracker-smtp-port]").value = "465";
-        showToast("Filled in Hostinger's standard SMTP host and port - username/password are still your own", "success");
-        return;
-      }
-      if (action === "copy-tracker-key") {
-        navigator.clipboard?.writeText(body.querySelector("[data-contacted-api-key]").value);
-      showToast("API key copied", "success");
-      return;
-    }
-    if (action === "rotate-tracker-key") {
-      const confirmed = await openModal({
-        title: "Generate a new API key?",
-        message: "Any extension already installed will stop working until you download it again with the new key.",
-        confirmText: "Generate new key",
-        danger: true,
-      });
-      if (!confirmed) return;
-      const r = await api("/api/tracker/setup/rotate-key", { method: "POST" });
-      const d = await r.json();
-      body.querySelector("[data-contacted-api-key]").value = d.apiKey;
-      showToast("New API key generated - download the extension again", "success");
-      return;
-    }
-    if (action === "save-tracker-settings") {
-      const resultEl = document.getElementById("contactedSettingsResult");
-      const port = body.querySelector("[data-tracker-smtp-port]").value;
-      const payload = {
-        refresh_interval_seconds: parseInt(body.querySelector("[data-tracker-auto-refresh]").value, 10),
-        notify_email_enabled: body.querySelector("[data-tracker-notify-enabled]").checked,
-        notify_email_to: body.querySelector("[data-tracker-notify-to]").value.trim(),
-        smtp_host: body.querySelector("[data-tracker-smtp-host]").value.trim(),
-        smtp_port: port ? parseInt(port, 10) : null,
-        smtp_user: body.querySelector("[data-tracker-smtp-user]").value.trim(),
-        smtp_from: body.querySelector("[data-tracker-smtp-from]").value.trim(),
-      };
-      const pass = body.querySelector("[data-tracker-smtp-pass]").value;
-      if (pass) payload.smtp_pass = pass;
-      const r = await api("/api/tracker/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      const d = await r.json();
-      resultEl.style.display = "block";
-      if (!r.ok) {
-        resultEl.className = "settings-result bad";
-        resultEl.textContent = d.error || "Could not save settings";
-      } else {
-        resultEl.className = "settings-result ok";
-        resultEl.textContent = "Settings saved.";
-        body.querySelector("[data-tracker-smtp-pass-hint]").textContent = d.settings.smtp_pass_set ? "(a password is already saved)" : "(not set)";
-        body.querySelector("[data-tracker-smtp-pass]").value = "";
-        setupContactedAutoRefresh(d.settings.refresh_interval_seconds || 0);
-      }
-      return;
-    }
-    if (action === "test-tracker-email") {
-      const resultEl = document.getElementById("contactedSettingsResult");
-      const r = await api("/api/tracker/settings/test-email", { method: "POST" });
-      const d = await r.json();
-      resultEl.style.display = "block";
-      resultEl.className = `settings-result ${r.ok ? "ok" : "bad"}`;
-      resultEl.textContent = r.ok ? "Test email sent - check your inbox." : d.error;
-      return;
-    }
-    });
-  }
+  attachSetupListenersOnce(body);
 }
 
 // ---------- Tracking ledger ----------
@@ -1029,6 +1074,14 @@ async function showCampaignCreationForm() {
     <label class="site-field-label">Language
       <select data-campaign-language>${CONTENT_LANGUAGES.map((l) => `<option value="${l.value}" ${l.value === "English" ? "selected" : ""}>${l.flag} ${l.label}</option>`).join("")}</select>
     </label>
+    <label class="site-field-label">AI provider <small class="optional">(optional - leave on Auto to use your saved defaults)</small>
+      <select data-campaign-ai-provider>
+        <option value="">Auto</option>
+        <option value="groq">Groq</option>
+        <option value="gemini">Gemini</option>
+        <option value="deepseek">DeepSeek</option>
+      </select>
+    </label>
 
     <label class="site-visuals-toggle"><input type="checkbox" data-campaign-cta> Weave in a clear call-to-action</label>
     <label class="site-visuals-toggle"><input type="checkbox" data-campaign-meeting> Invite them to a meeting/call</label>
@@ -1109,6 +1162,7 @@ async function showCampaignCreationForm() {
         cta: body.querySelector("[data-campaign-cta]").checked,
         meeting: body.querySelector("[data-campaign-meeting]").checked,
         meetingLink: body.querySelector("[data-campaign-meeting-link]").value.trim() || undefined,
+        aiProvider: body.querySelector("[data-campaign-ai-provider]").value || undefined,
         maxPerDay: parseInt(body.querySelector("[data-campaign-max-per-day]").value, 10) || 100,
         minGapMinutes: parseInt(body.querySelector("[data-campaign-min-gap]").value, 10) || 5,
         maxGapMinutes: parseInt(body.querySelector("[data-campaign-max-gap]").value, 10) || 10,
@@ -1220,6 +1274,17 @@ async function loadSignature() {
   }
 }
 
+async function loadProviderPreferences() {
+  try {
+    const res = await api("/api/settings/ai-provider-preferences");
+    const data = await res.json();
+    document.getElementById("providerPrefContentSelect").value = data.contentProvider || "";
+    document.getElementById("providerPrefInspectionSelect").value = data.inspectionProvider || "";
+  } catch (err) {
+    console.error("Failed to load AI provider preferences:", err);
+  }
+}
+
 navSettingsAccount.addEventListener("click", async () => {
   signatureResult.style.display = "none";
   document.getElementById("profileResult").style.display = "none";
@@ -1230,6 +1295,23 @@ navSettingsAccount.addEventListener("click", async () => {
   setContentView("settings-account");
   await loadDailyCap();
   await loadSignature();
+  await loadProviderPreferences();
+});
+
+document.getElementById("providerPrefSaveBtn").addEventListener("click", async () => {
+  const resultEl = document.getElementById("providerPrefResult");
+  const res = await api("/api/settings/ai-provider-preferences", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contentProvider: document.getElementById("providerPrefContentSelect").value,
+      inspectionProvider: document.getElementById("providerPrefInspectionSelect").value,
+    }),
+  });
+  const data = await res.json();
+  resultEl.style.display = "block";
+  resultEl.className = `settings-result ${res.ok ? "ok" : "bad"}`;
+  resultEl.textContent = res.ok ? "Defaults saved." : data.error;
 });
 
 document.getElementById("profileSaveBtn").addEventListener("click", async () => {
@@ -3879,11 +3961,17 @@ function buildExpandPanelHtml(lead) {
           ${CONTENT_LANGUAGES.map((l) => `<option value="${l.value}" ${l.value === "English" ? "selected" : ""}>${l.flag} ${l.label}</option>`).join("")}
         </select>
       </div>
-      <div class="gen-extras-row">
+      <div class="gen-extras-row gen-combined-row">
         <span class="gen-provider-row-label">Add organically:</span>
         <button type="button" class="gen-extra-toggle" data-extra="cta" title="Weave in a clear call-to-action"><i class="bi bi-megaphone-fill"></i> CTA</button>
         <button type="button" class="gen-extra-toggle" data-extra="meeting" title="Invite them to a short meeting/call"><i class="bi bi-calendar-event-fill"></i> Meeting</button>
         <button type="button" class="gen-extra-toggle" data-extra="website" title="Reference a demo/reference website"><i class="bi bi-globe2"></i> Website</button>
+        <span class="gen-row-divider"></span>
+        <span class="gen-provider-row-label">AI provider:</span>
+        ${AI_PROVIDER_OPTIONS.map(
+          (p) =>
+            `<button type="button" class="ai-provider-tab ${p.value === "" ? "active" : ""}" data-ai-provider="${p.value}" title="${p.label}"><i class="bi ${p.icon}"></i> ${p.label}</button>`
+        ).join("")}
       </div>
       <div class="gen-extra-link-row" data-extra-link="meeting" style="display:none;">
         <input type="text" data-meeting-link-input placeholder="Meeting booking link (e.g. https://cal.com/you/15min) - optional" />
@@ -3892,12 +3980,6 @@ function buildExpandPanelHtml(lead) {
         <input type="text" data-website-link-input placeholder="Demo/reference website link - optional" />
       </div>
       <div class="gen-provider-row">
-        <span class="gen-provider-row-label">AI provider:</span>
-        ${AI_PROVIDER_OPTIONS.map(
-          (p) =>
-            `<button type="button" class="ai-provider-tab ${p.value === "" ? "active" : ""}" data-ai-provider="${p.value}" title="${p.label}"><i class="bi ${p.icon}"></i> ${p.label}</button>`
-        ).join("")}
-        <span class="gen-generate-btn-spacer"></span>
         <button type="button" data-action="generate-all" style="background:var(--accent); color:#1a1310; border:none; border-radius:6px; padding:7px 14px; font-size:12px; font-weight:600; cursor:pointer;">
           <i class="bi bi-stars"></i> Generate Content
         </button>

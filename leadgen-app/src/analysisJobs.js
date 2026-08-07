@@ -60,7 +60,7 @@ function isCancelled(leadId) {
   return !job || job.cancelled;
 }
 
-async function runPipeline(userId, leadId, lead) {
+async function runPipeline(userId, leadId, lead, aiProvider) {
   try {
     upsertAnalysisRow(leadId, { status: "running", current_step: STEPS[0], error: null });
     if (isCancelled(leadId)) return;
@@ -97,7 +97,7 @@ async function runPipeline(userId, leadId, lead) {
     // own. Uses the fallback chain (Groq -> Gemini -> DeepSeek), so a
     // single provider being rate-limited or down doesn't skip this step
     // entirely if another provider is available.
-    const aiResult = await analyzeWithAI(userId, lead, { website, gmb, social });
+    const aiResult = await analyzeWithAI(userId, lead, { website, gmb, social }, aiProvider);
     if (isCancelled(leadId)) return;
 
     upsertAnalysisRow(leadId, {
@@ -116,12 +116,12 @@ async function runPipeline(userId, leadId, lead) {
   }
 }
 
-function startAnalysis(userId, lead) {
+function startAnalysis(userId, lead, aiProvider) {
   const leadId = lead.id;
   if (activeJobs.has(leadId)) return { alreadyRunning: true };
 
   activeJobs.set(leadId, { cancelled: false });
-  runPipeline(userId, leadId, lead); // fire and forget - progress is polled via getAnalysis()
+  runPipeline(userId, leadId, lead, aiProvider); // fire and forget - progress is polled via getAnalysis()
   return { alreadyRunning: false };
 }
 

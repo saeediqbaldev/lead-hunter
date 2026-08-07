@@ -157,7 +157,13 @@ router.post("/:id/inspect/start", (req, res) => {
   const lead = getOwnedLeadWithContext(req.session.userId, req.params.id);
   if (!lead) return res.status(404).json({ error: "Lead not found" });
 
-  const result = analysisJobs.startAnalysis(req.session.userId, lead);
+  let aiProvider = req.body?.aiProvider;
+  if (!aiProvider) {
+    const userRow = db.prepare("SELECT preferred_inspection_provider FROM users WHERE id = ?").get(req.session.userId);
+    aiProvider = userRow?.preferred_inspection_provider || undefined;
+  }
+
+  const result = analysisJobs.startAnalysis(req.session.userId, lead, aiProvider);
   if (result.alreadyRunning) {
     return res.status(409).json({ error: "An inspection is already running for this lead." });
   }

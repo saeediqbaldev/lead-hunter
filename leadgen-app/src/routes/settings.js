@@ -130,6 +130,35 @@ router.put("/signature", (req, res) => {
   res.json({ signature: value });
 });
 
+// GET /api/settings/ai-provider-preferences -> the default AI provider to
+// pre-select for content generation and inspection separately (empty
+// string means "Auto" / fallback chain). Per-generation choices in the UI
+// still override this - it's just what gets pre-selected each time.
+router.get("/ai-provider-preferences", (req, res) => {
+  const row = db.prepare("SELECT preferred_content_provider, preferred_inspection_provider FROM users WHERE id = ?").get(req.session.userId);
+  res.json({
+    contentProvider: row?.preferred_content_provider || "",
+    inspectionProvider: row?.preferred_inspection_provider || "",
+  });
+});
+
+router.put("/ai-provider-preferences", (req, res) => {
+  const VALID = ["", "groq", "gemini", "deepseek"];
+  const { contentProvider, inspectionProvider } = req.body || {};
+  if (contentProvider !== undefined && !VALID.includes(contentProvider)) return res.status(400).json({ error: "Invalid contentProvider" });
+  if (inspectionProvider !== undefined && !VALID.includes(inspectionProvider)) return res.status(400).json({ error: "Invalid inspectionProvider" });
+
+  db.prepare(
+    `UPDATE users SET
+      preferred_content_provider = COALESCE(?, preferred_content_provider),
+      preferred_inspection_provider = COALESCE(?, preferred_inspection_provider)
+     WHERE id = ?`
+  ).run(contentProvider ?? null, inspectionProvider ?? null, req.session.userId);
+
+  const row = db.prepare("SELECT preferred_content_provider, preferred_inspection_provider FROM users WHERE id = ?").get(req.session.userId);
+  res.json({ contentProvider: row.preferred_content_provider || "", inspectionProvider: row.preferred_inspection_provider || "" });
+});
+
 function maskKey(key) {
   if (!key) return null;
   if (key.length <= 8) return "•".repeat(key.length);

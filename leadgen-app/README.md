@@ -6,6 +6,38 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V14.6
+**The critical Groq token-limit bug is fixed.** When a similar issue was
+fixed for website generation earlier, a default of 8,000 output tokens
+was accidentally applied to every AI call in the app, not just website
+generation - meaning regular content generation and inspection were
+requesting more tokens than Groq's free-tier ceiling allows, on every
+single call. Lowered the default to 2,000 (still generous for an email
+or analysis writeup) and verified precisely: mocked the network layer so
+the real code actually ran, confirming a normal call now requests 2,000
+tokens while website generation's own larger value is untouched.
+
+- **Separate default AI providers** for content generation vs. inspection,
+  configurable in Account Settings - inspection previously had no
+  provider choice at all. Priority order verified: an explicit campaign
+  choice wins, then your saved default, then Auto.
+- **Gmail now has its own setup fields** (Gmail address + App Password)
+  instead of reusing Hostinger's SMTP form. Found and fixed a real bug
+  while building this: both platforms' Setup pages shared one "only
+  attach listeners once" guard, so whichever platform loaded first
+  silently claimed it and the other's Save button did nothing - verified
+  fixed by testing Gmail-first, then Hostinger, then Gmail again.
+- **Also caught in the same pass**: the auto-refresh dropdown's stored
+  default (15 seconds, inherited from the original tracker) never
+  matched any of this app's actual dropdown options, so it silently
+  showed as unselected - fixed with a self-healing migration for existing
+  accounts, verified against a simulated stale value.
+- **Collapsed sidebar badge**: now a small dot in the icon's corner
+  instead of an oversized badge with nowhere sensible to sit - confirmed
+  visually via screenshot.
+- **"Add organically" and "AI provider" rows merged** into one, as
+  requested.
+
 ## What's in this V14.5
 **Automated email campaigns - "Auto Send" under Hostinger.** The largest
 single feature in this app's history: pick a niche and city, and it works

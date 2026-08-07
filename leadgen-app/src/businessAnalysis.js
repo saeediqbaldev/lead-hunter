@@ -272,10 +272,10 @@ Rules: 2-4 genuine strengths (specific, not generic praise), 2-4 genuine weaknes
 // not just Gemini's stricter schema-constrained mode (geminiSchema is
 // still passed through so Gemini gets its stronger guarantee specifically
 // when it's the one that ends up being used).
-async function analyzeWithAI(userId, lead, categoryResults) {
+async function analyzeWithAI(userId, lead, categoryResults, aiProvider) {
   const { generateWithFallback } = require("./aiProviders");
   const prompt = buildAnalysisPrompt(lead, categoryResults);
-  const result = await generateWithFallback(userId, prompt, { jsonMode: true, geminiSchema: ANALYSIS_RESPONSE_SCHEMA });
+  const result = await generateWithFallback(userId, prompt, { jsonMode: true, geminiSchema: ANALYSIS_RESPONSE_SCHEMA, onlyProvider: aiProvider || undefined });
 
   if (!result.ok) return { ok: false, error: result.error };
 

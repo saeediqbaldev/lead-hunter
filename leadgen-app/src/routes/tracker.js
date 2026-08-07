@@ -343,6 +343,26 @@ router.post("/settings/test-email", async (req, res) => {
   }
 });
 
+// GET /api/tracker/gmail-settings - Gmail's own SMTP setup, separate from
+// Hostinger's since Gmail structurally needs different fields (fixed
+// host, requires a Google App Password rather than the account password).
+router.get("/gmail-settings", (req, res) => {
+  const row = db.prepare("SELECT gmail_smtp_user, gmail_smtp_app_password FROM users WHERE id = ?").get(req.session.userId);
+  res.json({ gmailUser: row?.gmail_smtp_user || "", appPasswordSet: !!row?.gmail_smtp_app_password });
+});
+
+router.put("/gmail-settings", (req, res) => {
+  const { gmailUser, appPassword } = req.body || {};
+  const current = db.prepare("SELECT gmail_smtp_app_password FROM users WHERE id = ?").get(req.session.userId);
+  db.prepare("UPDATE users SET gmail_smtp_user = COALESCE(?, gmail_smtp_user), gmail_smtp_app_password = ? WHERE id = ?").run(
+    gmailUser ?? null,
+    appPassword ? appPassword : current?.gmail_smtp_app_password,
+    req.session.userId
+  );
+  const row = db.prepare("SELECT gmail_smtp_user, gmail_smtp_app_password FROM users WHERE id = ?").get(req.session.userId);
+  res.json({ gmailUser: row.gmail_smtp_user || "", appPasswordSet: !!row.gmail_smtp_app_password });
+});
+
 // ==================== Analytics ====================
 // range -> { sqliteModifier: fed to datetime('now', modifier), bucketFmt: strftime format for the timeseries bucket }
 const RANGE_TO_SQL = {

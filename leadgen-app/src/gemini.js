@@ -63,7 +63,10 @@ async function testApiKey(apiKey) {
 async function generateText(apiKey, prompt, { responseSchema, timeoutMs, maxOutputTokens } = {}) {
   const body = {
     contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { maxOutputTokens: maxOutputTokens || 8000 },
+    // Same reasoning as the OpenAI-compatible client's default - 2000 is
+    // generous for short content while callers that genuinely need more
+    // (website generation) pass their own larger explicit value.
+    generationConfig: { maxOutputTokens: maxOutputTokens || 2000 },
   };
   if (responseSchema) {
     body.generationConfig.responseMimeType = "application/json";
