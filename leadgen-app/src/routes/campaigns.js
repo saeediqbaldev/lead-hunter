@@ -101,7 +101,7 @@ router.post("/", (req, res) => {
       meeting ? 1 : 0,
       meetingLink || null,
       aiProvider || "",
-      Math.min(maxPerDay || 100, 100),
+      maxPerDay || 100,
       minGapMinutes || 5,
       maxGapMinutes || 10
     );
@@ -208,6 +208,25 @@ router.post("/:id/leads/:leadRowId/skip", requireOwnedCampaign, (req, res) => {
   res.json({ ok: true });
 });
 
+// POST /api/campaigns/:id/leads/:leadRowId/retry - resets one specific
+// failed lead back to pending so the scheduler picks it up again on its
+// next tick, and resumes the campaign if it was paused. Unlike skip
+// (which sets a lead aside permanently), this is for when the failure
+// looked transient (a momentary SMTP hiccup, a rate limit) and is worth
+// trying again rather than giving up on that lead.
+router.post("/:id/leads/:leadRowId/retry", requireOwnedCampaign, (req, res) => {
+  const leadRow = db.prepare("SELECT * FROM email_campaign_leads WHERE id = ? AND campaign_id = ?").get(req.params.leadRowId, req.campaign.id);
+  if (!leadRow) return res.status(404).json({ error: "Lead not found in this campaign" });
+  if (leadRow.status !== "failed") return res.status(400).json({ error: "Only a failed lead can be retried" });
+
+  db.prepare("UPDATE email_campaign_leads SET status = 'pending', error = NULL WHERE id = ?").run(leadRow.id);
+
+  if (req.campaign.status === "paused") {
+    db.prepare("UPDATE email_campaigns SET status = 'running', paused_at = NULL, pause_reason = NULL WHERE id = ?").run(req.campaign.id);
+  }
+  res.json({ ok: true });
+});
+
 router.post("/:id/cancel", requireOwnedCampaign, (req, res) => {
   db.prepare("UPDATE email_campaigns SET status = 'cancelled' WHERE id = ?").run(req.campaign.id);
   res.json({ ok: true });
@@ -250,7 +269,7 @@ router.put("/:id", requireOwnedCampaign, (req, res) => {
     meeting !== undefined ? (meeting ? 1 : 0) : null,
     meetingLink !== undefined ? meetingLink || null : req.campaign.meeting_link,
     aiProvider !== undefined ? aiProvider : null,
-    maxPerDay !== undefined ? Math.min(maxPerDay, 100) : null,
+    maxPerDay !== undefined ? maxPerDay : null,
     minGapMinutes ?? null,
     maxGapMinutes ?? null,
     req.campaign.id

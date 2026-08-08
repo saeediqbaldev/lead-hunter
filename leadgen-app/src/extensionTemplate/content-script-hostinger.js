@@ -301,6 +301,11 @@ async function handleTrackedSend(container, state, clickedEl) {
     injectPixel(bodyEl, data.pixelUrl);
     rewriteLinks(bodyEl, data.clickBaseUrl);
     notifyEditorOfChange(bodyEl);
+    // Fire-and-forget: report the final HTML back for the Tracking detail
+    // panel to display. Not awaited and errors are swallowed - this is a
+    // nice-to-have (seeing what was sent later), not something that
+    // should ever hold up or fail the actual send.
+    sendMessage("REPORT_TRACKED_EMAIL_BODY", { id: data.id, bodyHtml: bodyEl.innerHTML }).catch(() => {});
   } catch (err) {
     log("Failed to attach tracking:", err.message);
     showToast(`Xeven MTracker: ${err.message} — sending untracked.`, true);

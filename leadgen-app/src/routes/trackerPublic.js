@@ -96,6 +96,23 @@ router.post("/api/tracker/emails", requireApiKey, (req, res) => {
   }
 });
 
+// ---- Called by the browser extension right after it injects the
+// tracking pixel and rewrites links, so the actually-sent HTML (compose
+// body plus pixel plus rewritten links) is what gets stored - the
+// initial POST above happens before that injection, so it couldn't have
+// included this even if it tried. ----
+router.patch("/api/tracker/emails/:id/body", requireApiKey, (req, res) => {
+  const { bodyHtml } = req.body || {};
+  if (typeof bodyHtml !== "string" || !bodyHtml.trim()) {
+    return res.status(400).json({ error: "bodyHtml is required" });
+  }
+  const email = db.prepare("SELECT id FROM tracked_emails WHERE id = ? AND user_id = ?").get(req.params.id, req.trackerUserId);
+  if (!email) return res.status(404).json({ error: "Tracked email not found" });
+
+  db.prepare("UPDATE tracked_emails SET body_html = ? WHERE id = ?").run(bodyHtml, req.params.id);
+  res.json({ ok: true });
+});
+
 // GET /api/tracker/stats - used by the extension popup
 router.get("/api/tracker/stats", requireSessionOrApiKey, (req, res) => {
   try {

@@ -53,6 +53,27 @@ async function createTrackedEmail({ subject, recipients, sender, provider }) {
   return res.json();
 }
 
+async function updateTrackedEmailBody({ id, bodyHtml }) {
+  const { backendUrl, apiKey } = await getSettings();
+  if (!backendUrl || !apiKey) throw new Error("Set the backend URL and API key in the extension options first.");
+
+  const res = await fetch(`${backendUrl}/api/tracker/emails/${id}/body`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+    },
+    body: JSON.stringify({ bodyHtml }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Backend rejected the request (${res.status}): ${text}`);
+  }
+
+  return res.json();
+}
+
 async function fetchStats() {
   const { backendUrl, apiKey } = await getSettings();
   if (!backendUrl || !apiKey) throw new Error("Not configured");
@@ -67,6 +88,13 @@ async function fetchStats() {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "CREATE_TRACKED_EMAIL") {
     createTrackedEmail(message.payload)
+      .then((data) => sendResponse({ ok: true, data }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+
+  if (message.type === "REPORT_TRACKED_EMAIL_BODY") {
+    updateTrackedEmailBody(message.payload)
       .then((data) => sendResponse({ ok: true, data }))
       .catch((err) => sendResponse({ ok: false, error: err.message }));
     return true;

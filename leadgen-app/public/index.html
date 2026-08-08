@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="Xeven Leads" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=157" />
+<link rel="stylesheet" href="style.css?v=158" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -519,6 +519,7 @@
           <table class="contacted-table" id="contactedTable">
             <thead>
               <tr>
+                <th style="width:32px;">S/N</th>
                 <th style="width:28px;"><input type="checkbox" id="contactedSelectAll" /></th>
                 <th>Subject</th>
                 <th>Recipients</th>
@@ -553,7 +554,7 @@
         <div class="contacted-table-wrap">
           <table class="contacted-table" id="contactedHistoryTable">
             <thead>
-              <tr><th>Type</th><th>Subject</th><th>Recipients</th><th>Detail</th><th>When</th><th></th></tr>
+              <tr><th style="width:32px;">S/N</th><th>Type</th><th>Subject</th><th>Recipients</th><th>Detail</th><th>When</th><th></th></tr>
             </thead>
             <tbody id="contactedHistoryTableBody"></tbody>
           </table>
@@ -598,6 +599,7 @@
             </div>
             <div class="board-header-actions">
               <button type="button" id="contactedMarkAllReadBtn" class="icon-toggle-btn" title="Mark all read"><i class="bi bi-check2-all"></i></button>
+              <button type="button" id="contactedAlertsClearBtn" class="small-btn danger-btn"><i class="bi bi-trash"></i> Clear all</button>
             </div>
           </div>
         </div>
@@ -1001,7 +1003,7 @@
 
 
 
-  <script src="app.js?v=157"></script>
+  <script src="app.js?v=158"></script>
   <script src="pwa-install.js"></script>
 </body>
 </html>

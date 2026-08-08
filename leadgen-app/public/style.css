@@ -330,6 +330,13 @@ body {
 .catchlog-list { display: none; position: relative; margin-left: 19px; }
 .catchlog-list::before { content: ''; position: absolute; left: 0; top: 0; bottom: 8px; width: 1px; background: var(--border); }
 .country-block.open .catchlog-list { display: block; }
+/* The Contacted platform tree (Hostinger/Gmail) reuses .niche-block and
+   .catchlog-list for a different purpose - there .catchlog-list is a
+   DIRECT child of .niche-block, with no country-block in between. The
+   direct-child combinator is what disambiguates the two cases: this
+   rule only fires when catchlog-list is immediately inside niche-block,
+   not nested two levels deep as it is for Hunt/Reach Out/Pinned. */
+.niche-block.open > .catchlog-list { display: block; }
 
 .country-list { display: none; }
 .niche-block.open .country-list { display: block; }

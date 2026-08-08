@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.08-15.7";
+const APP_VERSION = "2026.08.08-15.8";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -501,6 +501,7 @@ const NOTIF_TYPE_COLOR = {
   campaign_paused: "var(--danger)",
   campaign_completed: "var(--good)",
 };
+const ALERT_TYPE_ICON = { open: "bi-envelope-open-fill", click: "bi-link-45deg" };
 
 async function refreshHeaderNotifBadge() {
   try {
@@ -975,14 +976,15 @@ async function renderContactedTable() {
   const tbody = document.getElementById("contactedTableBody");
 
   if (!data.emails.length) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding:24px;">No tracked emails yet - send one with the extension's Track toggle on.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--text-muted); padding:24px;">No tracked emails yet - send one with the extension's Track toggle on.</td></tr>`;
     return;
   }
 
   tbody.innerHTML = data.emails
     .map(
-      (email) => `
+      (email, i) => `
     <tr class="contacted-row" data-email-id="${email.id}">
+      <td class="hint">${i + 1}</td>
       <td><input type="checkbox" class="contacted-row-check" data-email-id="${email.id}" onclick="event.stopPropagation()"></td>
       <td>${email.subject || "(no subject)"}</td>
       <td>${email.recipients.join(", ")}</td>
@@ -1119,8 +1121,9 @@ async function loadContactedHistory() {
 
   tbody.innerHTML = data.events
     .map(
-      (ev) => `
+      (ev, i) => `
     <tr class="contacted-row" data-history-email-id="${ev.email_id}">
+      <td class="hint">${i + 1}</td>
       <td><span class="contacted-status-pill ${ev.type === "open" ? "opened" : "clicked"}">${ev.type}</span></td>
       <td>${ev.subject || "(no subject)"}</td>
       <td>${ev.recipients.join(", ")}</td>
@@ -1232,9 +1235,10 @@ async function loadContactedAlerts() {
 
   list.innerHTML = data.notifications
     .map(
-      (n) => `
+      (n, i) => `
     <div class="contacted-alert-item ${n.is_read ? "" : "unread"}" data-notif-id="${n.id}">
-      <i class="bi ${n.is_read ? "bi-bell" : "bi-bell-fill"} contacted-alert-bell ${n.is_read ? "" : "unread"}" data-action="toggle-read" title="Toggle read"></i>
+      <span class="hint" style="min-width:22px;">${i + 1}</span>
+      <i class="bi ${ALERT_TYPE_ICON[n.type] || "bi-bell-fill"} contacted-alert-bell ${n.is_read ? "" : "unread"}" data-action="toggle-read" title="${n.type === "click" ? "Link clicked - click to toggle read" : "Email opened - click to toggle read"}"></i>
       <div class="msg" data-action="view-email" data-email-id="${n.email_id}" style="cursor:pointer;">${n.message}<div class="meta">${formatContactedTimestamp(n.created_at)}</div></div>
       <button class="del" data-action="delete-notif" title="Delete"><i class="bi bi-x-lg"></i></button>
     </div>`
@@ -1269,6 +1273,20 @@ document.getElementById("contactedMarkAllReadBtn").addEventListener("click", asy
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ provider: state.contactedPlatform }),
   });
+  loadContactedAlerts();
+  refreshContactedUnreadBadge();
+});
+
+document.getElementById("contactedAlertsClearBtn").addEventListener("click", async () => {
+  const confirmed = await openModal({
+    title: "Clear all alerts?",
+    message: `This permanently deletes every open/click alert for ${state.contactedPlatform === "gmail" ? "Gmail" : "Hostinger"}. This cannot be undone.`,
+    confirmText: "Clear alerts",
+    danger: true,
+  });
+  if (!confirmed) return;
+  await api(`/api/tracker/notifications/clear?provider=${state.contactedPlatform}`, { method: "POST" });
+  showToast("Alerts cleared", "success");
   loadContactedAlerts();
   refreshContactedUnreadBadge();
 });
@@ -1378,7 +1396,7 @@ async function showCampaignCreationForm() {
     <h3 class="settings-subheading">Sending pace</h3>
     <p class="hint">Kept randomized within this range so sending doesn't look automated to spam filters.</p>
     <div class="smtp-field-row">
-      <label class="site-field-label">Max per day<input type="number" data-campaign-max-per-day value="100" min="1" max="100"></label>
+      <label class="site-field-label">Max per day<input type="number" data-campaign-max-per-day value="100" min="1"></label>
       <label class="site-field-label">Gap: min - max minutes
         <div style="display:flex; gap:6px;">
           <input type="number" data-campaign-min-gap value="5" min="1" style="width:70px;">
@@ -1548,7 +1566,7 @@ function showCampaignEditForm(campaign) {
     <div class="settings-divider"></div>
     <h3 class="settings-subheading">Sending pace</h3>
     <div class="smtp-field-row">
-      <label class="site-field-label">Max per day<input type="number" data-edit-max-per-day value="${campaign.max_per_day}" min="1" max="100"></label>
+      <label class="site-field-label">Max per day<input type="number" data-edit-max-per-day value="${campaign.max_per_day}" min="1"></label>
       <label class="site-field-label">Gap: min - max minutes
         <div style="display:flex; gap:6px;">
           <input type="number" data-edit-min-gap value="${campaign.min_gap_minutes}" min="1" style="width:70px;">
@@ -1645,8 +1663,8 @@ async function pollCampaignDetail(campaignId) {
   leads.forEach((l) => {
     const row = document.querySelector(`[data-lead-row-toggle="${l.id}"]`);
     if (!row) return;
-    const statusCell = row.children[3];
-    const sentCell = row.children[4];
+    const statusCell = row.children[4];
+    const sentCell = row.children[5];
     const newStatusHtml = `<span class="contacted-status-pill campaign-lead-${l.status}"><i class="bi ${CAMPAIGN_LEAD_STATUS_ICON[l.status] || "bi-circle"}"></i> ${l.status}</span>`;
     if (statusCell.innerHTML !== newStatusHtml) statusCell.innerHTML = newStatusHtml;
     sentCell.textContent = formatContactedTimestamp(l.sent_at);
@@ -1724,13 +1742,14 @@ async function loadCampaignDetail(campaignId) {
   const bodyEl = document.getElementById("campaignDetailBody");
   bodyEl.innerHTML = `
     <table class="contacted-table campaign-detail-table">
-      <thead><tr><th style="width:20px;"></th><th>Lead</th><th>Recipient</th><th>Status</th><th>Sent</th></tr></thead>
+      <thead><tr><th style="width:36px;">S/N</th><th style="width:20px;"></th><th>Lead</th><th>Recipient</th><th>Status</th><th>Sent</th></tr></thead>
       <tbody>
         ${leads
-          .map((l) => {
+          .map((l, i) => {
             const openInfo = l.open_count != null ? `${l.open_count} open(s)${l.click_count ? `, ${l.click_count} click(s)` : ""}` : "";
             return `
           <tr class="campaign-lead-row" data-lead-row-toggle="${l.id}" data-lead-id="${l.lead_id}">
+            <td class="hint">${i + 1}</td>
             <td><i class="bi bi-chevron-right campaign-row-chevron" data-chevron="${l.id}"></i></td>
             <td>${l.lead_name}</td>
             <td>${l.recipient_email || "—"}</td>
@@ -1738,7 +1757,7 @@ async function loadCampaignDetail(campaignId) {
             <td>${formatContactedTimestamp(l.sent_at)}</td>
           </tr>
           <tr class="campaign-lead-detail-row" id="campaign-detail-${l.id}" style="display:none;">
-            <td colspan="5">
+            <td colspan="6">
               <div class="campaign-lead-detail">
                 ${l.sent_subject ? `<div><b>Subject:</b> ${l.sent_subject}</div>` : ""}
                 ${openInfo ? `<div><b>Engagement:</b> ${openInfo}</div>` : ""}
@@ -1746,7 +1765,10 @@ async function loadCampaignDetail(campaignId) {
                 ${l.error ? `<div style="color:var(--danger);"><b>Error:</b> ${l.error}</div>` : ""}
                 ${
                   l.status === "failed"
-                    ? `<button type="button" class="small-btn danger-btn" data-action="skip-campaign-lead" data-lead-row-id="${l.id}" style="margin-top:4px;"><i class="bi bi-skip-forward-fill"></i> Skip this lead and resume campaign</button>`
+                    ? `<div style="display:flex; gap:6px; margin-top:4px;">
+                         <button type="button" class="small-btn" data-action="retry-campaign-lead" data-lead-row-id="${l.id}"><i class="bi bi-arrow-clockwise"></i> Retry</button>
+                         <button type="button" class="small-btn danger-btn" data-action="skip-campaign-lead" data-lead-row-id="${l.id}"><i class="bi bi-skip-forward-fill"></i> Skip this lead and resume campaign</button>
+                       </div>`
                     : ""
                 }
                 ${l.website ? `<div><b>Website:</b> ${l.website}</div>` : ""}
@@ -1804,6 +1826,19 @@ async function loadCampaignDetail(campaignId) {
       if (!confirmed) return;
       await api(`/api/campaigns/${campaign.id}/leads/${leadRowId}/skip`, { method: "POST" });
       showToast("Lead skipped - campaign resumed", "success");
+      loadCampaignDetail(campaign.id);
+    });
+  });
+
+  bodyEl.querySelectorAll("[data-action=\"retry-campaign-lead\"]").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const leadRowId = btn.dataset.leadRowId;
+      // No confirmation needed - retry is low-stakes and reversible
+      // (it'll just fail again and land back here if the issue persists),
+      // unlike skip which permanently sets the lead aside.
+      await api(`/api/campaigns/${campaign.id}/leads/${leadRowId}/retry`, { method: "POST" });
+      showToast("Retrying - campaign resumed", "success");
       loadCampaignDetail(campaign.id);
     });
   });

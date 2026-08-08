@@ -255,6 +255,33 @@ router.post("/notifications/bulk-delete", (req, res) => {
   }
 });
 
+// POST /api/tracker/notifications/clear?provider= - clears every alert
+// for this user (optionally scoped to one platform). Alerts is the
+// source-of-truth page for this data (unlike the header feed, which only
+// dismisses items from its own view without touching the underlying
+// record), so this is a genuine, permanent delete.
+router.post("/notifications/clear", (req, res) => {
+  const { provider } = req.query;
+  try {
+    let info;
+    if (provider) {
+      info = db
+        .prepare(
+          `DELETE FROM tracked_notifications WHERE user_id = ? AND email_id IN (
+             SELECT id FROM tracked_emails WHERE user_id = ? AND provider = ?
+           )`
+        )
+        .run(req.session.userId, req.session.userId, provider);
+    } else {
+      info = db.prepare("DELETE FROM tracked_notifications WHERE user_id = ?").run(req.session.userId);
+    }
+    res.json({ ok: true, deleted: info.changes });
+  } catch (err) {
+    console.error("Failed to clear notifications:", err);
+    res.status(500).json({ error: "Failed to clear notifications" });
+  }
+});
+
 // ==================== Settings ====================
 // GET /api/tracker/settings - never returns the raw smtp password, only
 // whether one is set, so it can't leak back to the browser on page load.

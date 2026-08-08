@@ -6,6 +6,37 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.8
+A critical regression fix, a real bug found and fixed behind the missing
+message content, and the rest of the item-1 requests (unlimited daily
+sends, retry, S/N columns, alert icons/clear-all).
+
+- **Fixed Hostinger/Gmail no longer expanding in Contacted** - a
+  regression from the previous session's country-tree CSS change, which
+  accidentally broke the platform tree since it reuses the same CSS
+  classes for something unrelated. Verified in a real browser that both
+  platforms expand correctly again, and that the country-tree isolation
+  that prompted the original change didn't regress back.
+- **Found and fixed a real gap behind the missing message content**:
+  emails sent via the browser extension never captured the compose body
+  at all, unlike automated campaign emails. Added a backend endpoint plus
+  extension-side code (Gmail and Hostinger) to report the final HTML back
+  right after the tracking pixel is injected. Verified backend end-to-end
+  - can't fully verify the extension's own browser-side behavior from
+  here, so this is worth a real-world check.
+- **Daily email sending limit removed** - verified a campaign can be
+  created with a max-per-day in the thousands without being silently
+  capped at the old 100 ceiling.
+- **Retry button** for a failed campaign lead, alongside the existing
+  Skip button - resets just that lead to pending and resumes the
+  campaign, for when a failure looks transient rather than permanent.
+- **S/N (row number) columns** added and verified across campaign lead
+  rows, Tracking, History, and Alerts.
+- **Alert icons now reflect the actual event** (open vs. link click)
+  instead of a generic bell, and Alerts gained its own "Clear all" button
+  - verified as a genuine delete, distinct from the header feed's
+  dismiss-only Clear (which must never touch Alerts' own data).
+
 ## What's in this V15.7
 Item 7 - the pipeline tree restructured to Niche > Country > City > Leads,
 applied consistently across Hunt, Reach Out, Pinned, and campaign
