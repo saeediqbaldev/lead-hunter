@@ -6,6 +6,24 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.2
+Items 4, 6, and 7 complete and verified; items 5, 9, 10 still ahead.
+
+- **All Contacted timestamps now show UTC+5, 12-hour AM/PM** - storage
+  stays UTC in the database (correct practice), this is purely a
+  display-layer conversion, applied everywhere a timestamp appears
+  (Tracking, History, Alerts, campaign cards, campaign lead rows, the
+  notification feed). Verified against known day/midnight/year-rollover
+  edge cases, then confirmed in a real browser against the raw UTC value.
+- **A live campaign progress indicator in the header** - envelope icon
+  with a sent/total counter next to the daily lead cap, blinking only
+  while a campaign is actually running, stopping the moment it completes,
+  pauses, or is cancelled. Clicking it jumps straight to Auto Send.
+- **Notifications are now clickable** - clicking one in the header feed
+  takes you straight to what it's about: a campaign event opens that
+  campaign's detail page, a tracker alert opens that email's tracking
+  detail. Verified both paths end-to-end in a real browser.
+
 ## What's in this V15.1
 Progress on the latest round - items 1, 2, 3, and 8 complete and
 verified; items 4, 5, 6, 7, 9, 10 still ahead.
