@@ -54,7 +54,7 @@ function findExistingCatchLogForCity(nicheId, locationKey) {
 router.post("/", async (req, res) => {
   try {
     const userId = req.session.userId;
-    const { keyword, location, maxResults, includeRatings, nicheId, nicheName, catchLogName } = req.body;
+    const { keyword, location, maxResults, includeRatings, nicheId, nicheName, catchLogName, country } = req.body;
 
     if (!keyword || !location) {
       return res.status(400).json({ error: "keyword and location are required" });
@@ -126,8 +126,8 @@ router.post("/", async (req, res) => {
     } else {
       logName = (catchLogName && catchLogName.trim()) || firstWordOfLocation(location);
       const logInfo = db
-        .prepare("INSERT INTO catch_logs (niche_id, name, keyword, location) VALUES (?, ?, ?, ?)")
-        .run(niche.id, logName, keyword, location);
+        .prepare("INSERT INTO catch_logs (niche_id, name, keyword, location, country) VALUES (?, ?, ?, ?, ?)")
+        .run(niche.id, logName, keyword, location, (country && country.trim()) || "Unnamed");
       catchLogId = logInfo.lastInsertRowid;
     }
 

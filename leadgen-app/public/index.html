@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="Xeven Leads" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=155" />
+<link rel="stylesheet" href="style.css?v=157" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -30,16 +30,9 @@
     <button type="button" id="installBannerDismissBtn" class="install-banner-dismiss" title="Dismiss"><i class="bi bi-x"></i></button>
   </div>
 
-  <div id="mobileBlockOverlay">
-    <div class="mobile-block-message">
-      <i class="bi bi-laptop"></i>
-      <p>The WebApp is not Mobile friendly, kindly use it with laptop or large screen.</p>
-      <span>- Xeven Leads</span>
-    </div>
-  </div>
-
 
   <header class="topbar">
+    <button id="mobileNavToggleBtn" class="mobile-nav-toggle-btn" title="Menu"><i class="bi bi-list"></i></button>
     <div class="brand">
       <span class="brand-mark">◎</span>
       <span class="brand-name">Xeven Leads</span>
@@ -85,6 +78,8 @@
     </div>
   </div>
 
+  <div id="mobileNavBackdrop" class="mobile-nav-backdrop"></div>
+
   <main class="layout">
 
     <aside class="left-col" id="leftCol">
@@ -119,7 +114,7 @@
             <button class="nav-section-refresh" data-refresh-section="reachout" title="Refresh Reach Out data"><i class="bi bi-arrow-clockwise"></i></button>
           </div>
           <div class="nav-section-body">
-            <p class="nav-hint">Niche → City → pipeline stage</p>
+            <p class="nav-hint">Niche → Country → City → pipeline stage</p>
             <div id="outreachTree" class="niches-tree nav-tree"></div>
           </div>
         </div>
@@ -134,7 +129,7 @@
             <button class="nav-section-refresh" data-refresh-section="pinned" title="Refresh Pinned data"><i class="bi bi-arrow-clockwise"></i></button>
           </div>
           <div class="nav-section-body">
-            <p class="nav-hint">Niche → City → pinned leads</p>
+            <p class="nav-hint">Niche → Country → City → pinned leads</p>
             <div id="pinnedTree" class="niches-tree nav-tree"></div>
           </div>
         </div>
@@ -252,6 +247,11 @@
           <label>
             Location
             <input type="text" id="location" placeholder="e.g. Swabi, Pakistan" required />
+          </label>
+          <label>
+            Country <small class="optional">(optional - groups this catch log under a country in the tree; leave blank for "Unnamed")</small>
+            <input type="text" id="huntCountry" list="huntCountryOptions" placeholder="e.g. Pakistan" autocomplete="off" />
+            <datalist id="huntCountryOptions"></datalist>
           </label>
           <label>
             Catch log name <small class="optional">(optional — defaults to the city name; ignored if you already hunted this niche+city before)</small>
@@ -1001,7 +1001,7 @@
 
 
 
-  <script src="app.js?v=155"></script>
+  <script src="app.js?v=157"></script>
   <script src="pwa-install.js"></script>
 </body>
 </html>

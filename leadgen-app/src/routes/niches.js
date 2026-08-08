@@ -156,7 +156,7 @@ router.get("/:id/outreach-summary", (req, res) => {
   if (!niche) return res.status(404).json({ error: "Niche not found" });
 
   const logs = db
-    .prepare("SELECT id, name FROM catch_logs WHERE niche_id = ? ORDER BY created_at ASC")
+    .prepare("SELECT id, name, country FROM catch_logs WHERE niche_id = ? ORDER BY created_at ASC")
     .all(req.params.id);
 
   const countStmt = db.prepare(
@@ -173,6 +173,7 @@ router.get("/:id/outreach-summary", (req, res) => {
     return {
       catchLogId: log.id,
       catchLogName: log.name,
+      country: log.country || "Unnamed",
       shortlisted,
       contacted,
       engaged,

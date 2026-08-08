@@ -32,7 +32,7 @@ router.get("/", (req, res) => {
   const { nicheId } = req.query;
 
   let query = `
-    SELECT cl.id, cl.niche_id, cl.name, cl.keyword, cl.location, cl.created_at,
+    SELECT cl.id, cl.niche_id, cl.name, cl.keyword, cl.location, cl.country, cl.created_at,
            n.name AS niche_name,
            COUNT(l.id) AS lead_count
     FROM catch_logs cl
@@ -51,9 +51,9 @@ router.get("/", (req, res) => {
   res.json(rows);
 });
 
-// POST /api/catch-logs { nicheId, name, keyword?, location? }
+// POST /api/catch-logs { nicheId, name, keyword?, location?, country? }
 router.post("/", (req, res) => {
-  const { nicheId, name, keyword, location } = req.body;
+  const { nicheId, name, keyword, location, country } = req.body;
   if (!nicheId || !name || !name.trim()) {
     return res.status(400).json({ error: "nicheId and name are required" });
   }
@@ -63,8 +63,8 @@ router.post("/", (req, res) => {
   if (!niche) return res.status(404).json({ error: "Niche not found" });
 
   const info = db
-    .prepare("INSERT INTO catch_logs (niche_id, name, keyword, location) VALUES (?, ?, ?, ?)")
-    .run(nicheId, capitalizedName, keyword || null, location || null);
+    .prepare("INSERT INTO catch_logs (niche_id, name, keyword, location, country) VALUES (?, ?, ?, ?, ?)")
+    .run(nicheId, capitalizedName, keyword || null, location || null, (country && country.trim()) || "Unnamed");
 
   res.json({
     id: info.lastInsertRowid,
@@ -72,21 +72,41 @@ router.post("/", (req, res) => {
     name: capitalizedName,
     keyword: keyword || null,
     location: location || null,
+    country: (country && country.trim()) || "Unnamed",
     lead_count: 0,
   });
 });
 
-// PATCH /api/catch-logs/:id { name }
+// PATCH /api/catch-logs/:id { name?, country? } - at least one required.
+// This is also how an "Unnamed" catch log left behind by the country-
+// column migration gets renamed to its real country later.
 router.patch("/:id", (req, res) => {
-  const { name } = req.body;
-  if (!name || !name.trim()) return res.status(400).json({ error: "name is required" });
-  const capitalizedName = capitalizeWords(name.trim());
+  const { name, country } = req.body;
+  if ((!name || !name.trim()) && (country === undefined || country === null)) {
+    return res.status(400).json({ error: "Provide a name and/or country to update" });
+  }
 
   const existing = getOwnedCatchLog(req.session.userId, req.params.id);
   if (!existing) return res.status(404).json({ error: "Catch log not found" });
 
-  db.prepare("UPDATE catch_logs SET name = ? WHERE id = ?").run(capitalizedName, req.params.id);
-  res.json({ ...existing, name: capitalizedName });
+  const updates = [];
+  const params = [];
+  let capitalizedName = existing.name;
+  if (name && name.trim()) {
+    capitalizedName = capitalizeWords(name.trim());
+    updates.push("name = ?");
+    params.push(capitalizedName);
+  }
+  let newCountry = existing.country;
+  if (country !== undefined && country !== null) {
+    newCountry = country.trim() || "Unnamed";
+    updates.push("country = ?");
+    params.push(newCountry);
+  }
+  params.push(req.params.id);
+
+  db.prepare(`UPDATE catch_logs SET ${updates.join(", ")} WHERE id = ?`).run(...params);
+  res.json({ ...existing, name: capitalizedName, country: newCountry });
 });
 
 // DELETE /api/catch-logs/:id -> cascades to its leads

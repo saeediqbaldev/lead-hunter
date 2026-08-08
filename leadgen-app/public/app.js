@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.08-15.5";
+const APP_VERSION = "2026.08.08-15.7";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -1429,13 +1429,31 @@ async function showCampaignCreationForm() {
       cityChecklist.innerHTML = `<p class="hint" style="padding:8px;">No cities caught for this niche yet.</p>`;
       return;
     }
-    cityChecklist.innerHTML = cities
+
+    // Group by country so the checklist mirrors the same Niche -> Country
+    // -> City structure used throughout the rest of the app
+    const countryMap = new Map();
+    cities.forEach((c) => {
+      const country = c.country || "Unnamed";
+      if (!countryMap.has(country)) countryMap.set(country, []);
+      countryMap.get(country).push(c);
+    });
+
+    cityChecklist.innerHTML = Array.from(countryMap.entries())
       .map(
-        (c) => `
-      <label class="campaign-city-check-row">
-        <input type="checkbox" value="${c.id}" data-campaign-city-checkbox>
-        ${c.name} <span class="hint">(${c.lead_count} leads)</span>
-      </label>`
+        ([country, countryCities]) => `
+      <div class="campaign-city-country-group">
+        <div class="campaign-city-country-label"><i class="bi bi-flag"></i> ${country}</div>
+        ${countryCities
+          .map(
+            (c) => `
+        <label class="campaign-city-check-row">
+          <input type="checkbox" value="${c.id}" data-campaign-city-checkbox>
+          ${c.name} <span class="hint">(${c.lead_count} leads)</span>
+        </label>`
+          )
+          .join("")}
+      </div>`
       )
       .join("");
     cityChecklist.querySelectorAll("[data-campaign-city-checkbox]").forEach((cb) => cb.addEventListener("change", updateLeadPreview));
@@ -3023,6 +3041,7 @@ const state = {
   activeCatchLogId: null,
   activeNicheId: null, // quick-filter: show all cities within this niche (board mode only)
   openNicheIds: new Set(),
+  openCountryKeys: new Set(), // "nicheId:countryName" -> expanded in the Hunt tree
   selectedNicheId: null, // for the Hunt form's niche dropdown
 
   contentView: "huntForm", // "huntForm" | "board" | "reports" - which content panel is shown
@@ -3039,6 +3058,7 @@ const state = {
     status: "shortlisted",
   },
   outreachOpenNicheIds: new Set(),
+  outreachOpenCountryKeys: new Set(), // "nicheId:countryName" -> expanded in the Reach Out tree
   outreachOpenCityIds: new Set(), // "nicheId:catchLogId" -> expanded to show status leaves
   outreachSummaries: new Map(), // nicheId -> [{catchLogId, catchLogName, shortlisted, contacted, won}]
 
@@ -3046,6 +3066,7 @@ const state = {
     catchLogId: null, // when set, board shows only pinned leads in this catch log
   },
   pinnedOpenNicheIds: new Set(),
+  pinnedOpenCountryKeys: new Set(), // "nicheId:countryName" -> expanded in the Pinned tree
 
   expandedLeadId: null, // which lead's Inspect/Generate panel is currently open (Reach Out only)
   currentLeadsById: new Map(), // id -> full lead object, for the expand panel to reference
@@ -3127,6 +3148,7 @@ function restoreNavState() {
 
 function setContentView(view) {
   if (view !== "contacted-campaign-detail") stopCampaignDetailPolling();
+  closeMobileNav();
   state.contentView = view;
   const ALL_VIEWS = {
     huntForm: huntFormPanel,
@@ -3189,6 +3211,19 @@ collapseToggleBtn.addEventListener("click", () => {
   layoutEl.classList.toggle("panel-collapsed", collapsed);
   collapseToggleBtn.title = collapsed ? "Expand panel" : "Collapse panel";
 });
+
+// ---------- Mobile sidebar drawer ----------
+const mobileNavBackdrop = document.getElementById("mobileNavBackdrop");
+function openMobileNav() {
+  document.body.classList.add("mobile-nav-open");
+}
+function closeMobileNav() {
+  document.body.classList.remove("mobile-nav-open");
+}
+document.getElementById("mobileNavToggleBtn").addEventListener("click", () => {
+  document.body.classList.contains("mobile-nav-open") ? closeMobileNav() : openMobileNav();
+});
+mobileNavBackdrop.addEventListener("click", closeMobileNav);
 
 // ---------- Filters bar collapse toggle ----------
 document.getElementById("filtersToggleBtn").addEventListener("click", () => {
@@ -3662,6 +3697,16 @@ async function loadNichesAndLogs() {
   renderNichesTree();
   renderQuickNicheDropdown();
   renderQuickCityDropdown();
+  renderHuntCountryDatalist();
+}
+
+// Populates the Hunt form's country field with autocomplete suggestions
+// from every distinct country already in use - "Unnamed" is the
+// migration's placeholder value, not a real country, so it's excluded
+// from the suggestion list.
+function renderHuntCountryDatalist() {
+  const countries = [...new Set(state.catchLogs.map((l) => l.country).filter((c) => c && c !== "Unnamed"))].sort();
+  document.getElementById("huntCountryOptions").innerHTML = countries.map((c) => `<option value="${c}"></option>`).join("");
 }
 
 const EXPORT_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M12 3v12"/><path d="M7.5 10.5 12 15l4.5-4.5"/><path d="M4.5 19.5h15"/></svg>`;
@@ -3689,12 +3734,14 @@ function actionsMenuHtml(kind, id) {
       : `<a href="${base}/csv">Export CSV</a><a href="${base}/pdf">Export PDF</a>`;
   const renameAction = kind === "niche" ? "rename-niche" : "rename-log";
   const deleteAction = kind === "niche" ? "delete-niche" : "delete-log";
+  const countryActionHtml = kind === "log" ? `<button type="button" data-action="edit-log-country" data-id="${id}"><i class="bi bi-flag"></i> Edit country</button>` : "";
   return `
     <div class="export-menu actions-menu" data-export-menu>
       <button class="icon-btn" data-action="toggle-export" title="Actions"><i class="bi bi-three-dots-vertical"></i></button>
       <div class="export-list actions-list">
         ${exportLinks}
         <button type="button" data-action="${renameAction}" data-id="${id}"><i class="bi bi-pencil"></i> Rename</button>
+        ${countryActionHtml}
         <button type="button" data-action="${deleteAction}" data-id="${id}" class="danger-item"><i class="bi bi-trash"></i> Delete</button>
       </div>
     </div>`;
@@ -3710,15 +3757,41 @@ function renderNichesTree() {
     .map((niche) => {
       const logs = state.catchLogs.filter((l) => l.niche_id === niche.id);
       const isOpen = state.openNicheIds.has(niche.id);
-      const logsHtml = logs
-        .map(
-          (log) => `
-        <div class="catchlog-row ${log.id === state.activeCatchLogId ? "active" : ""}" data-log-id="${log.id}">
-          <div class="catchlog-name">${log.name}</div>
-          <span class="catchlog-meta">${log.lead_count}R</span>
-          ${actionsMenuHtml("log", log.id)}
-        </div>`
-        )
+
+      // Group this niche's catch logs (cities) by country
+      const countryMap = new Map();
+      logs.forEach((log) => {
+        const country = log.country || "Unnamed";
+        if (!countryMap.has(country)) countryMap.set(country, []);
+        countryMap.get(country).push(log);
+      });
+
+      const countriesHtml = Array.from(countryMap.entries())
+        .map(([country, countryLogs]) => {
+          const countryKey = `${niche.id}:${country}`;
+          const countryOpen = state.openCountryKeys.has(countryKey);
+          const countryLeadCount = countryLogs.reduce((sum, l) => sum + l.lead_count, 0);
+          const logsHtml = countryLogs
+            .map(
+              (log) => `
+            <div class="catchlog-row ${log.id === state.activeCatchLogId ? "active" : ""}" data-log-id="${log.id}">
+              <div class="catchlog-name">${log.name}</div>
+              <span class="catchlog-meta">${log.lead_count}R</span>
+              ${actionsMenuHtml("log", log.id)}
+            </div>`
+            )
+            .join("");
+          const isCountryActiveParent = countryLogs.some((l) => l.id === state.activeCatchLogId);
+          return `
+          <div class="country-block ${countryOpen ? "open" : ""} ${isCountryActiveParent ? "active-parent" : ""}" data-niche-id="${niche.id}" data-country="${country}">
+            <div class="country-row" data-action="toggle-country" data-niche-id="${niche.id}" data-country="${country}">
+              <span class="niche-caret small">▶</span>
+              <span class="country-name"><i class="bi bi-flag"></i> ${country}</span>
+              <span class="niche-count">${countryLogs.length}C | ${countryLeadCount}R</span>
+            </div>
+            <div class="catchlog-list">${logsHtml}</div>
+          </div>`;
+        })
         .join("");
 
       const isActiveParent = logs.some((l) => l.id === state.activeCatchLogId) || niche.id === state.activeNicheId;
@@ -3730,7 +3803,7 @@ function renderNichesTree() {
           <span class="niche-count">${logs.length}L | ${niche.lead_count}R</span>
           ${actionsMenuHtml("niche", niche.id)}
         </div>
-        <div class="catchlog-list">${logsHtml || '<div class="catchlog-row"><span class="catchlog-meta">No catch logs yet</span></div>'}</div>
+        <div class="country-list">${countriesHtml || '<div class="catchlog-row"><span class="catchlog-meta">No catch logs yet</span></div>'}</div>
       </div>`;
     })
     .join("");
@@ -3794,6 +3867,14 @@ nichesTree.addEventListener("click", async (e) => {
     return;
   }
 
+  if (action === "toggle-country") {
+    const countryKey = `${target.dataset.nicheId}:${target.dataset.country}`;
+    if (state.openCountryKeys.has(countryKey)) state.openCountryKeys.delete(countryKey);
+    else state.openCountryKeys.add(countryKey);
+    renderNichesTree();
+    return;
+  }
+
   if (action === "rename-niche") {
     const niche = state.niches.find((n) => n.id === Number(id));
     const newName = await openModal({ title: "Rename niche", inputLabel: "Niche name", inputValue: niche.name, confirmText: "Save" });
@@ -3848,6 +3929,26 @@ nichesTree.addEventListener("click", async (e) => {
       showToast(`Catch log renamed to "${newName}"`, "success");
       await loadNichesAndLogs();
       if (state.activeCatchLogId === Number(id)) updateScopeLine();
+    }
+    return;
+  }
+
+  if (action === "edit-log-country") {
+    const log = state.catchLogs.find((l) => l.id === Number(id));
+    const newCountry = await openModal({
+      title: "Edit country",
+      inputLabel: "Country",
+      inputValue: log.country === "Unnamed" ? "" : log.country,
+      confirmText: "Save",
+    });
+    if (newCountry !== null && newCountry !== undefined) {
+      await api(`/api/catch-logs/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ country: newCountry }),
+      });
+      showToast(`Country updated`, "success");
+      await loadNichesAndLogs();
     }
     return;
   }
@@ -3943,34 +4044,65 @@ async function renderOutreachTree() {
       if (visibleCities.length === 0) return null; // hide this niche entirely - nothing to reach out to
 
       const isOpen = state.outreachOpenNicheIds.has(niche.id);
-      let citiesHtml = "";
+
+      // Group this niche's visible cities by country
+      const countryMap = new Map();
+      visibleCities.forEach((city) => {
+        const country = city.country || "Unnamed";
+        if (!countryMap.has(country)) countryMap.set(country, []);
+        countryMap.get(country).push(city);
+      });
+
+      let countriesHtml = "";
       if (isOpen) {
-        citiesHtml = visibleCities
-          .map((city) => {
-            const cityKey = `${niche.id}:${city.catchLogId}`;
-            const cityOpen = state.outreachOpenCityIds.has(cityKey);
+        countriesHtml = Array.from(countryMap.entries())
+          .map(([country, countryCities]) => {
+            const countryKey = `${niche.id}:${country}`;
+            const countryOpen = state.outreachOpenCountryKeys.has(countryKey);
+            const countryTotal = countryCities.reduce((sum, c) => sum + c.total, 0);
+            const isCountryActiveParent = state.mode === "outreach" && countryCities.some((c) => c.catchLogId === state.outreach.catchLogId);
 
-            const statusLeaves = OUTREACH_STATUS_LIST.map(
-              (s) => `
-              <div class="status-leaf-row ${
-                state.outreach.catchLogId === city.catchLogId && state.outreach.status === s.key && state.mode === "outreach"
-                  ? "active"
-                  : ""
-              }" data-niche-id="${niche.id}" data-log-id="${city.catchLogId}" data-status="${s.key}">
-                <span class="outreach-badge ${s.key}">${city[s.key]}</span>
-                <span class="status-leaf-label">${s.label}</span>
-              </div>`
-            ).join("");
+            let citiesHtml = "";
+            if (countryOpen) {
+              citiesHtml = countryCities
+                .map((city) => {
+                  const cityKey = `${niche.id}:${city.catchLogId}`;
+                  const cityOpen = state.outreachOpenCityIds.has(cityKey);
 
-            const isCityActiveParent = state.mode === "outreach" && state.outreach.catchLogId === city.catchLogId;
+                  const statusLeaves = OUTREACH_STATUS_LIST.map(
+                    (s) => `
+                    <div class="status-leaf-row ${
+                      state.outreach.catchLogId === city.catchLogId && state.outreach.status === s.key && state.mode === "outreach"
+                        ? "active"
+                        : ""
+                    }" data-niche-id="${niche.id}" data-log-id="${city.catchLogId}" data-status="${s.key}">
+                      <span class="outreach-badge ${s.key}">${city[s.key]}</span>
+                      <span class="status-leaf-label">${s.label}</span>
+                    </div>`
+                  ).join("");
+
+                  const isCityActiveParent = state.mode === "outreach" && state.outreach.catchLogId === city.catchLogId;
+                  return `
+                  <div class="catchlog-block ${cityOpen ? "open" : ""}">
+                    <div class="catchlog-row outreach-city-row ${isCityActiveParent ? "active-parent" : ""}" data-action="toggle-outreach-city" data-niche-id="${niche.id}" data-log-id="${city.catchLogId}">
+                      <span class="niche-caret small">▶</span>
+                      <div class="catchlog-name">${city.catchLogName}</div>
+                      <div class="catchlog-meta">${city.total} total</div>
+                    </div>
+                    <div class="status-leaf-list">${statusLeaves}</div>
+                  </div>`;
+                })
+                .join("");
+            }
+
             return `
-            <div class="catchlog-block ${cityOpen ? "open" : ""}">
-              <div class="catchlog-row outreach-city-row ${isCityActiveParent ? "active-parent" : ""}" data-action="toggle-outreach-city" data-niche-id="${niche.id}" data-log-id="${city.catchLogId}">
+            <div class="country-block ${countryOpen ? "open" : ""} ${isCountryActiveParent ? "active-parent" : ""}" data-niche-id="${niche.id}" data-country="${country}">
+              <div class="country-row" data-action="toggle-outreach-country" data-niche-id="${niche.id}" data-country="${country}">
                 <span class="niche-caret small">▶</span>
-                <div class="catchlog-name">${city.catchLogName}</div>
-                <div class="catchlog-meta">${city.total} total</div>
+                <span class="country-name"><i class="bi bi-flag"></i> ${country}</span>
+                <span class="niche-count">${countryCities.length}C | ${countryTotal}</span>
               </div>
-              <div class="status-leaf-list">${statusLeaves}</div>
+              <div class="catchlog-list">${citiesHtml}</div>
             </div>`;
           })
           .join("");
@@ -3985,7 +4117,7 @@ async function renderOutreachTree() {
               <span class="niche-count">${visibleCities.length} cit${visibleCities.length === 1 ? "y" : "ies"}</span>
             </div>
           </div>
-          <div class="catchlog-list">${citiesHtml}</div>
+          <div class="country-list">${countriesHtml}</div>
         </div>`;
     })
     .filter(Boolean);
@@ -4006,26 +4138,50 @@ async function renderPinnedTree() {
       return;
     }
 
-    // Group client-side: niche_id -> { name, cities: { catch_log_id -> { name, count } } }
+    // Group client-side: niche_id -> { name, countries: { countryName -> { cities: { catch_log_id -> { name, count } } } } }
     const nicheMap = new Map();
     for (const lead of leads) {
-      if (!nicheMap.has(lead.niche_id)) nicheMap.set(lead.niche_id, { name: lead.niche_name, cities: new Map() });
+      if (!nicheMap.has(lead.niche_id)) nicheMap.set(lead.niche_id, { name: lead.niche_name, countries: new Map() });
       const niche = nicheMap.get(lead.niche_id);
-      if (!niche.cities.has(lead.catch_log_id)) niche.cities.set(lead.catch_log_id, { name: lead.city_name, count: 0 });
-      niche.cities.get(lead.catch_log_id).count++;
+      const country = lead.country || "Unnamed";
+      if (!niche.countries.has(country)) niche.countries.set(country, new Map());
+      const cities = niche.countries.get(country);
+      if (!cities.has(lead.catch_log_id)) cities.set(lead.catch_log_id, { name: lead.city_name, count: 0 });
+      cities.get(lead.catch_log_id).count++;
     }
 
     pinnedTree.innerHTML = Array.from(nicheMap.entries())
       .map(([nicheId, niche]) => {
         const isOpen = state.pinnedOpenNicheIds.has(nicheId);
-        const citiesHtml = Array.from(niche.cities.entries())
-          .map(
-            ([catchLogId, city]) => `
-            <div class="catchlog-row ${state.mode === "pinned" && state.pinned.catchLogId === catchLogId ? "active" : ""}" data-action="toggle-pinned-city" data-log-id="${catchLogId}">
-              <div class="catchlog-name">${city.name}</div>
-              <span class="catchlog-meta">${city.count} pinned</span>
-            </div>`
-          )
+        const totalCities = Array.from(niche.countries.values()).reduce((sum, cities) => sum + cities.size, 0);
+
+        const countriesHtml = Array.from(niche.countries.entries())
+          .map(([country, cities]) => {
+            const countryKey = `${nicheId}:${country}`;
+            const countryOpen = state.pinnedOpenCountryKeys.has(countryKey);
+            const countryPinnedCount = Array.from(cities.values()).reduce((sum, c) => sum + c.count, 0);
+            const isCountryActiveParent = Array.from(cities.keys()).some((catchLogId) => state.mode === "pinned" && state.pinned.catchLogId === catchLogId);
+
+            const citiesHtml = Array.from(cities.entries())
+              .map(
+                ([catchLogId, city]) => `
+                <div class="catchlog-row ${state.mode === "pinned" && state.pinned.catchLogId === catchLogId ? "active" : ""}" data-action="toggle-pinned-city" data-log-id="${catchLogId}">
+                  <div class="catchlog-name">${city.name}</div>
+                  <span class="catchlog-meta">${city.count} pinned</span>
+                </div>`
+              )
+              .join("");
+
+            return `
+              <div class="country-block ${countryOpen ? "open" : ""} ${isCountryActiveParent ? "active-parent" : ""}" data-niche-id="${nicheId}" data-country="${country}">
+                <div class="country-row" data-action="toggle-pinned-country" data-niche-id="${nicheId}" data-country="${country}">
+                  <span class="niche-caret small">▶</span>
+                  <span class="country-name"><i class="bi bi-flag"></i> ${country}</span>
+                  <span class="niche-count">${cities.size}C | ${countryPinnedCount}</span>
+                </div>
+                <div class="catchlog-list">${citiesHtml}</div>
+              </div>`;
+          })
           .join("");
 
         return `
@@ -4033,9 +4189,9 @@ async function renderPinnedTree() {
             <div class="niche-row" data-action="toggle-pinned-niche" data-id="${nicheId}">
               <span class="niche-caret">▶</span>
               <span class="niche-name">${niche.name}</span>
-              <span class="niche-count">${niche.cities.size} cit${niche.cities.size === 1 ? "y" : "ies"}</span>
+              <span class="niche-count">${totalCities} cit${totalCities === 1 ? "y" : "ies"}</span>
             </div>
-            <div class="catchlog-list">${citiesHtml}</div>
+            <div class="country-list">${countriesHtml}</div>
           </div>`;
       })
       .join("");
@@ -4050,6 +4206,15 @@ pinnedTree.addEventListener("click", async (e) => {
     const id = Number(nicheToggle.dataset.id);
     if (state.pinnedOpenNicheIds.has(id)) state.pinnedOpenNicheIds.delete(id);
     else state.pinnedOpenNicheIds.add(id);
+    await renderPinnedTree();
+    return;
+  }
+
+  const countryToggle = e.target.closest('[data-action="toggle-pinned-country"]');
+  if (countryToggle) {
+    const countryKey = `${countryToggle.dataset.nicheId}:${countryToggle.dataset.country}`;
+    if (state.pinnedOpenCountryKeys.has(countryKey)) state.pinnedOpenCountryKeys.delete(countryKey);
+    else state.pinnedOpenCountryKeys.add(countryKey);
     await renderPinnedTree();
     return;
   }
@@ -4072,6 +4237,15 @@ outreachTree.addEventListener("click", async (e) => {
     const nicheId = Number(toggleNiche.dataset.id);
     if (state.outreachOpenNicheIds.has(nicheId)) state.outreachOpenNicheIds.delete(nicheId);
     else state.outreachOpenNicheIds.add(nicheId);
+    await renderOutreachTree();
+    return;
+  }
+
+  const toggleCountry = e.target.closest('[data-action="toggle-outreach-country"]');
+  if (toggleCountry) {
+    const countryKey = `${toggleCountry.dataset.nicheId}:${toggleCountry.dataset.country}`;
+    if (state.outreachOpenCountryKeys.has(countryKey)) state.outreachOpenCountryKeys.delete(countryKey);
+    else state.outreachOpenCountryKeys.add(countryKey);
     await renderOutreachTree();
     return;
   }
@@ -5619,6 +5793,7 @@ searchForm.addEventListener("submit", async (e) => {
 
   const keyword = document.getElementById("keyword").value.trim();
   const location = document.getElementById("location").value.trim();
+  const country = document.getElementById("huntCountry").value.trim();
   const maxResults = Number(document.getElementById("maxResults").value) || 20;
   const includeRatings = document.getElementById("includeRatings").checked;
   const catchLogName = catchLogNameInput.value.trim();
@@ -5626,6 +5801,7 @@ searchForm.addEventListener("submit", async (e) => {
   const payload = {
     keyword,
     location,
+    country,
     maxResults,
     includeRatings,
     catchLogName,

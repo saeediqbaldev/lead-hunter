@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS catch_logs (
   name TEXT NOT NULL,
   keyword TEXT,
   location TEXT,
+  country TEXT NOT NULL DEFAULT 'Unnamed',
   created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -715,6 +716,14 @@ CREATE INDEX IF NOT EXISTS idx_app_notifications_read ON app_notifications(is_re
 {
   const notifCols = db.prepare("PRAGMA table_info(tracked_notifications)").all().map((c) => c.name);
   if (!notifCols.includes("is_dismissed_from_feed")) db.exec("ALTER TABLE tracked_notifications ADD COLUMN is_dismissed_from_feed INTEGER NOT NULL DEFAULT 0");
+}
+
+{
+  const catchLogCols = db.prepare("PRAGMA table_info(catch_logs)").all().map((c) => c.name);
+  if (!catchLogCols.includes("country")) {
+    db.exec("ALTER TABLE catch_logs ADD COLUMN country TEXT NOT NULL DEFAULT 'Unnamed'");
+    console.log('[migration] Added "country" column to catch_logs - existing catch logs default to "Unnamed" (rename them individually from the tree).');
+  }
 }
 
 // One-time fix: the auto-refresh interval used to default to 15 (inherited

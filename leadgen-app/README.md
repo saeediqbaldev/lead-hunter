@@ -6,6 +6,60 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.7
+Item 7 - the pipeline tree restructured to Niche > Country > City > Leads,
+applied consistently across Hunt, Reach Out, Pinned, and campaign
+creation.
+
+- **Every catch log now has a country**, backfilled to "Unnamed" for
+  existing ones (you'll rename these manually, as planned). Migration
+  tested against a realistic scenario: a full production-shaped database
+  with the country column dropped to simulate your exact pre-upgrade
+  state - confirmed the migration backfills correctly and every existing
+  lead survives untouched.
+- **All three sidebar trees rebuilt** - Hunt, Reach Out, and Pinned all
+  now show Niche > Country > City > Leads instead of Niche > City >
+  Leads. Each verified in a real browser with data spanning two
+  countries, confirming cities land under the right country and (for
+  Reach Out specifically) that the deeper per-status drill-down still
+  works correctly once nested one level deeper.
+- **Edit a catch log's country** via its "..." menu → "Edit country" -
+  this is how the "Unnamed" ones get renamed to their real country.
+- **Hunt form** gained a Country field with autocomplete from countries
+  you've already used, while still accepting a new one freely.
+- **Campaign creation's city picker** now groups cities by country too,
+  verified with a real screenshot showing the grouping rendering cleanly.
+- Two stale "Niche → City" breadcrumb hints in the sidebar updated to
+  reflect the new structure.
+
+## What's in this V15.6
+Item 5 - full mobile responsiveness. Item 7 (Niche > Country > City tree
+restructuring) still ahead.
+
+- **Removed the device-width block overlay entirely.** The app now
+  renders and works on real mobile screens instead of gatekeeping access
+  behind a "use a laptop" message.
+- **Sidebar becomes an off-canvas drawer on mobile** - opens via a new
+  hamburger button, closes via its backdrop or automatically whenever you
+  actually navigate somewhere (not on every tap, which would have made
+  the tree impossible to drill into on a touchscreen).
+- **A real bug caught and fixed during testing**: the lead expand panel
+  was inheriting the leads table's horizontal-scroll min-width (meant for
+  the many-column table itself), so its content was getting cut off
+  instead of wrapping to the screen - not a decision, a mistake, found by
+  actually opening a lead's panel on a simulated 375px phone and looking
+  at the screenshot.
+- **The PWA install banner was overlapping page content** on mobile
+  (dedicated buttons like "Save profile changes" or "Export backup" were
+  sitting right behind it) - made more compact and content areas given
+  enough bottom padding to scroll clear of it.
+- Verified with real screenshots at 375px (iPhone SE - one of the
+  narrowest common screens) across the board, Reports, Contacted
+  tracking + detail panel, campaign creation, the notification panel,
+  and a lead's expand panel, plus a 768px tablet pass - all clear of
+  horizontal overflow. Confirmed the desktop layout is completely
+  unaffected by any of this.
+
 ## What's in this V15.5
 Items 1, 2, 3, 4, and 6 complete and verified; items 5 (mobile
 responsiveness) and 7 (Niche > Country > City tree restructuring) still

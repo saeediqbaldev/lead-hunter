@@ -302,13 +302,13 @@ router.delete("/:id/outreach-content", (req, res) => {
   res.json({ ok: true });
 });
 
-// GET /api/leads/pinned/list -> every pinned lead this user has, with niche
-// and city names attached so the frontend can group them into a
-// Niche -> City -> Leads tree, same shape as Hunt's sidebar.
+// GET /api/leads/pinned/list -> every pinned lead this user has, with niche,
+// country, and city names attached so the frontend can group them into a
+// Niche -> Country -> City -> Leads tree, same shape as Hunt's sidebar.
 router.get("/pinned/list", (req, res) => {
   const rows = db
     .prepare(
-      `SELECT l.*, cl.id AS catch_log_id, cl.name AS city_name, n.id AS niche_id, n.name AS niche_name,
+      `SELECT l.*, cl.id AS catch_log_id, cl.name AS city_name, cl.country AS country, n.id AS niche_id, n.name AS niche_name,
               EXISTS(SELECT 1 FROM business_analysis ba WHERE ba.lead_id = l.id AND ba.status = 'done') AS has_analysis,
               EXISTS(SELECT 1 FROM outreach_content oc WHERE oc.lead_id = l.id) AS has_content
        FROM leads l
