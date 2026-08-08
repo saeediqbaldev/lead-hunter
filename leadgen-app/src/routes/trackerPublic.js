@@ -7,6 +7,23 @@ const { isLikelyBotOrScanner } = require("../botFilter");
 
 const router = express.Router();
 
+// Auto-pins the lead behind a tracked email once their email is seen
+// (opened or clicked) - only works for campaign-sent emails, since
+// that's the only path with a reliable tracked_email -> lead link;
+// manually-sent emails via the browser extension have no such link.
+// Deliberately only pins (never unpins) and never overwrites an existing
+// pin_reason, so this doesn't fight a manual pin/unpin the user already made.
+function autoPinLeadForEmail(trackedEmailId, reason) {
+  try {
+    const campaignLead = db.prepare("SELECT lead_id FROM email_campaign_leads WHERE tracked_email_id = ?").get(trackedEmailId);
+    if (!campaignLead) return;
+    db.prepare("UPDATE leads SET pinned = 1, pin_reason = ? WHERE id = ? AND pinned = 0").run(reason, campaignLead.lead_id);
+  } catch (err) {
+    console.error("[auto-pin] Failed to auto-pin lead for tracked email", trackedEmailId, ":", err.message);
+  }
+}
+
+
 const TRANSPARENT_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64"
@@ -165,6 +182,8 @@ router.get("/t/:id/pixel.png", (req, res) => {
              WHERE id = ?`
           ).run(id);
 
+          autoPinLeadForEmail(id, "Email Seen");
+
           if (isFirstOpen) {
             const recipients = JSON.parse(email.recipients || "[]");
             const who = recipients.join(", ") || "unknown recipient";
@@ -229,6 +248,7 @@ router.get("/t/:id/click", (req, res) => {
         .prepare("INSERT INTO tracked_clicks (email_id, url, ip, user_agent, browser, os, device) VALUES (?, ?, ?, ?, ?, ?, ?)")
         .run(id, decoded, clickerIp, userAgent || null, browser, os, device);
       db.prepare("UPDATE tracked_emails SET status = 'clicked', click_count = click_count + 1 WHERE id = ?").run(id);
+      autoPinLeadForEmail(id, "Email Link Clicked");
 
       const clickRowId = insertResult.lastInsertRowid;
       lookupGeoIp(clickerIp)

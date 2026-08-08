@@ -146,6 +146,7 @@ async function processCampaignLead(campaign, campaignLeadRow) {
     signatureHtml: genResult.signatureHtml,
     pixelUrl: `${baseUrl}/t/${trackedId}/pixel.png`,
     clickBaseUrl: `${baseUrl}/t/${trackedId}/click`,
+    baseUrl,
   });
 
   db.prepare("UPDATE email_campaign_leads SET status = 'sending' WHERE id = ?").run(campaignLeadRow.id);

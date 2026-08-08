@@ -388,6 +388,7 @@ CREATE TABLE IF NOT EXISTS api_key_daily_usage (
   const leadCols = db.prepare("PRAGMA table_info(leads)").all().map((c) => c.name);
   if (!leadCols.includes("pinned")) db.exec("ALTER TABLE leads ADD COLUMN pinned INTEGER DEFAULT 0");
   if (!leadCols.includes("owner_name")) db.exec("ALTER TABLE leads ADD COLUMN owner_name TEXT");
+  if (!leadCols.includes("pin_reason")) db.exec("ALTER TABLE leads ADD COLUMN pin_reason TEXT");
 }
 
 // ---------- Business deep-analysis (Reach Out "Inspect" feature) ----------

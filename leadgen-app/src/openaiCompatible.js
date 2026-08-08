@@ -20,7 +20,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = DEFAULT_TIMEOUT_M
   }
 }
 
-function createOpenAiCompatibleClient({ label, baseUrl, defaultModel }) {
+function createOpenAiCompatibleClient({ label, baseUrl, defaultModel, disableThinking }) {
   async function testApiKey(apiKey) {
     if (!apiKey || !apiKey.trim()) {
       return { ok: false, error: "Enter an API key first." };
@@ -60,6 +60,13 @@ function createOpenAiCompatibleClient({ label, baseUrl, defaultModel }) {
       max_tokens: maxTokens || 2000,
     };
     if (jsonMode) body.response_format = { type: "json_object" };
+    // DeepSeek V4 models default to thinking mode enabled, where the
+    // model can spend its entire max_tokens budget on internal reasoning
+    // (returned separately as reasoning_content) without ever producing
+    // a visible answer in `content` - this app's tasks (write this email,
+    // analyze this business) don't need chain-of-thought, so thinking is
+    // turned off for the providers configured with disableThinking.
+    if (disableThinking) body.thinking = { type: "disabled" };
 
     try {
       const res = await fetchWithTimeout(
@@ -87,7 +94,11 @@ function createOpenAiCompatibleClient({ label, baseUrl, defaultModel }) {
 
       const data = await res.json();
       const text = data?.choices?.[0]?.message?.content;
-      if (!text) return { ok: false, error: `${label} returned an empty response.` };
+      if (!text) {
+        const reasoningLength = data?.choices?.[0]?.message?.reasoning_content?.length || 0;
+        const hint = reasoningLength > 0 ? ` (the model spent its full token budget on internal reasoning - ${reasoningLength} chars of reasoning_content but no visible answer)` : "";
+        return { ok: false, error: `${label} returned an empty response.${hint}` };
+      }
       return { ok: true, text };
     } catch (err) {
       const timedOut = err.name === "AbortError";
@@ -110,9 +121,14 @@ const groqClient = createOpenAiCompatibleClient({
 const deepseekClient = createOpenAiCompatibleClient({
   label: "DeepSeek",
   baseUrl: "https://api.deepseek.com",
-  // deepseek-chat is deprecated (2026/07/24) - deepseek-v4-flash is the
-  // current model; deepseek-chat now maps to its non-thinking mode anyway.
+  // deepseek-v4-flash is the current model (deepseek-chat, the old
+  // alias, is deprecated). Unlike the old alias, this model name
+  // defaults to thinking mode ENABLED - disableThinking turns that off,
+  // since without it the model can spend its entire max_tokens budget on
+  // internal reasoning and never produce a visible answer, surfacing as
+  // "DeepSeek returned an empty response" despite a real, billed request.
   defaultModel: "deepseek-v4-flash",
+  disableThinking: true,
 });
 
 // OpenCode Zen - an AI gateway offering deepseek-v4-flash-free at no
@@ -125,6 +141,10 @@ const opencodeClient = createOpenAiCompatibleClient({
   label: "OpenCode",
   baseUrl: "https://opencode.ai/zen/v1",
   defaultModel: "deepseek-v4-flash-free",
+  // Same underlying model family as the DeepSeek client above (the model
+  // name itself says deepseek-v4-flash) - likely to hit the identical
+  // thinking-mode empty-response issue, so disabled here too.
+  disableThinking: true,
 });
 
 module.exports = { groqClient, deepseekClient, opencodeClient, createOpenAiCompatibleClient };

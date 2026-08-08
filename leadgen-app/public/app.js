@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.08-15.4";
+const APP_VERSION = "2026.08.08-15.5";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -1585,7 +1585,73 @@ function showCampaignEditForm(campaign) {
   });
 }
 
+// ---------- Real-time campaign status polling ----------
+const CAMPAIGN_LEAD_STATUS_ICON = {
+  pending: "bi-hourglass",
+  inspecting: "bi-search",
+  generating: "bi-stars",
+  sending: "bi-send",
+  sent: "bi-check-circle-fill",
+  failed: "bi-x-circle-fill",
+  skipped: "bi-slash-circle",
+};
+let campaignDetailPollTimer = null;
+let campaignDetailPollingId = null;
+
+function stopCampaignDetailPolling() {
+  if (campaignDetailPollTimer) clearInterval(campaignDetailPollTimer);
+  campaignDetailPollTimer = null;
+  campaignDetailPollingId = null;
+}
+
+// Lightweight refresh used by the polling loop - updates just the overall
+// status line and each row's status pill/sent timestamp in place, rather
+// than re-rendering the whole table, so an expanded row's loaded
+// Inspect/Content/Website panel isn't discarded mid-poll.
+async function pollCampaignDetail(campaignId) {
+  let data;
+  try {
+    const res = await api(`/api/campaigns/${campaignId}`);
+    if (!res.ok) {
+      stopCampaignDetailPolling();
+      return;
+    }
+    data = await res.json();
+  } catch {
+    return; // transient network hiccup - try again on the next tick
+  }
+  const { campaign, leads } = data;
+
+  document.getElementById("campaignDetailScope").textContent = `${CAMPAIGN_STATUS_LABEL[campaign.status]}${campaign.pause_reason ? ` - ${campaign.pause_reason}` : ""}`;
+
+  leads.forEach((l) => {
+    const row = document.querySelector(`[data-lead-row-toggle="${l.id}"]`);
+    if (!row) return;
+    const statusCell = row.children[3];
+    const sentCell = row.children[4];
+    const newStatusHtml = `<span class="contacted-status-pill campaign-lead-${l.status}"><i class="bi ${CAMPAIGN_LEAD_STATUS_ICON[l.status] || "bi-circle"}"></i> ${l.status}</span>`;
+    if (statusCell.innerHTML !== newStatusHtml) statusCell.innerHTML = newStatusHtml;
+    sentCell.textContent = formatContactedTimestamp(l.sent_at);
+  });
+
+  // Stop polling once nothing is actively in flight - re-rendering the
+  // whole detail view at this point picks up the skip button on any
+  // newly-failed lead, which the lightweight per-row update above
+  // deliberately doesn't handle to keep the poll itself cheap.
+  if (campaign.status !== "running") {
+    stopCampaignDetailPolling();
+    loadCampaignDetail(campaignId);
+  }
+}
+
+function startCampaignDetailPolling(campaignId) {
+  stopCampaignDetailPolling();
+  campaignDetailPollingId = campaignId;
+  campaignDetailPollTimer = setInterval(() => pollCampaignDetail(campaignId), 3000);
+}
+
 async function loadCampaignDetail(campaignId) {
+  stopCampaignDetailPolling();
   setContentView("contacted-campaign-detail");
   const res = await api(`/api/campaigns/${campaignId}`);
   const data = await res.json();
@@ -1638,15 +1704,6 @@ async function loadCampaignDetail(campaignId) {
   });
 
   const bodyEl = document.getElementById("campaignDetailBody");
-  const CAMPAIGN_LEAD_STATUS_ICON = {
-    pending: "bi-hourglass",
-    inspecting: "bi-search",
-    generating: "bi-stars",
-    sending: "bi-send",
-    sent: "bi-check-circle-fill",
-    failed: "bi-x-circle-fill",
-    skipped: "bi-slash-circle",
-  };
   bodyEl.innerHTML = `
     <table class="contacted-table campaign-detail-table">
       <thead><tr><th style="width:20px;"></th><th>Lead</th><th>Recipient</th><th>Status</th><th>Sent</th></tr></thead>
@@ -1732,6 +1789,8 @@ async function loadCampaignDetail(campaignId) {
       loadCampaignDetail(campaign.id);
     });
   });
+
+  if (campaign.status === "running") startCampaignDetailPolling(campaign.id);
 }
 
 const signatureEditor = document.getElementById("signatureEditor");
@@ -1791,7 +1850,7 @@ document.querySelectorAll("[data-sig-action]").forEach((btn) => {
       const url = await openModal({ title: "Insert image", inputLabel: "Image URL", inputValue: "https://" });
       if (!url) return;
       signatureEditor.focus();
-      document.execCommand("insertHTML", false, `<img src="${url}" alt="" data-sig-img="1" style="max-width:100%;">`);
+      document.execCommand("insertHTML", false, `<img src="${url}" alt="Signature image" data-sig-img="1" style="max-width:100%;">`);
     } else if (action === "image-upload") {
       document.getElementById("signatureImageFileInput").click();
     }
@@ -1827,7 +1886,10 @@ document.getElementById("signatureImageFileInput").addEventListener("change", (e
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Upload failed");
       signatureEditor.focus();
-      document.execCommand("insertHTML", false, `<img src="${data.url}" alt="" data-sig-img="1" style="max-width:100%;">`);
+      // A meaningful default alt text from the original filename, rather
+      // than empty - e.g. "company-logo.png" becomes "company logo".
+      const altText = escapeHtml(file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim() || "Signature image");
+      document.execCommand("insertHTML", false, `<img src="${data.url}" alt="${altText}" data-sig-img="1" style="max-width:100%;">`);
     } catch (err) {
       showToast(`Could not upload image: ${err.message}`, "error");
     }
@@ -3064,6 +3126,7 @@ function restoreNavState() {
 }
 
 function setContentView(view) {
+  if (view !== "contacted-campaign-detail") stopCampaignDetailPolling();
   state.contentView = view;
   const ALL_VIEWS = {
     huntForm: huntFormPanel,
@@ -4677,6 +4740,12 @@ function buildExpandPanelHtml(lead) {
         </div>
       </label>
     </div>
+
+    ${
+      lead.pinned && lead.pin_reason
+        ? `<div class="hint" style="padding:4px 0 8px 0;"><i class="bi bi-eye-fill"></i> Pinned reason: ${lead.pin_reason}</div>`
+        : ""
+    }
 
     <div class="expand-section" data-inspect-section>
       <div class="expand-section-head">

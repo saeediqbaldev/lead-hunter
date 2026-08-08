@@ -6,6 +6,38 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.5
+Items 1, 2, 3, 4, and 6 complete and verified; items 5 (mobile
+responsiveness) and 7 (Niche > Country > City tree restructuring) still
+ahead - both large enough to deserve dedicated focus rather than rushing.
+
+- **Fixed the DeepSeek "empty response" bug** at its actual root, found
+  through real research rather than guesswork: DeepSeek's V4 models
+  default to "thinking mode" enabled, where the model can spend its
+  entire token budget on internal reasoning and never produce a visible
+  answer - confirmed directly against DeepSeek's own official API docs.
+  Fixed by explicitly disabling thinking mode. Verified the exact request
+  body sent to each provider, confirming Groq is correctly unaffected by
+  this DeepSeek-specific change.
+- **Fixed signature images not reaching recipients** - they were stored
+  as relative URLs, which mean nothing to an external email client the
+  way they do to a browser. Now resolved to absolute URLs before
+  sending, verified end-to-end. Also added meaningful alt text derived
+  from the uploaded filename, instead of empty strings.
+- **Real-time campaign status** - each lead's status pill now updates
+  live as a campaign runs, without a manual refresh. Verified with the
+  strictest test available: updated the database directly with zero page
+  interaction, confirmed the UI updated on its own through polling alone.
+- **Full-width content** - removed a leftover 780px cap on Settings
+  pages; the rest of the app's primary content areas (board, tables,
+  campaigns) were already using the available width correctly.
+- **Auto-pin on open/click** - a lead is automatically pinned the moment
+  their email is opened or clicked, with a visible "Pinned reason" hint
+  in their expand panel. Applies to campaign-sent emails specifically,
+  since that's the only path with a reliable email-to-lead link.
+  Verified end-to-end against the database, confirming both the pin
+  itself and the correct reason text.
+
 ## What's in this V15.4
 Signature image storage rebuilt properly, image resize/linking added, a
 real notification-feed data-isolation bug fixed, and OpenCode AI wired in

@@ -1182,7 +1182,7 @@ button#huntBtn:disabled, .primary-btn:disabled { background: var(--border); colo
    the page couldn't scroll and Backup & restore was unreachable below the
    fold. ---------- */
 .settings-view { overflow-y: auto; }
-.settings-body { padding: 0 22px 32px 22px; display: flex; flex-direction: column; gap: 4px; max-width: 780px; }
+.settings-body { padding: 0 22px 32px 22px; display: flex; flex-direction: column; gap: 4px; }
 .settings-body h3 { margin: 4px 0 0 0; }
 .settings-body p.hint { color: var(--text-muted); font-size: 13px; margin: 0 0 6px 0; }
 

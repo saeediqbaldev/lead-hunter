@@ -28,6 +28,17 @@ function escapeHtml(text) {
     .replace(/>/g, "&gt;");
 }
 
+// Rewrites any relative image src (e.g. an uploaded signature image at
+// "/uploads/signatures/...") to an absolute URL. Required because a
+// recipient's email client has no "current page" to resolve a relative
+// URL against the way a browser does - a relative src just silently
+// fails to load, showing the recipient a broken-image placeholder
+// instead of the actual signature image.
+function resolveRelativeImageUrls(html, baseUrl) {
+  if (!html) return "";
+  return html.replace(/src\s*=\s*"(\/[^"]*)"/gi, (match, relativePath) => `src="${baseUrl}${relativePath}"`);
+}
+
 // Turns plain-text body into simple HTML paragraphs, and rewrites any raw
 // URL in the text into a real <a> tag pointing through the click-tracking
 // redirect (so a link the AI wove into the message, e.g. a meeting link,
@@ -41,7 +52,7 @@ function trackSignatureLinks(signatureHtml, clickBaseUrl) {
   });
 }
 
-function buildTrackedHtmlEmail({ bodyText, signatureHtml, pixelUrl, clickBaseUrl }) {
+function buildTrackedHtmlEmail({ bodyText, signatureHtml, pixelUrl, clickBaseUrl, baseUrl }) {
   const paragraphs = String(bodyText || "")
     .split(/\n{2,}/)
     .map((block) => {
@@ -55,7 +66,7 @@ function buildTrackedHtmlEmail({ bodyText, signatureHtml, pixelUrl, clickBaseUrl
     })
     .join("\n");
 
-  const trackedSignature = trackSignatureLinks(signatureHtml, clickBaseUrl);
+  const trackedSignature = trackSignatureLinks(resolveRelativeImageUrls(signatureHtml, baseUrl), clickBaseUrl);
   const signatureBlock = trackedSignature ? `<div style="margin-top:18px; padding-top:14px; border-top:1px solid #e0e0e0;">${trackedSignature}</div>` : "";
 
   return `<!DOCTYPE html>
