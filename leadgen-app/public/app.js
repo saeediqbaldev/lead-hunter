@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.07-15.0";
+const APP_VERSION = "2026.08.08-15.1";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -1178,16 +1178,15 @@ async function showCampaignCreationForm() {
   body.innerHTML = `
     <label class="site-field-label">Campaign name<input type="text" data-campaign-name placeholder="e.g. Bali Car Washes - August"></label>
 
-    <div class="smtp-field-row">
-      <label class="site-field-label">Niche
-        <select data-campaign-niche>
-          <option value="">Select a niche…</option>
-          ${niches.map((n) => `<option value="${n.id}">${n.name} (${n.lead_count} leads)</option>`).join("")}
-        </select>
-      </label>
-      <label class="site-field-label">City
-        <select data-campaign-city disabled><option value="">Select a niche first…</option></select>
-      </label>
+    <label class="site-field-label">Niche
+      <select data-campaign-niche>
+        <option value="">Select a niche…</option>
+        ${niches.map((n) => `<option value="${n.id}">${n.name} (${n.lead_count} leads)</option>`).join("")}
+      </select>
+    </label>
+    <label class="site-field-label">Cities <small class="optional">(select one or more)</small></label>
+    <div class="campaign-city-checklist" data-campaign-city-checklist>
+      <p class="hint" style="padding:8px;">Select a niche first…</p>
     </div>
     <p class="hint" data-campaign-lead-preview></p>
 
@@ -1242,35 +1241,47 @@ async function showCampaignCreationForm() {
   });
 
   const nicheSelect = body.querySelector("[data-campaign-niche]");
-  const citySelect = body.querySelector("[data-campaign-city]");
+  const cityChecklist = body.querySelector("[data-campaign-city-checklist]");
   const previewEl = body.querySelector("[data-campaign-lead-preview]");
 
   async function updateLeadPreview() {
-    const catchLogId = citySelect.value;
-    if (!catchLogId) {
+    const checkedIds = Array.from(cityChecklist.querySelectorAll("input:checked")).map((cb) => cb.value);
+    if (!checkedIds.length) {
       previewEl.textContent = "";
       return;
     }
-    const res = await api(`/api/leads?catchLogId=${catchLogId}&pageSize=1`);
-    const data = await res.json();
-    previewEl.textContent = `${data.total} lead(s) in this city - leads without an email on file will be skipped automatically.`;
+    const counts = await Promise.all(
+      checkedIds.map((id) => api(`/api/leads?catchLogId=${id}&pageSize=1`).then((r) => r.json()).then((d) => d.total))
+    );
+    const total = counts.reduce((sum, n) => sum + n, 0);
+    previewEl.textContent = `${total} lead(s) across ${checkedIds.length} ${checkedIds.length === 1 ? "city" : "cities"} - leads without an email on file will be skipped automatically.`;
   }
 
   nicheSelect.addEventListener("change", async () => {
     const nicheId = nicheSelect.value;
-    citySelect.innerHTML = `<option value="">Loading…</option>`;
-    citySelect.disabled = true;
+    cityChecklist.innerHTML = `<p class="hint" style="padding:8px;">Loading…</p>`;
     previewEl.textContent = "";
     if (!nicheId) {
-      citySelect.innerHTML = `<option value="">Select a niche first…</option>`;
+      cityChecklist.innerHTML = `<p class="hint" style="padding:8px;">Select a niche first…</p>`;
       return;
     }
     const res = await api(`/api/catch-logs?nicheId=${nicheId}`);
     const cities = await res.json();
-    citySelect.innerHTML = `<option value="">Select a city…</option>${cities.map((c) => `<option value="${c.id}">${c.name} (${c.lead_count} leads)</option>`).join("")}`;
-    citySelect.disabled = false;
+    if (!cities.length) {
+      cityChecklist.innerHTML = `<p class="hint" style="padding:8px;">No cities caught for this niche yet.</p>`;
+      return;
+    }
+    cityChecklist.innerHTML = cities
+      .map(
+        (c) => `
+      <label class="campaign-city-check-row">
+        <input type="checkbox" value="${c.id}" data-campaign-city-checkbox>
+        ${c.name} <span class="hint">(${c.lead_count} leads)</span>
+      </label>`
+      )
+      .join("");
+    cityChecklist.querySelectorAll("[data-campaign-city-checkbox]").forEach((cb) => cb.addEventListener("change", updateLeadPreview));
   });
-  citySelect.addEventListener("change", updateLeadPreview);
 
   body.addEventListener("click", async (e) => {
     const action = e.target.closest("[data-action]")?.dataset.action;
@@ -1281,10 +1292,11 @@ async function showCampaignCreationForm() {
     }
     if (action === "create-campaign") {
       const resultEl = document.getElementById("campaignFormResult");
+      const checkedCityIds = Array.from(cityChecklist.querySelectorAll("input:checked")).map((cb) => Number(cb.value));
       const payload = {
         name: body.querySelector("[data-campaign-name]").value.trim(),
         nicheId: nicheSelect.value || undefined,
-        catchLogId: citySelect.value || undefined,
+        catchLogIds: checkedCityIds.length ? checkedCityIds : undefined,
         requireInspection: body.querySelector("[data-campaign-require-inspection]").checked,
         tone: body.querySelector("[data-campaign-tone]").value,
         length: body.querySelector("[data-campaign-length]").value,
@@ -1303,10 +1315,10 @@ async function showCampaignCreationForm() {
         resultEl.textContent = "Give the campaign a name first.";
         return;
       }
-      if (!payload.catchLogId) {
+      if (!payload.catchLogIds) {
         resultEl.style.display = "block";
         resultEl.className = "settings-result bad";
-        resultEl.textContent = "Select a niche and city first.";
+        resultEl.textContent = "Select a niche and at least one city first.";
         return;
       }
       const res = await api("/api/campaigns", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
@@ -1498,6 +1510,11 @@ async function loadCampaignDetail(campaignId) {
                 ${openInfo ? `<div><b>Engagement:</b> ${openInfo}</div>` : ""}
                 ${l.first_opened_at ? `<div><b>First opened:</b> ${l.first_opened_at}</div>` : ""}
                 ${l.error ? `<div style="color:var(--danger);"><b>Error:</b> ${l.error}</div>` : ""}
+                ${
+                  l.status === "failed"
+                    ? `<button type="button" class="small-btn danger-btn" data-action="skip-campaign-lead" data-lead-row-id="${l.id}" style="margin-top:4px;"><i class="bi bi-skip-forward-fill"></i> Skip this lead and resume campaign</button>`
+                    : ""
+                }
                 ${l.website ? `<div><b>Website:</b> ${l.website}</div>` : ""}
                 ${l.phone ? `<div><b>Phone:</b> ${l.phone}</div>` : ""}
                 ${l.address ? `<div><b>Address:</b> ${l.address}</div>` : ""}
@@ -1537,6 +1554,23 @@ async function loadCampaignDetail(campaignId) {
           container.innerHTML = `<p class="hint" style="color:var(--danger);">Could not load this lead's details: ${err.message}</p>`;
         }
       }
+    });
+  });
+
+  bodyEl.querySelectorAll("[data-action=\"skip-campaign-lead\"]").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const leadRowId = btn.dataset.leadRowId;
+      const confirmed = await openModal({
+        title: "Skip this lead?",
+        message: "This lead won't be retried - the campaign resumes and continues with the rest of the queue.",
+        confirmText: "Skip & resume",
+        danger: true,
+      });
+      if (!confirmed) return;
+      await api(`/api/campaigns/${campaign.id}/leads/${leadRowId}/skip`, { method: "POST" });
+      showToast("Lead skipped - campaign resumed", "success");
+      loadCampaignDetail(campaign.id);
     });
   });
 }

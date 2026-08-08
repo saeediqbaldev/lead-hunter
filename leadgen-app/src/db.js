@@ -621,6 +621,7 @@ CREATE TABLE IF NOT EXISTS email_campaigns (
   name TEXT NOT NULL,
   niche_id INTEGER,
   catch_log_id INTEGER,
+  catch_log_ids TEXT,
   status TEXT NOT NULL DEFAULT 'draft',
   require_inspection INTEGER NOT NULL DEFAULT 1,
   tone TEXT,
@@ -679,6 +680,7 @@ CREATE INDEX IF NOT EXISTS idx_app_notifications_read ON app_notifications(is_re
 {
   const campaignCols = db.prepare("PRAGMA table_info(email_campaigns)").all().map((c) => c.name);
   if (!campaignCols.includes("ai_provider")) db.exec("ALTER TABLE email_campaigns ADD COLUMN ai_provider TEXT DEFAULT ''");
+  if (!campaignCols.includes("catch_log_ids")) db.exec("ALTER TABLE email_campaigns ADD COLUMN catch_log_ids TEXT");
 }
 
 {

@@ -1,5 +1,6 @@
 const express = require("express");
 const db = require("../db");
+const { isValidEmailAddress } = require("../emailValidation");
 const { hasSmtpConfigured } = require("../campaignSender");
 
 const router = express.Router();
@@ -12,6 +13,7 @@ router.post("/", (req, res) => {
     name,
     nicheId,
     catchLogId,
+    catchLogIds,
     leadIds,
     requireInspection,
     tone,
@@ -46,6 +48,14 @@ router.post("/", (req, res) => {
          WHERE l.id IN (${placeholders}) AND n.user_id = ?`
       )
       .all(...leadIds, userId);
+  } else if (Array.isArray(catchLogIds) && catchLogIds.length) {
+    const placeholders = catchLogIds.map(() => "?").join(",");
+    candidateLeads = db
+      .prepare(
+        `SELECT l.id, l.socials FROM leads l JOIN catch_logs cl ON cl.id = l.catch_log_id JOIN niches n ON n.id = cl.niche_id
+         WHERE cl.id IN (${placeholders}) AND n.user_id = ?`
+      )
+      .all(...catchLogIds, userId);
   } else if (catchLogId) {
     candidateLeads = db
       .prepare(`SELECT l.id, l.socials FROM leads l JOIN catch_logs cl ON cl.id = l.catch_log_id JOIN niches n ON n.id = cl.niche_id WHERE cl.id = ? AND n.user_id = ?`)
@@ -60,7 +70,7 @@ router.post("/", (req, res) => {
 
   const emailable = candidateLeads.filter((l) => {
     try {
-      return !!JSON.parse(l.socials || "{}").email;
+      return isValidEmailAddress(JSON.parse(l.socials || "{}").email);
     } catch {
       return false;
     }
@@ -70,16 +80,19 @@ router.post("/", (req, res) => {
     return res.status(400).json({ error: "None of the leads in this scope have an email address on file - nothing to send to." });
   }
 
+  const resolvedCatchLogIds = Array.isArray(catchLogIds) && catchLogIds.length ? catchLogIds : catchLogId ? [catchLogId] : [];
+
   const info = db
     .prepare(
-      `INSERT INTO email_campaigns (user_id, name, niche_id, catch_log_id, require_inspection, tone, length, language, cta, meeting, meeting_link, ai_provider, max_per_day, min_gap_minutes, max_gap_minutes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO email_campaigns (user_id, name, niche_id, catch_log_id, catch_log_ids, require_inspection, tone, length, language, cta, meeting, meeting_link, ai_provider, max_per_day, min_gap_minutes, max_gap_minutes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       userId,
       name.trim(),
       nicheId || null,
-      catchLogId || null,
+      resolvedCatchLogIds[0] || null,
+      resolvedCatchLogIds.length ? JSON.stringify(resolvedCatchLogIds) : null,
       requireInspection ? 1 : 0,
       tone,
       length || "Medium",
@@ -174,6 +187,24 @@ router.post("/:id/resume", requireOwnedCampaign, (req, res) => {
   if (req.campaign.status !== "paused") return res.status(400).json({ error: "Only a paused campaign can be resumed" });
   db.prepare("UPDATE email_campaign_leads SET status = 'pending', error = NULL WHERE campaign_id = ? AND status IN ('failed', 'inspecting', 'generating', 'sending')").run(req.campaign.id);
   db.prepare("UPDATE email_campaigns SET status = 'running', paused_at = NULL, pause_reason = NULL WHERE id = ?").run(req.campaign.id);
+  res.json({ ok: true });
+});
+
+// POST /api/campaigns/:id/leads/:leadRowId/skip - marks one specific lead
+// as permanently skipped (not retried, unlike a plain resume which
+// retries every failed lead) and resumes the campaign so the scheduler
+// continues with whatever comes after it. This is what lets a single bad
+// lead (e.g. a malformed email that somehow still made it through) be
+// set aside without abandoning the rest of an otherwise-healthy campaign.
+router.post("/:id/leads/:leadRowId/skip", requireOwnedCampaign, (req, res) => {
+  const leadRow = db.prepare("SELECT * FROM email_campaign_leads WHERE id = ? AND campaign_id = ?").get(req.params.leadRowId, req.campaign.id);
+  if (!leadRow) return res.status(404).json({ error: "Lead not found in this campaign" });
+
+  db.prepare("UPDATE email_campaign_leads SET status = 'skipped', error = COALESCE(error, 'Skipped manually') WHERE id = ?").run(leadRow.id);
+
+  if (req.campaign.status === "paused") {
+    db.prepare("UPDATE email_campaigns SET status = 'running', paused_at = NULL, pause_reason = NULL WHERE id = ?").run(req.campaign.id);
+  }
   res.json({ ok: true });
 });
 

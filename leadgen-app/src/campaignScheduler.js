@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const db = require("./db");
 const analysisJobs = require("./analysisJobs");
+const { isValidEmailAddress } = require("./emailValidation");
 const { generateOutreachContent } = require("./outreachContent");
 const { buildTrackedHtmlEmail } = require("./campaignEmailBuilder");
 const { sendCampaignEmail, resolveSmtpConfig } = require("./campaignSender");
@@ -74,8 +75,11 @@ async function processCampaignLead(campaign, campaignLeadRow) {
   } catch {
     socials = {};
   }
-  if (!socials.email) {
-    db.prepare("UPDATE email_campaign_leads SET status = 'skipped', error = ? WHERE id = ?").run("No email address on file for this lead", campaignLeadRow.id);
+  if (!isValidEmailAddress(socials.email)) {
+    db.prepare("UPDATE email_campaign_leads SET status = 'skipped', error = ? WHERE id = ?").run(
+      socials.email ? `Malformed email address on file: "${socials.email}"` : "No email address on file for this lead",
+      campaignLeadRow.id
+    );
     return { ok: true, skipped: true };
   }
 
@@ -115,6 +119,16 @@ async function processCampaignLead(campaign, campaignLeadRow) {
     aiProvider: contentProvider,
   });
   if (!genResult.ok) throw new Error(`Content generation failed: ${genResult.error}`);
+
+  // Persist to outreach_content too, not just the sent email - this is
+  // what the lead's own "Generate Content" panel reads from, so without
+  // this, content a campaign generated and sent would be invisible when
+  // checked later from the lead's expand panel (it would show "not
+  // generated yet" despite having actually been generated and sent).
+  db.prepare(
+    `INSERT INTO outreach_content (lead_id, platform, tone, length, content, subject, provider, language, generated_at) VALUES (?, 'email', ?, ?, ?, ?, ?, ?, datetime('now'))
+     ON CONFLICT(lead_id, platform, language) DO UPDATE SET tone = excluded.tone, length = excluded.length, content = excluded.content, subject = excluded.subject, provider = excluded.provider, generated_at = excluded.generated_at`
+  ).run(lead.id, campaign.tone, campaign.length || null, genResult.content, genResult.subject || null, genResult.provider || null, campaign.language || "English");
 
   // Step 3: create the tracked_email record (same table/mechanism the
   // extension's create-email call uses, just invoked directly in-process

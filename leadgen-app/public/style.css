@@ -1793,3 +1793,7 @@ a.site-generate-btn { color: #1a1310; }
 .gen-output-signature { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border); font-size: 13px; }
 .gen-output-signature img { max-width: 100%; }
 .gen-output-signature a { color: var(--accent); }
+
+.campaign-city-checklist { max-height: 160px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 4px; background: var(--panel-raised); margin-bottom: 4px; }
+.campaign-city-check-row { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 5px; cursor: pointer; font-size: 13px; }
+.campaign-city-check-row:hover { background: rgba(255,255,255,0.04); }
