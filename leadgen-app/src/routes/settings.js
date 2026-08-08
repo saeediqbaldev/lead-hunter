@@ -1,9 +1,12 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
 const asyncHandler = require("../asyncHandler");
 const { testApiKey: testPlacesKey } = require("../placesApi");
 const { testApiKey: testGeminiKey } = require("../gemini");
-const { groqClient, deepseekClient } = require("../openaiCompatible");
+const { groqClient, deepseekClient, opencodeClient } = require("../openaiCompatible");
 const apiKeys = require("../apiKeys");
 const db = require("../db");
 
@@ -123,11 +126,49 @@ router.get("/signature", (req, res) => {
 // PUT /api/settings/signature { signature }
 router.put("/signature", (req, res) => {
   const value = typeof req.body.signature === "string" ? req.body.signature : "";
-  if (value.length > 2000) {
-    return res.status(400).json({ error: "Signature is too long (max 2000 characters)." });
+  // Now that images are stored as short file URLs (see the upload route
+  // below) rather than embedded base64, the signature itself should
+  // rarely need to be more than a few KB of text/HTML - this cap is a
+  // sanity limit against something going wrong client-side, not a tight
+  // budget the way the old 2000 was.
+  if (value.length > 50000) {
+    return res.status(400).json({ error: "Signature is too long (max 50,000 characters)." });
   }
   db.prepare("UPDATE users SET signature = ? WHERE id = ?").run(value, req.session.userId);
   res.json({ signature: value });
+});
+
+// Persistent storage for uploaded signature images - same directory the
+// SQLite DB itself lives in, so it survives redeploys the same way the
+// database already does.
+const SIGNATURE_UPLOAD_DIR = path.join(__dirname, "..", "..", "data", "uploads", "signatures");
+if (!fs.existsSync(SIGNATURE_UPLOAD_DIR)) fs.mkdirSync(SIGNATURE_UPLOAD_DIR, { recursive: true });
+
+const SIGNATURE_IMAGE_MAX_BYTES = 2 * 1024 * 1024; // 2MB, matching the client-side cap
+const SIGNATURE_IMAGE_MIME_TO_EXT = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
+
+// POST /api/settings/signature-image { dataUrl } -> { url }
+// Accepts a base64 data URL (what FileReader.readAsDataURL produces
+// client-side), decodes and saves it to disk, and returns a short URL to
+// reference instead - this is what keeps the signature itself small
+// (a `<img src="/uploads/signatures/abc123.png">` reference) rather than
+// embedding the full base64 payload directly in the signature HTML.
+router.post("/signature-image", (req, res) => {
+  const { dataUrl } = req.body || {};
+  const match = typeof dataUrl === "string" && dataUrl.match(/^data:(image\/(?:png|jpeg|webp));base64,(.+)$/);
+  if (!match) return res.status(400).json({ error: "Please upload a PNG, JPEG, or WEBP image." });
+
+  const [, mimeType, base64Data] = match;
+  const buffer = Buffer.from(base64Data, "base64");
+  if (buffer.length > SIGNATURE_IMAGE_MAX_BYTES) {
+    return res.status(400).json({ error: "Image is too large - please use one under 2MB." });
+  }
+
+  const ext = SIGNATURE_IMAGE_MIME_TO_EXT[mimeType];
+  const filename = `${req.session.userId}-${Date.now()}-${crypto.randomBytes(4).toString("hex")}.${ext}`;
+  fs.writeFileSync(path.join(SIGNATURE_UPLOAD_DIR, filename), buffer);
+
+  res.json({ url: `/uploads/signatures/${filename}` });
 });
 
 // GET /api/settings/ai-provider-preferences -> the default AI provider to
@@ -143,7 +184,7 @@ router.get("/ai-provider-preferences", (req, res) => {
 });
 
 router.put("/ai-provider-preferences", (req, res) => {
-  const VALID = ["", "groq", "gemini", "deepseek"];
+  const VALID = ["", "groq", "gemini", "deepseek", "opencode"];
   const { contentProvider, inspectionProvider } = req.body || {};
   if (contentProvider !== undefined && !VALID.includes(contentProvider)) return res.status(400).json({ error: "Invalid contentProvider" });
   if (inspectionProvider !== undefined && !VALID.includes(inspectionProvider)) return res.status(400).json({ error: "Invalid inspectionProvider" });
@@ -258,10 +299,14 @@ router.use("/gemini-keys", createKeyRoutes("gemini", testGeminiKey, null));
 router.use("/groq-keys", createKeyRoutes("groq", groqClient.testApiKey, null));
 router.use("/deepseek-keys", createKeyRoutes("deepseek", deepseekClient.testApiKey, null));
 
+// OpenCode keys (new: /api/settings/opencode-keys/...) - an optional
+// extra fallback provider, tried last in the chain.
+router.use("/opencode-keys", createKeyRoutes("opencode", opencodeClient.testApiKey, null));
+
 // GET /api/settings/usage-summary -> this month's usage totals for both
 // providers, for the "Limits Usage" page.
 router.get("/usage-summary", (req, res) => {
-  const providers = ["google_places", "gemini", "groq", "deepseek"];
+  const providers = ["google_places", "gemini", "groq", "deepseek", "opencode"];
   const result = {};
   for (const p of providers) {
     result[p] = apiKeys.currentMonthUsage(req.session.userId, p);
@@ -269,14 +314,14 @@ router.get("/usage-summary", (req, res) => {
   res.json(result);
 });
 
-// GET /api/settings/usage-history?provider=gemini|groq|deepseek|google_places
+// GET /api/settings/usage-history?provider=gemini|groq|deepseek|opencode|google_places
 // -> all-time totals per key + a daily timeseries, same shape the Reports
 // page's chart already uses, reused here for the Limits Usage page's
 // per-provider charts (and embedded on each provider's own Settings page).
 const USAGE_RANGE_DAYS = { "1d": 1, "7d": 7, "30d": 30, "60d": 60, "90d": 90, "1y": 365, all: null };
 
 router.get("/usage-history", (req, res) => {
-  const provider = ["google_places", "gemini", "groq", "deepseek"].includes(req.query.provider) ? req.query.provider : "gemini";
+  const provider = ["google_places", "gemini", "groq", "deepseek", "opencode"].includes(req.query.provider) ? req.query.provider : "gemini";
   const range = USAGE_RANGE_DAYS.hasOwnProperty(req.query.range) ? req.query.range : "1d";
   const days = USAGE_RANGE_DAYS[range];
 

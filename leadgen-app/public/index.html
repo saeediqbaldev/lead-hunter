@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="Xeven Leads" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=153" />
+<link rel="stylesheet" href="style.css?v=154" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -217,6 +217,7 @@
             <button class="nav-leaf nav-leaf-action" data-goto="settings-gemini" id="navSettingsGemini"><i class="bi bi-stars"></i> Gemini AI</button>
             <button class="nav-leaf nav-leaf-action" data-goto="settings-groq" id="navSettingsGroq"><i class="bi bi-lightning-charge-fill"></i> Groq AI</button>
             <button class="nav-leaf nav-leaf-action" data-goto="settings-deepseek" id="navSettingsDeepseek"><i class="bi bi-cpu-fill"></i> DeepSeek AI</button>
+            <button class="nav-leaf nav-leaf-action" data-goto="settings-opencode" id="navSettingsOpencode"><i class="bi bi-cpu-fill"></i> OpenCode AI</button>
             <button class="nav-leaf nav-leaf-action" data-goto="settings-colors" id="navSettingsColors"><i class="bi bi-palette"></i> Colors</button>
             <button class="nav-leaf nav-leaf-action" data-goto="settings-team" id="navSettingsTeam" style="display:none;"><i class="bi bi-people"></i> Team</button>
             <button class="nav-leaf nav-leaf-action" data-goto="settings-account" id="navSettingsAccount"><i class="bi bi-person-gear"></i> Account Settings</button>
@@ -743,6 +744,33 @@
         </div>
       </section>
 
+      <!-- ---------- Settings: OpenCode AI page ---------- -->
+      <section class="panel settings-view view-hidden" id="settingsOpencodeView">
+        <div class="board-header">
+          <div>
+            <h2>OpenCode AI Keys</h2>
+            <div class="scope-line">Free-tier DeepSeek V4 Flash via OpenCode Zen - the last, optional fallback in the AI chain.</div>
+          </div>
+        </div>
+        <div class="settings-body">
+          <p class="hint" style="color:var(--warn);"><i class="bi bi-exclamation-triangle-fill"></i> OpenCode's free-tier model doesn't clearly document commercial-use terms. It's kept last in the fallback order for that reason - confirm current terms if this becomes something you depend on regularly.</p>
+          <div id="opencodeKeysList" class="api-keys-list"></div>
+
+          <div class="api-key-add-row">
+            <input type="text" id="newOpencodeKeyLabel" placeholder="Label (e.g. Personal, Client A)" autocomplete="off" />
+            <input type="text" id="newOpencodeKeyValue" placeholder="sk-… paste new OpenCode key here" autocomplete="off" spellcheck="false" />
+            <button id="opencodeTestNewBtn" class="small-btn">Test</button>
+            <button id="opencodeSaveNewBtn" class="primary-btn">Test &amp; Save</button>
+          </div>
+          <div class="settings-result" id="opencodeSettingsResult" style="display:none;"></div>
+
+          <div class="settings-divider"></div>
+          <p class="hint">Don't have a key yet? Get one at <a href="https://opencode.ai/auth" target="_blank" rel="noopener">opencode.ai/auth</a> - sign in, add billing details (required even for the free-tier model), then create an API key from your Zen dashboard.</p>
+          <div class="settings-divider"></div>
+          <div id="settingsUsage-opencode"></div>
+        </div>
+      </section>
+
       <!-- ---------- Settings: Colors page ---------- -->
       <section class="panel settings-view view-hidden" id="settingsColorsView">
         <div class="board-header">
@@ -844,6 +872,16 @@
             <button type="button" data-sig-action="toggle-source" title="Edit raw HTML" class="sig-toolbar-right"><i class="bi bi-code-slash"></i> HTML</button>
           </div>
           <div id="signatureEditor" class="sig-editor-surface" contenteditable="true"></div>
+          <div id="sigImageOptionsBar" class="sig-image-options-bar" style="display:none;">
+            <span class="hint">Image selected:</span>
+            <button type="button" data-img-size="80">Small</button>
+            <button type="button" data-img-size="150">Medium</button>
+            <button type="button" data-img-size="300">Large</button>
+            <button type="button" data-img-size="">Original</button>
+            <span class="sig-toolbar-divider"></span>
+            <button type="button" id="sigImageLinkBtn"><i class="bi bi-link-45deg"></i> Add/edit link</button>
+            <button type="button" id="sigImageRemoveLinkBtn"><i class="bi bi-link-45deg"></i> Remove link</button>
+          </div>
           <textarea id="signatureSourceInput" class="sig-editor-surface sig-editor-source" style="display:none;" spellcheck="false"></textarea>
 
           <div class="signature-actions-row">
@@ -855,7 +893,7 @@
           <div class="settings-divider"></div>
 
           <h3 class="settings-subheading">Default AI providers</h3>
-          <p class="hint">Which provider to pre-select for content generation and inspection - "Auto" tries Groq, then Gemini, then DeepSeek in order. You can still override this per-generation; this just sets the starting default.</p>
+          <p class="hint">Which provider to pre-select for content generation and inspection - "Auto" tries Groq, then Gemini, then DeepSeek, then OpenCode in order. You can still override this per-generation; this just sets the starting default.</p>
           <div class="smtp-field-row">
             <label class="site-field-label">Content generation
               <select id="providerPrefContentSelect">
@@ -863,6 +901,7 @@
                 <option value="groq">Groq</option>
                 <option value="gemini">Gemini</option>
                 <option value="deepseek">DeepSeek</option>
+                <option value="opencode">OpenCode</option>
               </select>
             </label>
             <label class="site-field-label">Inspection
@@ -871,6 +910,7 @@
                 <option value="groq">Groq</option>
                 <option value="gemini">Gemini</option>
                 <option value="deepseek">DeepSeek</option>
+                <option value="opencode">OpenCode</option>
               </select>
             </label>
           </div>
@@ -961,7 +1001,7 @@
 
 
 
-  <script src="app.js?v=153"></script>
+  <script src="app.js?v=154"></script>
   <script src="pwa-install.js"></script>
 </body>
 </html>

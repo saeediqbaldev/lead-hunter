@@ -9,6 +9,12 @@ const router = express.Router();
 // purpose) into one combined, time-sorted feed - this is what powers the
 // header bell icon, which shouldn't require checking multiple separate
 // pages to see everything that needs attention.
+//
+// tracked_notifications is also what the Alerts page reads from
+// independently, so "clearing" one from this feed must not delete the
+// underlying row - is_dismissed_from_feed hides it here while leaving it
+// fully intact for Alerts. app_notifications isn't shown anywhere else,
+// so those are safe to hard-delete.
 router.get("/feed", (req, res) => {
   const userId = req.session.userId;
   const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
@@ -20,7 +26,7 @@ router.get("/feed", (req, res) => {
         `SELECT n.id, 'tracker' AS source, n.type, e.subject AS title, n.message, n.is_read, n.created_at,
                 ('lead-email:' || n.email_id) AS link
          FROM tracked_notifications n JOIN tracked_emails e ON e.id = n.email_id
-         WHERE n.user_id = ? ${unreadOnly ? "AND n.is_read = 0" : ""}
+         WHERE n.user_id = ? AND n.is_dismissed_from_feed = 0 ${unreadOnly ? "AND n.is_read = 0" : ""}
          ORDER BY n.created_at DESC LIMIT ?`
       )
       .all(userId, limit);
@@ -49,7 +55,7 @@ router.get("/feed", (req, res) => {
 router.get("/feed/unread-count", (req, res) => {
   const userId = req.session.userId;
   try {
-    const trackerCount = db.prepare("SELECT COUNT(*) AS c FROM tracked_notifications WHERE user_id = ? AND is_read = 0").get(userId).c;
+    const trackerCount = db.prepare("SELECT COUNT(*) AS c FROM tracked_notifications WHERE user_id = ? AND is_read = 0 AND is_dismissed_from_feed = 0").get(userId).c;
     const appCount = db.prepare("SELECT COUNT(*) AS c FROM app_notifications WHERE user_id = ? AND is_read = 0").get(userId).c;
     res.json({ count: trackerCount + appCount });
   } catch (err) {
@@ -82,25 +88,34 @@ router.post("/feed/mark-all-read", (req, res) => {
 });
 
 // DELETE /api/notifications/feed/:source/:id { source: 'tracker'|'app' }
+// "tracker" notifications are dismissed (hidden from this feed only),
+// never deleted, since the underlying row is shared with the Alerts page.
 router.delete("/feed/:source/:id", (req, res) => {
   const { source, id } = req.params;
-  const table = source === "app" ? "app_notifications" : "tracked_notifications";
   try {
-    const owned = db.prepare(`SELECT id FROM ${table} WHERE id = ? AND user_id = ?`).get(id, req.session.userId);
-    if (!owned) return res.status(404).json({ error: "Not found" });
-    db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
+    if (source === "app") {
+      const owned = db.prepare("SELECT id FROM app_notifications WHERE id = ? AND user_id = ?").get(id, req.session.userId);
+      if (!owned) return res.status(404).json({ error: "Not found" });
+      db.prepare("DELETE FROM app_notifications WHERE id = ?").run(id);
+    } else {
+      const owned = db.prepare("SELECT id FROM tracked_notifications WHERE id = ? AND user_id = ?").get(id, req.session.userId);
+      if (!owned) return res.status(404).json({ error: "Not found" });
+      db.prepare("UPDATE tracked_notifications SET is_dismissed_from_feed = 1 WHERE id = ?").run(id);
+    }
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: "Failed to delete notification" });
   }
 });
 
-// POST /api/notifications/feed/clear - removes every notification (both
-// tracker alerts and general app notifications) for this user.
+// POST /api/notifications/feed/clear - clears every notification from the
+// header feed for this user. Tracker-sourced items are dismissed from
+// the feed only (the Alerts page still shows them); app-sourced campaign
+// events are hard-deleted since nothing else depends on them.
 router.post("/feed/clear", (req, res) => {
   const userId = req.session.userId;
   try {
-    const a = db.prepare("DELETE FROM tracked_notifications WHERE user_id = ?").run(userId).changes;
+    const a = db.prepare("UPDATE tracked_notifications SET is_dismissed_from_feed = 1 WHERE user_id = ? AND is_dismissed_from_feed = 0").run(userId).changes;
     const b = db.prepare("DELETE FROM app_notifications WHERE user_id = ?").run(userId).changes;
     res.json({ ok: true, cleared: a + b });
   } catch (err) {

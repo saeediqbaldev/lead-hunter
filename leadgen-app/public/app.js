@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.08-15.3";
+const APP_VERSION = "2026.08.08-15.4";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -294,6 +294,14 @@ setupAiProviderKeySection({
   endpointPrefix: "deepseek",
   view: "settings-deepseek",
   getKeyHint: "Add one below - get one at platform.deepseek.com/api_keys.",
+});
+setupAiProviderKeySection({
+  provider: "opencode",
+  label: "Opencode",
+  displayLabel: "OpenCode",
+  endpointPrefix: "opencode",
+  view: "settings-opencode",
+  getKeyHint: "Add one below - get one at opencode.ai/auth.",
 });
 
 async function loadApiKeys() {
@@ -1358,6 +1366,7 @@ async function showCampaignCreationForm() {
         <option value="groq">Groq</option>
         <option value="gemini">Gemini</option>
         <option value="deepseek">DeepSeek</option>
+        <option value="opencode">OpenCode</option>
       </select>
     </label>
 
@@ -1512,6 +1521,7 @@ function showCampaignEditForm(campaign) {
         <option value="groq" ${campaign.ai_provider === "groq" ? "selected" : ""}>Groq</option>
         <option value="gemini" ${campaign.ai_provider === "gemini" ? "selected" : ""}>Gemini</option>
         <option value="deepseek" ${campaign.ai_provider === "deepseek" ? "selected" : ""}>DeepSeek</option>
+        <option value="opencode" ${campaign.ai_provider === "opencode" ? "selected" : ""}>OpenCode</option>
       </select>
     </label>
     <label class="site-visuals-toggle"><input type="checkbox" data-edit-cta ${campaign.cta ? "checked" : ""}> Weave in a clear call-to-action</label>
@@ -1781,14 +1791,14 @@ document.querySelectorAll("[data-sig-action]").forEach((btn) => {
       const url = await openModal({ title: "Insert image", inputLabel: "Image URL", inputValue: "https://" });
       if (!url) return;
       signatureEditor.focus();
-      document.execCommand("insertHTML", false, `<img src="${url}" alt="" />`);
+      document.execCommand("insertHTML", false, `<img src="${url}" alt="" data-sig-img="1" style="max-width:100%;">`);
     } else if (action === "image-upload") {
       document.getElementById("signatureImageFileInput").click();
     }
   });
 });
 
-const SIGNATURE_IMAGE_MAX_BYTES = 2 * 1024 * 1024; // 2MB, per spec - the image becomes embedded base64 text living directly in the signature column
+const SIGNATURE_IMAGE_MAX_BYTES = 2 * 1024 * 1024; // 2MB, per spec
 const SIGNATURE_IMAGE_ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp"];
 document.getElementById("signatureImageFileInput").addEventListener("change", (e) => {
   const file = e.target.files[0];
@@ -1803,13 +1813,100 @@ document.getElementById("signatureImageFileInput").addEventListener("change", (e
     return;
   }
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
     if (signatureSourceMode) return;
-    signatureEditor.focus();
-    document.execCommand("insertHTML", false, `<img src="${reader.result}" alt="" />`);
+    try {
+      // Upload to the server and use the short returned URL, rather than
+      // embedding the full base64 payload directly in the signature -
+      // that was what caused signatures to blow past the length limit.
+      const res = await api("/api/settings/signature-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dataUrl: reader.result }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      signatureEditor.focus();
+      document.execCommand("insertHTML", false, `<img src="${data.url}" alt="" data-sig-img="1" style="max-width:100%;">`);
+    } catch (err) {
+      showToast(`Could not upload image: ${err.message}`, "error");
+    }
   };
   reader.onerror = () => showToast("Could not read that image file", "error");
   reader.readAsDataURL(file);
+});
+
+// ---------- Signature image selection: resize + link ----------
+let selectedSigImage = null;
+const sigImageOptionsBar = document.getElementById("sigImageOptionsBar");
+
+function selectSigImage(img) {
+  if (selectedSigImage) selectedSigImage.classList.remove("sig-img-selected");
+  selectedSigImage = img;
+  if (img) {
+    img.classList.add("sig-img-selected");
+    sigImageOptionsBar.style.display = "flex";
+  } else {
+    sigImageOptionsBar.style.display = "none";
+  }
+}
+
+signatureEditor.addEventListener("click", (e) => {
+  const img = e.target.closest("img[data-sig-img]");
+  selectSigImage(img || null);
+});
+// Clicking anywhere outside the editor and the options bar itself
+// deselects, so the bar doesn't linger once the user's attention moves on.
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#signatureEditor") && !e.target.closest("#sigImageOptionsBar")) {
+    selectSigImage(null);
+  }
+});
+
+sigImageOptionsBar.querySelectorAll("[data-img-size]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    if (!selectedSigImage) return;
+    const width = btn.dataset.imgSize;
+    if (width) {
+      selectedSigImage.style.width = `${width}px`;
+      selectedSigImage.style.maxWidth = "100%";
+    } else {
+      selectedSigImage.style.width = "";
+      selectedSigImage.style.maxWidth = "100%";
+    }
+  });
+});
+
+document.getElementById("sigImageLinkBtn").addEventListener("click", async () => {
+  const img = selectedSigImage; // captured before the modal opens - the modal's own buttons are outside both #signatureEditor and #sigImageOptionsBar, so the document-level deselect-on-outside-click listener below would otherwise null out selectedSigImage while the modal is still open
+  if (!img) return;
+  const existingLink = img.closest("a");
+  const url = await openModal({ title: "Link this image to", inputLabel: "URL", inputValue: existingLink?.href || "https://" });
+  if (!url) return;
+  if (existingLink) {
+    existingLink.href = url;
+  } else {
+    // Wrap the image in a new anchor via direct DOM manipulation -
+    // execCommand's createLink is unreliable when the selection is an
+    // image rather than text, so this builds the wrapper directly.
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    img.replaceWith(anchor);
+    anchor.appendChild(img);
+  }
+  showToast("Image linked", "success");
+});
+
+document.getElementById("sigImageRemoveLinkBtn").addEventListener("click", () => {
+  const img = selectedSigImage;
+  if (!img) return;
+  const existingLink = img.closest("a");
+  if (!existingLink) {
+    showToast("This image isn't linked", "error");
+    return;
+  }
+  existingLink.replaceWith(img);
+  showToast("Link removed", "success");
 });
 
 async function loadSignature() {
@@ -2437,6 +2534,20 @@ const USAGE_LIMITS_INFO = [
     linkLabel: "Current official DeepSeek pricing",
   },
   {
+    title: "OpenCode AI (via OpenCode Zen)",
+    icon: "bi-cpu-fill",
+    provider: "opencode",
+    usedFor: "Last, optional provider in the AI fallback chain - a free-tier DeepSeek V4 Flash model, used only if Groq, Gemini, and DeepSeek are all unavailable.",
+    keyLink: "https://opencode.ai/auth",
+    keyLinkLabel: "opencode.ai/auth",
+    notes: [
+      "Free-tier model (deepseek-v4-flash-free) with no per-token cost, but OpenCode's own docs don't clearly document commercial-use terms - kept last in the chain for that reason.",
+      "Requires adding billing details to create an OpenCode Zen account, even though the model itself is free.",
+    ],
+    link: "https://opencode.ai/docs/zen",
+    linkLabel: "OpenCode Zen documentation",
+  },
+  {
     title: "PageSpeed Insights",
     icon: "bi-speedometer2",
     provider: null,
@@ -2451,8 +2562,8 @@ const USAGE_LIMITS_INFO = [
   },
 ];
 
-const PROVIDER_ENDPOINT_KEY = { google_places: "google_places", gemini: "gemini", groq: "groq", deepseek: "deepseek" };
-const PROVIDER_SUMMARY_KEY = { google_places: "google_places", gemini: "gemini", groq: "groq", deepseek: "deepseek" };
+const PROVIDER_ENDPOINT_KEY = { google_places: "google_places", gemini: "gemini", groq: "groq", deepseek: "deepseek", opencode: "opencode" };
+const PROVIDER_SUMMARY_KEY = { google_places: "google_places", gemini: "gemini", groq: "groq", deepseek: "deepseek", opencode: "opencode" };
 
 function usageCardHtml(info, usage) {
   const summary = info.provider ? usage[PROVIDER_SUMMARY_KEY[info.provider]] : null;
@@ -2920,6 +3031,7 @@ function restoreNavState() {
       "settings-gemini": "navSettingsGemini",
       "settings-groq": "navSettingsGroq",
       "settings-deepseek": "navSettingsDeepseek",
+      "settings-opencode": "navSettingsOpencode",
       "settings-colors": "navSettingsColors",
       "settings-team": "navSettingsTeam",
       "settings-account": "navSettingsAccount",
@@ -2961,6 +3073,7 @@ function setContentView(view) {
     "settings-gemini": document.getElementById("settingsGeminiView"),
     "settings-groq": document.getElementById("settingsGroqView"),
     "settings-deepseek": document.getElementById("settingsDeepseekView"),
+    "settings-opencode": document.getElementById("settingsOpencodeView"),
     "settings-colors": document.getElementById("settingsColorsView"),
     "settings-team": document.getElementById("settingsTeamView"),
     "settings-account": document.getElementById("settingsAccountView"),
@@ -4192,6 +4305,7 @@ const AI_PROVIDER_OPTIONS = [
   { value: "groq", label: "Groq", icon: "bi-lightning-charge-fill" },
   { value: "gemini", label: "Gemini", icon: "bi-stars" },
   { value: "deepseek", label: "DeepSeek", icon: "bi-cpu-fill" },
+  { value: "opencode", label: "OpenCode", icon: "bi-cpu-fill" },
 ];
 
 function closeAllLeadExpansions() {

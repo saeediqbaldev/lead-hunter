@@ -7,21 +7,26 @@
 // cap, or any single provider having a bad moment.
 const apiKeys = require("./apiKeys");
 const gemini = require("./gemini");
-const { groqClient, deepseekClient } = require("./openaiCompatible");
+const { groqClient, deepseekClient, opencodeClient } = require("./openaiCompatible");
 
 // Order matters: Groq is tried first (generous recurring free tier + very
 // fast responses, which also helps avoid proxy-timeout issues), then
-// Gemini (recurring but a much tighter free cap), then DeepSeek last
-// (its free access is a one-time token grant per account, not a
-// recurring daily quota, so it's the one worth preserving longest).
-const PROVIDER_ORDER = ["groq", "gemini", "deepseek"];
+// Gemini (recurring but a much tighter free cap), then DeepSeek (its free
+// access is a one-time token grant per account, not a recurring daily
+// quota, so it's worth preserving longer than Groq/Gemini's daily caps).
+// OpenCode is tried last, deliberately - it's a free-tier gateway model
+// whose commercial-use terms aren't clearly documented, so it's kept as
+// an optional extra fallback rather than a provider anything critical
+// depends on.
+const PROVIDER_ORDER = ["groq", "gemini", "deepseek", "opencode"];
 
-const PROVIDER_LABELS = { groq: "Groq", gemini: "Gemini", deepseek: "DeepSeek" };
+const PROVIDER_LABELS = { groq: "Groq", gemini: "Gemini", deepseek: "DeepSeek", opencode: "OpenCode" };
 
 function getClientFor(provider) {
   if (provider === "gemini") return gemini;
   if (provider === "groq") return groqClient;
   if (provider === "deepseek") return deepseekClient;
+  if (provider === "opencode") return opencodeClient;
   return null;
 }
 
@@ -75,7 +80,7 @@ async function generateWithFallback(userId, prompt, { jsonMode, geminiSchema, on
   if (providers.length === 0) {
     return {
       ok: false,
-      error: "No AI provider configured. Add a key for Groq, Gemini, or DeepSeek in Settings.",
+      error: "No AI provider configured. Add a key for Groq, Gemini, DeepSeek, or OpenCode in Settings.",
       attempts: [],
     };
   }

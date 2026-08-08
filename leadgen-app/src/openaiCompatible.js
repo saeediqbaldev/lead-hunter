@@ -115,4 +115,16 @@ const deepseekClient = createOpenAiCompatibleClient({
   defaultModel: "deepseek-v4-flash",
 });
 
-module.exports = { groqClient, deepseekClient, createOpenAiCompatibleClient };
+// OpenCode Zen - an AI gateway offering deepseek-v4-flash-free at no
+// per-token cost. Positioned as an optional extra fallback, not a
+// primary provider: OpenCode's own docs don't clearly document
+// commercial-use terms for this free-tier model, which matters for a
+// revenue-generating tool like this one - confirm current terms hold, or
+// swap to a paid tier, before depending on it for anything critical.
+const opencodeClient = createOpenAiCompatibleClient({
+  label: "OpenCode",
+  baseUrl: "https://opencode.ai/zen/v1",
+  defaultModel: "deepseek-v4-flash-free",
+});
+
+module.exports = { groqClient, deepseekClient, opencodeClient, createOpenAiCompatibleClient };

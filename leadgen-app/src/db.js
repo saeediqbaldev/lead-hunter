@@ -585,6 +585,7 @@ CREATE TABLE IF NOT EXISTS tracked_notifications (
   url TEXT,
   message TEXT NOT NULL DEFAULT '',
   is_read INTEGER NOT NULL DEFAULT 0,
+  is_dismissed_from_feed INTEGER NOT NULL DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_tracked_notif_user ON tracked_notifications(user_id);
@@ -708,6 +709,11 @@ CREATE INDEX IF NOT EXISTS idx_app_notifications_read ON app_notifications(is_re
   NEW_TRACKING_COLS.forEach((col) => {
     if (!clicksCols.includes(col)) db.exec(`ALTER TABLE tracked_clicks ADD COLUMN ${col} TEXT`);
   });
+}
+
+{
+  const notifCols = db.prepare("PRAGMA table_info(tracked_notifications)").all().map((c) => c.name);
+  if (!notifCols.includes("is_dismissed_from_feed")) db.exec("ALTER TABLE tracked_notifications ADD COLUMN is_dismissed_from_feed INTEGER NOT NULL DEFAULT 0");
 }
 
 // One-time fix: the auto-refresh interval used to default to 15 (inherited

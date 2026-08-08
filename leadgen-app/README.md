@@ -6,6 +6,42 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.4
+Signature image storage rebuilt properly, image resize/linking added, a
+real notification-feed data-isolation bug fixed, and OpenCode AI wired in
+as a 4th provider.
+
+- **Fixed the "signature too long" error at its root**, not just the
+  symptom. The real problem was that uploaded images were embedded as
+  base64 directly in the signature text - any image at all could blow
+  past a reasonable length limit. Rebuilt properly: uploads now save to
+  disk (same persistent location as the database) and the signature only
+  holds a short reference URL. Verified end-to-end, including that a
+  1.5MB upload that would have previously failed now succeeds cleanly.
+- **Image resize and image-linking** in the signature editor - click an
+  image to select it, choose a size preset, add or remove a link. Caught
+  and fixed a real bug during testing: the link dialog's own confirm
+  button was clearing the image selection before the link code ran,
+  since it lives outside both the editor and the image's own toolbar.
+- **Fixed a real data-isolation bug**: clearing the header notification
+  feed was hard-deleting from the same table the Alerts page reads from,
+  silently wiping Alerts data too. Fixed with a "dismissed from feed"
+  flag that hides items from the header bell without touching the
+  underlying record - verified directly: cleared the feed, confirmed it
+  emptied, confirmed Alerts still showed the same entry afterward.
+- **OpenCode AI (DeepSeek V4 Flash, free tier) added as a 4th provider**,
+  matching your existing Groq/Gemini/DeepSeek setup exactly - same
+  key-management UI, same fallback-chain logic, positioned last given its
+  free tier's commercial-use terms aren't clearly documented (flagged
+  directly in the Settings page itself, not just in chat). Verified the
+  client builds correct requests against OpenCode's real API shape, and
+  that the full fallback chain correctly includes it once a key is
+  configured. The specific key provided has not been saved anywhere -
+  add it via Settings → OpenCode AI once this is deployed.
+- Both new database migrations (signature/notification schema changes)
+  verified against a simulated pre-upgrade database - existing data
+  survives intact.
+
 ## What's in this V15.3
 Everything from the follow-up round, plus item 9 (IP/city/browser/OS/
 device logging) finally completed.
