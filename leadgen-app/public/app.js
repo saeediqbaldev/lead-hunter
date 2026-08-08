@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.08-15.2";
+const APP_VERSION = "2026.08.08-15.3";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -521,7 +521,7 @@ async function refreshHeaderCampaignIndicator() {
     const running = data.campaigns.filter((c) => c.status === "running");
     if (running.length) {
       const sent = running.reduce((sum, c) => sum + c.sent_count, 0);
-      const total = running.reduce((sum, c) => sum + c.total_leads, 0);
+      const total = running.reduce((sum, c) => sum + (c.total_leads - c.skipped_count), 0);
       countEl.textContent = `${sent}/${total}`;
       indicator.style.display = "flex";
       indicator.classList.add("blinking");
@@ -568,6 +568,7 @@ async function loadNotifPanel() {
         <div class="notif-item-msg">${n.message}</div>
         <div class="notif-item-time">${formatContactedTimestamp(n.created_at)}</div>
       </div>
+      <button type="button" class="notif-item-delete" data-action="delete-notif-item" title="Delete"><i class="bi bi-trash"></i></button>
     </div>`
     )
     .join("");
@@ -580,6 +581,15 @@ async function loadNotifPanel() {
         refreshHeaderNotifBadge();
       }
       navigateToNotificationLink(item.dataset.notifLink);
+    });
+  });
+  list.querySelectorAll('[data-action="delete-notif-item"]').forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const item = btn.closest("[data-notif-id]");
+      await api(`/api/notifications/feed/${item.dataset.notifSource}/${item.dataset.notifId}`, { method: "DELETE" });
+      refreshHeaderNotifBadge();
+      loadNotifPanel();
     });
   });
 }
@@ -625,6 +635,18 @@ document.getElementById("notifPanelOverlay").addEventListener("click", (e) => {
 });
 document.getElementById("notifMarkAllReadBtn").addEventListener("click", async () => {
   await api("/api/notifications/feed/mark-all-read", { method: "POST" });
+  await loadNotifPanel();
+  refreshHeaderNotifBadge();
+});
+document.getElementById("notifClearAllBtn").addEventListener("click", async () => {
+  const confirmed = await openModal({
+    title: "Clear all notifications?",
+    message: "This permanently deletes every notification in this feed. This cannot be undone.",
+    confirmText: "Clear all",
+    danger: true,
+  });
+  if (!confirmed) return;
+  await api("/api/notifications/feed/clear", { method: "POST" });
   await loadNotifPanel();
   refreshHeaderNotifBadge();
 });
@@ -995,6 +1017,20 @@ document.getElementById("contactedDeleteSelectedBtn").addEventListener("click", 
   loadContactedTracking();
 });
 
+// Formats an open/click event's IP, browser, OS, device, and location
+// into one readable line - gracefully omits whatever wasn't captured,
+// since city/country depend on an external geolocation lookup that may
+// not have resolved (network hiccup, private/local IP, etc).
+function trackingMetaLine(ev) {
+  const parts = [];
+  if (ev.ip) parts.push(ev.ip);
+  if (ev.city || ev.country) parts.push([ev.city, ev.country].filter(Boolean).join(", "));
+  if (ev.browser) parts.push(ev.browser);
+  if (ev.os) parts.push(ev.os);
+  if (ev.device) parts.push(ev.device);
+  return parts.join(" · ") || "unknown";
+}
+
 async function openContactedDetail(emailId) {
   const res = await api(`/api/tracker/emails/${emailId}`);
   const data = await res.json();
@@ -1020,9 +1056,15 @@ async function openContactedDetail(emailId) {
     <button type="button" class="small-btn" data-action="save-detail-notes">Save note</button>
     <div class="settings-divider"></div>
     <h4>Opens (${data.opens.length})</h4>
-    ${data.opens.map((o) => `<div class="contacted-detail-event"><b>${formatContactedTimestamp(o.opened_at)}</b><br>${o.ip || "unknown IP"}</div>`).join("") || `<p class="hint">No opens yet.</p>`}
+    ${
+      data.opens.map((o) => `<div class="contacted-detail-event"><b>${formatContactedTimestamp(o.opened_at)}</b><br>${trackingMetaLine(o)}</div>`).join("") ||
+      `<p class="hint">No opens yet.</p>`
+    }
     <h4>Clicks (${data.clicks.length})</h4>
-    ${data.clicks.map((c) => `<div class="contacted-detail-event"><b>${formatContactedTimestamp(c.clicked_at)}</b><br>${c.url}</div>`).join("") || `<p class="hint">No clicks yet.</p>`}
+    ${
+      data.clicks.map((c) => `<div class="contacted-detail-event"><b>${formatContactedTimestamp(c.clicked_at)}</b><br>${c.url}<br>${trackingMetaLine(c)}</div>`).join("") ||
+      `<p class="hint">No clicks yet.</p>`
+    }
     <div class="settings-divider"></div>
     <button type="button" class="small-btn danger-btn" data-action="delete-detail-email">Delete this tracked email</button>
   `;
@@ -1074,8 +1116,9 @@ async function loadContactedHistory() {
       <td><span class="contacted-status-pill ${ev.type === "open" ? "opened" : "clicked"}">${ev.type}</span></td>
       <td>${ev.subject || "(no subject)"}</td>
       <td>${ev.recipients.join(", ")}</td>
-      <td>${ev.type === "click" ? ev.url : ev.ip || ""}</td>
+      <td>${ev.type === "click" ? ev.url + "<br>" : ""}<span class="hint">${trackingMetaLine(ev)}</span></td>
       <td>${formatContactedTimestamp(ev.ts)}</td>
+      <td><button type="button" class="icon-toggle-btn" data-action="delete-history-event" data-event-type="${ev.type}" data-event-id="${ev.event_id}" title="Delete this event"><i class="bi bi-trash"></i></button></td>
     </tr>`
     )
     .join("");
@@ -1083,9 +1126,28 @@ async function loadContactedHistory() {
   tbody.querySelectorAll("[data-history-email-id]").forEach((row) => {
     row.addEventListener("click", () => openContactedDetail(row.dataset.historyEmailId));
   });
+  tbody.querySelectorAll('[data-action="delete-history-event"]').forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await api(`/api/tracker/history/${btn.dataset.eventType}/${btn.dataset.eventId}`, { method: "DELETE" });
+      loadContactedHistory();
+    });
+  });
 }
 document.getElementById("contactedHistoryTypeSelect").addEventListener("change", loadContactedHistory);
 document.getElementById("contactedHistorySearchInput").addEventListener("input", debounce(loadContactedHistory, 300));
+document.getElementById("contactedHistoryClearBtn").addEventListener("click", async () => {
+  const confirmed = await openModal({
+    title: "Clear all history?",
+    message: `This permanently deletes every open/click event for ${state.contactedPlatform === "gmail" ? "Gmail" : "Hostinger"}. This cannot be undone.`,
+    confirmText: "Clear history",
+    danger: true,
+  });
+  if (!confirmed) return;
+  await api("/api/tracker/history/clear", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider: state.contactedPlatform }) });
+  showToast("History cleared", "success");
+  loadContactedHistory();
+});
 
 // ---------- Reports ----------
 let contactedTimeseriesChartInstance = null;
@@ -1213,11 +1275,11 @@ const CAMPAIGN_STATUS_LABEL = {
 };
 
 function campaignProgressBarHtml(c) {
-  const total = c.total_leads || 0;
-  const pct = total > 0 ? Math.round((c.sent_count / total) * 100) : 0;
+  const actionableTotal = (c.total_leads || 0) - (c.skipped_count || 0);
+  const pct = actionableTotal > 0 ? Math.round((c.sent_count / actionableTotal) * 100) : 0;
   return `
     <div class="campaign-progress-track"><div class="campaign-progress-fill" style="width:${pct}%;"></div></div>
-    <div class="campaign-progress-label">${c.sent_count}/${total} sent${c.failed_count ? ` · ${c.failed_count} failed` : ""}${c.skipped_count ? ` · ${c.skipped_count} skipped` : ""}</div>
+    <div class="campaign-progress-label">${c.sent_count}/${actionableTotal} sent${c.failed_count ? ` · ${c.failed_count} failed` : ""}${c.skipped_count ? ` · ${c.skipped_count} skipped (excluded)` : ""}</div>
   `;
 }
 
@@ -1720,8 +1782,34 @@ document.querySelectorAll("[data-sig-action]").forEach((btn) => {
       if (!url) return;
       signatureEditor.focus();
       document.execCommand("insertHTML", false, `<img src="${url}" alt="" />`);
+    } else if (action === "image-upload") {
+      document.getElementById("signatureImageFileInput").click();
     }
   });
+});
+
+const SIGNATURE_IMAGE_MAX_BYTES = 2 * 1024 * 1024; // 2MB, per spec - the image becomes embedded base64 text living directly in the signature column
+const SIGNATURE_IMAGE_ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp"];
+document.getElementById("signatureImageFileInput").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  e.target.value = ""; // reset so selecting the same file again still fires 'change'
+  if (!file) return;
+  if (!SIGNATURE_IMAGE_ALLOWED_TYPES.includes(file.type)) {
+    showToast("Please choose a PNG, JPEG, or WEBP image", "error");
+    return;
+  }
+  if (file.size > SIGNATURE_IMAGE_MAX_BYTES) {
+    showToast(`Image is too large (${(file.size / 1024 / 1024).toFixed(1)}MB) - please use one under 2MB`, "error");
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    if (signatureSourceMode) return;
+    signatureEditor.focus();
+    document.execCommand("insertHTML", false, `<img src="${reader.result}" alt="" />`);
+  };
+  reader.onerror = () => showToast("Could not read that image file", "error");
+  reader.readAsDataURL(file);
 });
 
 async function loadSignature() {
@@ -2790,6 +2878,79 @@ const state = {
   currentLeadsById: new Map(), // id -> full lead object, for the expand panel to reference
 };
 
+// ---------- Persist current view across refresh ----------
+const NAV_STATE_KEY = "xevenLeadsNavState";
+
+// Captured once, at script-load time, before anything can overwrite it.
+// setContentView (called with "board" early in init(), before the actual
+// restore happens) writes to localStorage on every call - if
+// restoreNavState re-read localStorage at that later point instead of
+// using this snapshot, it would only ever see "board", since that early
+// call already clobbered whatever view was actually saved from before
+// the refresh.
+let capturedNavState = null;
+try {
+  capturedNavState = JSON.parse(localStorage.getItem(NAV_STATE_KEY) || "null");
+} catch {
+  capturedNavState = null;
+}
+
+function saveNavState() {
+  try {
+    localStorage.setItem(NAV_STATE_KEY, JSON.stringify({ contentView: state.contentView, contactedPlatform: state.contactedPlatform }));
+  } catch {
+    // Non-critical - worst case, refresh just resets to the default view
+  }
+}
+
+// Restores the last-viewed page on load by simulating the same clicks a
+// user would make to navigate there - reuses the existing navigation
+// handlers rather than duplicating their data-loading logic. "board"
+// (Hunt/Reach Out/Pinned) is already the app's default on load, so it's
+// deliberately not handled here - only views that would otherwise be
+// reset need explicit restoration.
+function restoreNavState() {
+  const saved = capturedNavState;
+  if (!saved || !saved.contentView || saved.contentView === "board") return;
+  const view = saved.contentView;
+
+  if (view.startsWith("settings-")) {
+    const idMap = {
+      "settings-api": "navSettingsApi",
+      "settings-gemini": "navSettingsGemini",
+      "settings-groq": "navSettingsGroq",
+      "settings-deepseek": "navSettingsDeepseek",
+      "settings-colors": "navSettingsColors",
+      "settings-team": "navSettingsTeam",
+      "settings-account": "navSettingsAccount",
+      "settings-limits": "navSettingsLimits",
+    };
+    document.querySelector('[data-section="settings"]')?.click();
+    const btnId = idMap[view];
+    if (btnId) document.getElementById(btnId)?.click();
+    return;
+  }
+
+  if (view === "reports") {
+    document.querySelector('[data-section="reports"]')?.click();
+    return;
+  }
+
+  if (view.startsWith("contacted-")) {
+    // "contacted-campaign-detail" can't be restored to the exact same
+    // campaign without persisting a campaign ID too - falls back to the
+    // campaigns list, which is still far better than losing the section
+    // entirely and landing back on the board.
+    const subview = view === "contacted-campaign-detail" ? "campaigns" : view.replace("contacted-", "");
+    const platform = saved.contactedPlatform || "hostinger";
+    document.querySelector('[data-section="contacted"]')?.click();
+    setTimeout(() => {
+      if (platform === "gmail") document.querySelector('[data-toggle-platform="gmail"]')?.click();
+      document.querySelector(`[data-goto-platform="${platform}"][data-goto-view="${subview}"]`)?.click();
+    }, 150);
+  }
+}
+
 function setContentView(view) {
   state.contentView = view;
   const ALL_VIEWS = {
@@ -2834,6 +2995,8 @@ function setContentView(view) {
     loadReportsFilterOptions();
     loadReports();
   }
+
+  saveNavState();
 }
 
 function tagClass(tag) {
@@ -5935,4 +6098,6 @@ async function loadReports() {
       `Couldn't load: ${failures.join(", ")}. Open the browser console (F12) for details, or check the server logs.`
     );
   }
+
+  restoreNavState();
 })();

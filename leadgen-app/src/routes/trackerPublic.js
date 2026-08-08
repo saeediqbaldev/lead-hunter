@@ -1,6 +1,7 @@
 const express = require("express");
 const crypto = require("crypto");
 const db = require("../db");
+const { parseUserAgent, lookupGeoIp } = require("../trackingMeta");
 const { sendEmailNotification } = require("../trackerNotify");
 const { isLikelyBotOrScanner } = require("../botFilter");
 
@@ -141,7 +142,20 @@ router.get("/t/:id/pixel.png", (req, res) => {
         );
 
         if (!isSelf && !withinGrace && !isBot) {
-          db.prepare("INSERT INTO tracked_opens (email_id, ip, user_agent) VALUES (?, ?, ?)").run(id, requestIp, userAgent || null);
+          const { browser, os, device } = parseUserAgent(userAgent);
+          const insertResult = db
+            .prepare("INSERT INTO tracked_opens (email_id, ip, user_agent, browser, os, device) VALUES (?, ?, ?, ?, ?, ?)")
+            .run(id, requestIp, userAgent || null, browser, os, device);
+
+          // Geolocation needs an external lookup - doesn't block the pixel
+          // response (the email client is waiting on this), so it updates
+          // the row after the fact once (if) it resolves.
+          const openRowId = insertResult.lastInsertRowid;
+          lookupGeoIp(requestIp)
+            .then((geo) => {
+              if (geo) db.prepare("UPDATE tracked_opens SET city = ?, country = ? WHERE id = ?").run(geo.city, geo.country, openRowId);
+            })
+            .catch(() => {});
 
           db.prepare(
             `UPDATE tracked_emails
@@ -209,8 +223,19 @@ router.get("/t/:id/click", (req, res) => {
     }
 
     try {
-      db.prepare("INSERT INTO tracked_clicks (email_id, url, ip, user_agent) VALUES (?, ?, ?, ?)").run(id, decoded, clientIp(req), userAgent || null);
+      const clickerIp = clientIp(req);
+      const { browser, os, device } = parseUserAgent(userAgent);
+      const insertResult = db
+        .prepare("INSERT INTO tracked_clicks (email_id, url, ip, user_agent, browser, os, device) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        .run(id, decoded, clickerIp, userAgent || null, browser, os, device);
       db.prepare("UPDATE tracked_emails SET status = 'clicked', click_count = click_count + 1 WHERE id = ?").run(id);
+
+      const clickRowId = insertResult.lastInsertRowid;
+      lookupGeoIp(clickerIp)
+        .then((geo) => {
+          if (geo) db.prepare("UPDATE tracked_clicks SET city = ?, country = ? WHERE id = ?").run(geo.city, geo.country, clickRowId);
+        })
+        .catch(() => {});
 
       const email = db.prepare("SELECT subject, recipients, user_id FROM tracked_emails WHERE id = ?").get(id);
       if (email) {

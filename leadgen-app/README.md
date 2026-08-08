@@ -6,6 +6,44 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.3
+Everything from the follow-up round, plus item 9 (IP/city/browser/OS/
+device logging) finally completed.
+
+- **Investigated a reported bug with real end-to-end testing, not just
+  code inspection**: re-ran the exact campaign pipeline and confirmed
+  content-saving and email-body-saving both work correctly on this
+  version. The specific email in question predates these fixes - they
+  only apply going forward, not retroactively to already-sent emails.
+- **Signature image upload** tightened to spec: PNG/JPEG/WEBP only, 2MB
+  cap (previously a generic 1MB).
+- **Skipped leads excluded from campaign progress** - the progress bar
+  and header indicator now show sent-vs-actionable-total, not sent-vs-
+  everything-including-unreachable-leads. Verified with a real mixed
+  campaign (sent/skipped/pending all present).
+- **Delete/clear controls added**: a trash icon on every History event
+  plus a "Clear all" button, and the same for the notification feed -
+  both backed by real delete endpoints, not just hidden client-side.
+- **Item 9 - who opened/clicked, and from what**: every open and click
+  now records browser, OS, and device (parsed locally from the user
+  agent - no external service, no reliability concerns) plus city/country
+  via IP geolocation. Shown in both the History table and the Tracking
+  detail panel.
+  - **Important caveat worth knowing**: the free geolocation lookup used
+    here is documented by its provider as non-commercial use only. This
+    app is a commercial tool, so before relying on this in production,
+    either confirm current terms allow it or swap in a paid geolocation
+    provider - the code is structured so that's just a URL change.
+  - A real bug was caught and fixed during this build: the single-email
+    detail endpoint's opens/clicks query hadn't been updated to include
+    the new columns, so while History showed the new data correctly, the
+    Tracking detail panel silently didn't. Caught via a full round-trip
+    browser test, not a syntax check.
+
+**On OpenCode AI as a 4th provider**: not implemented this round, pending
+your decision - see the write-up in the previous message for the
+commercial-terms caveat that's worth weighing first.
+
 ## What's in this V15.2
 Items 4, 6, and 7 complete and verified; items 5, 9, 10 still ahead.
 

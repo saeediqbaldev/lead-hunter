@@ -1804,3 +1804,7 @@ a.site-generate-btn { color: #1a1310; }
 }
 .header-campaign-indicator.blinking i { animation: header-campaign-blink 1.1s ease-in-out infinite; }
 @keyframes header-campaign-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+.notif-item-delete { background: none; border: none; color: var(--text-muted); padding: 4px 6px; border-radius: 5px; cursor: pointer; opacity: 0; transition: opacity 0.1s ease; align-self: flex-start; }
+.notif-item:hover .notif-item-delete { opacity: 1; }
+.notif-item-delete:hover { color: var(--danger); background: rgba(232,100,111,0.1); }

@@ -553,7 +553,12 @@ CREATE TABLE IF NOT EXISTS tracked_opens (
   email_id TEXT NOT NULL REFERENCES tracked_emails(id) ON DELETE CASCADE,
   opened_at TEXT DEFAULT (datetime('now')),
   ip TEXT,
-  user_agent TEXT
+  user_agent TEXT,
+  browser TEXT,
+  os TEXT,
+  device TEXT,
+  city TEXT,
+  country TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_tracked_opens_email ON tracked_opens(email_id);
 
@@ -563,7 +568,12 @@ CREATE TABLE IF NOT EXISTS tracked_clicks (
   url TEXT NOT NULL,
   clicked_at TEXT DEFAULT (datetime('now')),
   ip TEXT,
-  user_agent TEXT
+  user_agent TEXT,
+  browser TEXT,
+  os TEXT,
+  device TEXT,
+  city TEXT,
+  country TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_tracked_clicks_email ON tracked_clicks(email_id);
 
@@ -686,6 +696,18 @@ CREATE INDEX IF NOT EXISTS idx_app_notifications_read ON app_notifications(is_re
 {
   const trackedEmailCols = db.prepare("PRAGMA table_info(tracked_emails)").all().map((c) => c.name);
   if (!trackedEmailCols.includes("body_html")) db.exec("ALTER TABLE tracked_emails ADD COLUMN body_html TEXT");
+}
+
+{
+  const opensCols = db.prepare("PRAGMA table_info(tracked_opens)").all().map((c) => c.name);
+  const NEW_TRACKING_COLS = ["browser", "os", "device", "city", "country"];
+  NEW_TRACKING_COLS.forEach((col) => {
+    if (!opensCols.includes(col)) db.exec(`ALTER TABLE tracked_opens ADD COLUMN ${col} TEXT`);
+  });
+  const clicksCols = db.prepare("PRAGMA table_info(tracked_clicks)").all().map((c) => c.name);
+  NEW_TRACKING_COLS.forEach((col) => {
+    if (!clicksCols.includes(col)) db.exec(`ALTER TABLE tracked_clicks ADD COLUMN ${col} TEXT`);
+  });
 }
 
 // One-time fix: the auto-refresh interval used to default to 15 (inherited

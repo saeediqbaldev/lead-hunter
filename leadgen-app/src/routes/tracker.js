@@ -75,8 +75,8 @@ router.get("/emails/:id", (req, res) => {
     const email = db.prepare("SELECT * FROM tracked_emails WHERE id = ? AND user_id = ?").get(id, userId);
     if (!email) return res.status(404).json({ error: "Not found" });
 
-    const opens = db.prepare("SELECT id, opened_at, ip, user_agent FROM tracked_opens WHERE email_id = ? ORDER BY opened_at DESC").all(id);
-    const clicks = db.prepare("SELECT id, url, clicked_at, ip, user_agent FROM tracked_clicks WHERE email_id = ? ORDER BY clicked_at DESC").all(id);
+    const opens = db.prepare("SELECT id, opened_at, ip, user_agent, browser, os, device, city, country FROM tracked_opens WHERE email_id = ? ORDER BY opened_at DESC").all(id);
+    const clicks = db.prepare("SELECT id, url, clicked_at, ip, user_agent, browser, os, device, city, country FROM tracked_clicks WHERE email_id = ? ORDER BY clicked_at DESC").all(id);
 
     res.json({ email: { ...email, recipients: JSON.parse(email.recipients || "[]") }, opens, clicks });
   } catch (err) {
@@ -469,11 +469,11 @@ router.get("/history", (req, res) => {
   try {
     const rows = db
       .prepare(
-        `SELECT ev.type, ev.ts, ev.ip, ev.user_agent, ev.url, e.id AS email_id, e.subject, e.recipients, e.provider
+        `SELECT ev.type, ev.id AS event_id, ev.ts, ev.ip, ev.user_agent, ev.url, ev.browser, ev.os, ev.device, ev.city, ev.country, e.id AS email_id, e.subject, e.recipients, e.provider
          FROM (
-           SELECT 'open' AS type, id, email_id, opened_at AS ts, ip, user_agent, NULL AS url FROM tracked_opens
+           SELECT 'open' AS type, id, email_id, opened_at AS ts, ip, user_agent, NULL AS url, browser, os, device, city, country FROM tracked_opens
            UNION ALL
-           SELECT 'click' AS type, id, email_id, clicked_at AS ts, ip, user_agent, url FROM tracked_clicks
+           SELECT 'click' AS type, id, email_id, clicked_at AS ts, ip, user_agent, url, browser, os, device, city, country FROM tracked_clicks
          ) ev
          JOIN tracked_emails e ON e.id = ev.email_id
          WHERE ${clauses.join(" AND ")}
@@ -486,6 +486,37 @@ router.get("/history", (req, res) => {
     console.error("Failed to load tracker history:", err);
     res.status(500).json({ error: "Failed to load history" });
   }
+});
+
+// DELETE /api/tracker/history/:type/:id - removes a single open/click
+// event. Deliberately scoped by user_id via a join, not just the raw ID,
+// so one user can't delete another's event by guessing an ID.
+router.delete("/history/:type/:id", (req, res) => {
+  const { type, id } = req.params;
+  if (type !== "open" && type !== "click") return res.status(400).json({ error: "Invalid event type" });
+  const table = type === "open" ? "tracked_opens" : "tracked_clicks";
+  const owned = db
+    .prepare(`SELECT ${table}.id FROM ${table} JOIN tracked_emails e ON e.id = ${table}.email_id WHERE ${table}.id = ? AND e.user_id = ?`)
+    .get(id, req.session.userId);
+  if (!owned) return res.status(404).json({ error: "Not found" });
+  db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
+  res.json({ ok: true });
+});
+
+// POST /api/tracker/history/clear - clears every open/click event for this
+// user, optionally scoped to one platform/provider.
+router.post("/history/clear", (req, res) => {
+  const { provider } = req.body || {};
+  const userId = req.session.userId;
+  const emailIdsQuery = provider
+    ? db.prepare("SELECT id FROM tracked_emails WHERE user_id = ? AND provider = ?").all(userId, provider)
+    : db.prepare("SELECT id FROM tracked_emails WHERE user_id = ?").all(userId);
+  const emailIds = emailIdsQuery.map((r) => r.id);
+  if (!emailIds.length) return res.json({ ok: true, cleared: 0 });
+  const placeholders = emailIds.map(() => "?").join(",");
+  const opensDeleted = db.prepare(`DELETE FROM tracked_opens WHERE email_id IN (${placeholders})`).run(...emailIds).changes;
+  const clicksDeleted = db.prepare(`DELETE FROM tracked_clicks WHERE email_id IN (${placeholders})`).run(...emailIds).changes;
+  res.json({ ok: true, cleared: opensDeleted + clicksDeleted });
 });
 
 // ==================== Setup (zero-manual-config pieces) ====================

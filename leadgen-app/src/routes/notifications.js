@@ -81,4 +81,31 @@ router.post("/feed/mark-all-read", (req, res) => {
   }
 });
 
+// DELETE /api/notifications/feed/:source/:id { source: 'tracker'|'app' }
+router.delete("/feed/:source/:id", (req, res) => {
+  const { source, id } = req.params;
+  const table = source === "app" ? "app_notifications" : "tracked_notifications";
+  try {
+    const owned = db.prepare(`SELECT id FROM ${table} WHERE id = ? AND user_id = ?`).get(id, req.session.userId);
+    if (!owned) return res.status(404).json({ error: "Not found" });
+    db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to delete notification" });
+  }
+});
+
+// POST /api/notifications/feed/clear - removes every notification (both
+// tracker alerts and general app notifications) for this user.
+router.post("/feed/clear", (req, res) => {
+  const userId = req.session.userId;
+  try {
+    const a = db.prepare("DELETE FROM tracked_notifications WHERE user_id = ?").run(userId).changes;
+    const b = db.prepare("DELETE FROM app_notifications WHERE user_id = ?").run(userId).changes;
+    res.json({ ok: true, cleared: a + b });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to clear notifications" });
+  }
+});
+
 module.exports = router;
