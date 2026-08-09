@@ -53,7 +53,7 @@ router.get("/emails", (req, res) => {
     const rows = db
       .prepare(
         `SELECT id, subject, recipients, sender, provider, created_at, status,
-                open_count, click_count, first_opened_at, last_opened_at
+                open_count, click_count, first_opened_at, last_opened_at, replied_at
          FROM tracked_emails ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`
       )
       .all(...values, limit, offset)

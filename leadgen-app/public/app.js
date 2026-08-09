@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.09-15.10";
+const APP_VERSION = "2026.08.09-15.11";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -1011,7 +1011,7 @@ async function renderContactedTable() {
       <td><input type="checkbox" class="contacted-row-check" data-email-id="${email.id}" onclick="event.stopPropagation()"></td>
       <td>${email.subject || "(no subject)"}</td>
       <td>${email.recipients.join(", ")}</td>
-      <td><span class="contacted-status-pill ${email.status}">${email.status}</span></td>
+      <td><span class="contacted-status-pill ${email.status}">${email.status}</span>${email.replied_at ? ` <span class="contacted-status-pill clicked" title="Replied ${formatContactedTimestamp(email.replied_at)}"><i class="bi bi-reply-fill"></i> replied</span>` : ""}</td>
       <td>${email.open_count}</td>
       <td>${email.click_count}</td>
       <td>${formatContactedTimestamp(email.created_at)}</td>
@@ -1077,6 +1077,7 @@ async function openContactedDetail(emailId) {
     <h3 style="margin-top:0;">${data.email.subject || "(no subject)"}</h3>
     <p class="hint">To: ${data.email.recipients.join(", ")}</p>
     <p class="hint">Sent ${formatContactedTimestamp(data.email.created_at)}</p>
+    ${data.email.replied_at ? `<p class="hint" style="color:var(--good); font-weight:600;"><i class="bi bi-reply-fill"></i> Replied ${formatContactedTimestamp(data.email.replied_at)}</p>` : ""}
     <div class="settings-divider"></div>
     <h4>Message</h4>
     ${
@@ -6177,11 +6178,12 @@ function renderReportsStatGrid(summary) {
     .join("");
 
   // Email engagement, from the tracking data (tracked_emails.status)
-  const es = summary.emailStats || { sent: 0, opened: 0, clicked: 0, unopened: 0 };
+  const es = summary.emailStats || { sent: 0, opened: 0, clicked: 0, replied: 0, unopened: 0 };
   const emailCards = [
     { label: "Emails Sent", value: es.sent, color: "#ece7dd" },
     { label: "Opened", value: es.opened, color: "var(--warn)" },
     { label: "Clicked", value: es.clicked, color: "var(--good)" },
+    { label: "Replied", value: es.replied, color: "var(--accent)" },
     { label: "Unopened", value: es.unopened, color: "var(--text-muted)" },
   ];
   const emailStatGrid = document.getElementById("reportsEmailStatGrid");

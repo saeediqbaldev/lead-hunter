@@ -545,6 +545,7 @@ CREATE TABLE IF NOT EXISTS tracked_emails (
   first_opened_at TEXT,
   last_opened_at TEXT,
   body_html TEXT,
+  replied_at TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_tracked_emails_user ON tracked_emails(user_id);
@@ -743,6 +744,14 @@ CREATE INDEX IF NOT EXISTS idx_app_notifications_read ON app_notifications(is_re
     db.exec("ALTER TABLE email_campaign_leads ADD COLUMN touch_number INTEGER NOT NULL DEFAULT 1");
     db.exec("ALTER TABLE email_campaign_leads ADD COLUMN replied_at TEXT");
   }
+}
+
+{
+  const trackedEmailCols = db.prepare("PRAGMA table_info(tracked_emails)").all().map((c) => c.name);
+  if (!trackedEmailCols.includes("replied_at")) db.exec("ALTER TABLE tracked_emails ADD COLUMN replied_at TEXT");
+
+  const userCols = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
+  if (!userCols.includes("last_reply_check_at")) db.exec("ALTER TABLE users ADD COLUMN last_reply_check_at TEXT");
 }
 
 // One-time fix: the auto-refresh interval used to default to 15 (inherited

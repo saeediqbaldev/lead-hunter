@@ -130,4 +130,4 @@ function hasSmtpConfigured(userId) {
   return !!resolveSmtpConfig(userId);
 }
 
-module.exports = { sendCampaignEmail, hasSmtpConfigured, resolveSmtpConfig, checkForReply };
+module.exports = { sendCampaignEmail, hasSmtpConfigured, resolveSmtpConfig, checkForReply, HOSTINGER_IMAP_HOST, HOSTINGER_IMAP_PORT };

@@ -6,6 +6,36 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.11
+Reply detection - the ground-truth engagement signal opens/clicks can't
+provide, since both of those can fire from mail-client prefetching or
+corporate security scanners with no human ever involved.
+
+- **Every account with IMAP configured gets checked automatically**,
+  every 15 minutes, for genuine replies. Built to be efficient: one
+  inbox scan per user (not one per recipient), only looking at what's
+  arrived since the last check, then cross-referenced in memory against
+  everything sent - not a slow per-email IMAP round trip.
+- **Surfaced everywhere it matters**: a "replied" badge in Tracking, a
+  prominent green confirmation in the email detail panel, and a new
+  "Replied" stat card on Reports, sitting right next to Sent/Opened/
+  Clicked as the number actually worth trusting.
+- **Deliberately doesn't touch the existing status column** - only adds
+  a separate replied_at timestamp - since Reports' opened/clicked counts
+  are keyed directly off that status value, and overwriting it would
+  have silently made a replied-to email disappear from those counts.
+  Verified this specifically: an email that had already reached
+  "clicked" correctly stayed "clicked" after a reply arrived, with
+  replied_at set alongside it, not replacing it.
+- Verified end-to-end with a mocked inbox: case-insensitive address
+  matching, a non-matching recipient correctly left alone, and an
+  already-detected reply correctly skipped on a second pass rather than
+  reprocessed. Also verified the incremental "since last check" behavior
+  actually narrows on the second run instead of re-scanning.
+- Also feeds directly into the follow-up sequence feature from the
+  previous release - a reply this checker catches means no follow-up
+  gets sent for that lead, without needing its own separate config.
+
 ## What's in this V15.10
 Follow-up sequences for Auto Send campaigns - automatically nudges a
 lead who hasn't replied, with a real inbox check before each one.

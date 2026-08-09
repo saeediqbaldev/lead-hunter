@@ -107,7 +107,16 @@ router.get("/summary", (req, res) => {
     if (row.status === "opened" || row.status === "clicked") opened += row.c;
     if (row.status === "clicked") clicked += row.c;
   }
-  const emailStats = { sent, opened, clicked, unopened: sent - opened };
+
+  let repliedSql = "SELECT COUNT(*) AS c FROM tracked_emails WHERE user_id = ? AND replied_at IS NOT NULL";
+  const repliedParams = [userId];
+  if (startDate) {
+    repliedSql += " AND created_at >= ?";
+    repliedParams.push(startDate);
+  }
+  const replied = db.prepare(repliedSql).get(...repliedParams).c;
+
+  const emailStats = { sent, opened, clicked, replied, unopened: sent - opened };
 
   res.json({ range, total, byStatus, emailStats });
 });
