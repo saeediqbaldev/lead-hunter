@@ -6,36 +6,63 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
-## What's in this V15.8
-A critical regression fix, a real bug found and fixed behind the missing
-message content, and the rest of the item-1 requests (unlimited daily
-sends, retry, S/N columns, alert icons/clear-all).
+## What's in this V15.9
+The actual root cause behind the still-blank message content, and a
+working browser back button (the previous attempt at this had a bug of
+its own).
 
-- **Fixed Hostinger/Gmail no longer expanding in Contacted** - a
-  regression from the previous session's country-tree CSS change, which
-  accidentally broke the platform tree since it reuses the same CSS
-  classes for something unrelated. Verified in a real browser that both
-  platforms expand correctly again, and that the country-tree isolation
-  that prompted the original change didn't regress back.
-- **Found and fixed a real gap behind the missing message content**:
-  emails sent via the browser extension never captured the compose body
-  at all, unlike automated campaign emails. Added a backend endpoint plus
-  extension-side code (Gmail and Hostinger) to report the final HTML back
-  right after the tracking pixel is injected. Verified backend end-to-end
-  - can't fully verify the extension's own browser-side behavior from
-  here, so this is worth a real-world check.
+- **Found and fixed the real bug behind the blank Message box** - not
+  missing data, a rendering bug. The email's HTML was being escaped with
+  a function meant for placing text between tags (which doesn't escape
+  quotes), then inserted into a `srcdoc="..."` attribute (which does
+  need quotes escaped). Any ordinary `<img src="...">` or `style="..."`
+  in the email - which is nearly every real email, since your own
+  signature has one - would prematurely end that attribute and corrupt
+  everything after it, rendering nothing. Fixed with a proper attribute-
+  safe escaping function, verified against a realistic email body
+  (image + link, matching your screenshot) rendering correctly end to
+  end via direct frame inspection, not just a screenshot.
+- **Fixed the browser back button** - the first attempt at this (rushed
+  in the previous round) turned out to conflict with a more capable,
+  already-existing implementation from an earlier session that I hadn't
+  checked for first. Removed my duplicate and found a real bug in the
+  existing one instead: it silently no-opped when returning to the
+  default view because that shortcut, correct for page-refresh, doesn't
+  hold for back/forward, where the current view could be anything.
+  Verified stepping back through multiple views and forward again lands
+  on the correct view every time, and confirmed page-refresh restoration
+  still works correctly afterward.
+
+## What's in this V15.8
+A critical regression fix, a real bug found behind missing message
+content, unlimited daily sending, retry for failed leads, S/N columns,
+and corrected alert icons.
+
+- **Fixed a critical regression from the previous release**: the
+  Country-tree CSS change accidentally broke the Contacted section's
+  Hostinger/Gmail platform tree, which reuses the same CSS classes for
+  an unrelated purpose - Hostinger and Gmail wouldn't expand at all,
+  blocking access to Tracking/History/Alerts/Auto Send entirely. Fixed
+  with a precise selector, verified both that the platform tree works
+  again and that the Country-tree isolation didn't regress back.
+- **Found and fixed a real gap behind missing message content**: emails
+  sent via the browser extension never captured the compose body at all
+  - only automated campaign emails did. Added an endpoint plus extension-
+  side code (Gmail and Hostinger) to report the final HTML back after
+  the tracking pixel is injected, so manually-sent emails now show their
+  content in the Tracking detail panel too.
 - **Daily email sending limit removed** - verified a campaign can be
-  created with a max-per-day in the thousands without being silently
-  capped at the old 100 ceiling.
-- **Retry button** for a failed campaign lead, alongside the existing
-  Skip button - resets just that lead to pending and resumes the
-  campaign, for when a failure looks transient rather than permanent.
-- **S/N (row number) columns** added and verified across campaign lead
-  rows, Tracking, History, and Alerts.
-- **Alert icons now reflect the actual event** (open vs. link click)
-  instead of a generic bell, and Alerts gained its own "Clear all" button
-  - verified as a genuine delete, distinct from the header feed's
-  dismiss-only Clear (which must never touch Alerts' own data).
+  created with a limit far above the old hard cap of 100.
+- **Retry button** added next to Skip for a failed campaign lead - resets
+  it to pending so the scheduler tries again on its next tick, for when
+  a failure looks transient rather than something to give up on.
+- **S/N (row number) columns** added to campaign lead rows, Tracking,
+  History, and Alerts.
+- **Alert icons corrected** - opens show an open-envelope icon, clicks
+  show a link icon, verified directly against real data.
+- **Alerts page gained its own "Clear all" button** - a genuine delete,
+  since Alerts is the source-of-truth page for this data (unlike the
+  header notification feed, which only dismisses from its own view).
 
 ## What's in this V15.7
 Item 7 - the pipeline tree restructured to Niche > Country > City > Leads,

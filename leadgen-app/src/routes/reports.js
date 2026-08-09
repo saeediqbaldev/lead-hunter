@@ -84,7 +84,32 @@ router.get("/summary", (req, res) => {
     total += row.c;
   }
 
-  res.json({ range, total, byStatus });
+  // Email engagement stats - sourced from tracked_emails.status directly
+  // (each email's own furthest-reached state: sent/opened/clicked), NOT
+  // by counting rows in tracked_notifications (alerts) or the
+  // opens/clicks event log (history), either of which could over-count -
+  // an email opened five times is still one opened email, not five.
+  const startDate = rangeStartDate(range);
+  let emailSql = "SELECT status, COUNT(*) AS c FROM tracked_emails WHERE user_id = ?";
+  const emailParams = [userId];
+  if (startDate) {
+    emailSql += " AND created_at >= ?";
+    emailParams.push(startDate);
+  }
+  emailSql += " GROUP BY status";
+  const emailRows = db.prepare(emailSql).all(...emailParams);
+
+  let sent = 0;
+  let opened = 0;
+  let clicked = 0;
+  for (const row of emailRows) {
+    sent += row.c;
+    if (row.status === "opened" || row.status === "clicked") opened += row.c;
+    if (row.status === "clicked") clicked += row.c;
+  }
+  const emailStats = { sent, opened, clicked, unopened: sent - opened };
+
+  res.json({ range, total, byStatus, emailStats });
 });
 
 // GET /api/reports/timeseries?range=&niche=&city=

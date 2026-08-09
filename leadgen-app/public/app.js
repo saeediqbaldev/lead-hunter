@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.08-15.8";
+const APP_VERSION = "2026.08.08-15.9";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -33,10 +33,21 @@ function showToast(message, kind = "info") {
 
   requestAnimationFrame(() => toast.classList.add("show"));
 
-  setTimeout(() => {
-    toast.classList.remove("show");
-    setTimeout(() => toast.remove(), 300); // matches the CSS transition duration
-  }, 5000);
+  let dismissTimer;
+  const scheduleDismiss = () => {
+    dismissTimer = setTimeout(() => {
+      toast.classList.remove("show");
+      setTimeout(() => toast.remove(), 300); // matches the CSS transition duration
+    }, 5000);
+  };
+  // Pausing on hover is what actually makes the text practically
+  // copiable - the CSS already permitted selection, but 5 seconds isn't
+  // enough time to notice a toast, move the mouse to it, and drag-select
+  // before it's gone. Hovering (to select/copy) now holds it open
+  // indefinitely; moving away resumes the normal countdown.
+  toast.addEventListener("mouseenter", () => clearTimeout(dismissTimer));
+  toast.addEventListener("mouseleave", scheduleDismiss);
+  scheduleDismiss();
 }
 
 // ---------- Auth-aware fetch wrapper ----------
@@ -356,6 +367,18 @@ function escapeHtml(text) {
   const div = document.createElement("div");
   div.textContent = text;
   return div.innerHTML;
+}
+
+// Attribute-safe HTML escaping - additionally escapes double quotes,
+// which escapeHtml above deliberately doesn't (it's built for text
+// content between tags, where quotes aren't special). Required whenever
+// the escaped result is placed inside a double-quoted HTML attribute
+// value (e.g. srcdoc="..."), since an unescaped quote in the source -
+// from something as ordinary as <img src="..."> in an email body -
+// would prematurely terminate the attribute and truncate/corrupt
+// everything after it.
+function escapeHtmlAttr(text) {
+  return escapeHtml(text).replace(/"/g, "&quot;");
 }
 
 // Strips HTML down to plain text for clipboard copies - rich formatting
@@ -1058,7 +1081,7 @@ async function openContactedDetail(emailId) {
     <h4>Message</h4>
     ${
       data.email.body_html
-        ? `<iframe class="contacted-detail-body-frame" srcdoc="${escapeHtml(data.email.body_html)}" sandbox=""></iframe>`
+        ? `<iframe class="contacted-detail-body-frame" srcdoc="${escapeHtmlAttr(data.email.body_html)}" sandbox=""></iframe>`
         : `<p class="hint">No content captured for this email - it was sent manually via the ${data.email.provider} extension, which only reports tracking metadata, not the message body.</p>`
     }
     <div class="settings-divider"></div>
@@ -1941,7 +1964,7 @@ document.getElementById("signatureImageFileInput").addEventListener("change", (e
       signatureEditor.focus();
       // A meaningful default alt text from the original filename, rather
       // than empty - e.g. "company-logo.png" becomes "company logo".
-      const altText = escapeHtml(file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim() || "Signature image");
+      const altText = escapeHtmlAttr(file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim() || "Signature image");
       document.execCommand("insertHTML", false, `<img src="${data.url}" alt="${altText}" data-sig-img="1" style="max-width:100%;">`);
     } catch (err) {
       showToast(`Could not upload image: ${err.message}`, "error");
@@ -3135,12 +3158,18 @@ function saveNavState() {
 // Restores the last-viewed page on load by simulating the same clicks a
 // user would make to navigate there - reuses the existing navigation
 // handlers rather than duplicating their data-loading logic. "board"
-// (Hunt/Reach Out/Pinned) is already the app's default on load, so it's
-// deliberately not handled here - only views that would otherwise be
-// reset need explicit restoration.
-function restoreNavState() {
-  const saved = capturedNavState;
-  if (!saved || !saved.contentView || saved.contentView === "board") return;
+// (Hunt/Reach Out/Pinned) is already the app's default on load, so a
+// page-refresh landing there needs no action. Reused for popstate
+// (back/forward) too though, where that same assumption doesn't hold -
+// the current view could be anything when a "board" history entry is
+// reached, so getting back to it has to be an active switch, not a
+// silent no-op.
+function navigateToSavedState(saved) {
+  if (!saved || !saved.contentView) return;
+  if (saved.contentView === "board") {
+    setContentView("board");
+    return;
+  }
   const view = saved.contentView;
 
   if (view.startsWith("settings-")) {
@@ -3180,6 +3209,30 @@ function restoreNavState() {
     }, 150);
   }
 }
+
+function restoreNavState() {
+  navigateToSavedState(capturedNavState);
+}
+
+// ---------- Browser back/forward integration ----------
+// Without this, the SPA has no history entries of its own - pressing
+// back would leave the app entirely for whatever page was open before
+// it, which is jarring since visually nothing about "being in the app"
+// changed. Each real navigation (via setContentView) pushes a history
+// entry recording just enough to get back to that view; popstate (back/
+// forward) replays it through the same navigateToSavedState used for
+// page-refresh restoration, so there's exactly one restoration
+// codepath to keep correct rather than two that could drift apart.
+let isRestoringFromPopstate = false;
+window.addEventListener("popstate", (e) => {
+  isRestoringFromPopstate = true;
+  navigateToSavedState(e.state || { contentView: "board" });
+  // Reset on the next tick, after any click-simulation chains above have
+  // had a chance to run and call setContentView themselves.
+  setTimeout(() => {
+    isRestoringFromPopstate = false;
+  }, 400);
+});
 
 function setContentView(view) {
   if (view !== "contacted-campaign-detail") stopCampaignDetailPolling();
@@ -3230,6 +3283,10 @@ function setContentView(view) {
   }
 
   saveNavState();
+
+  if (!isRestoringFromPopstate) {
+    history.pushState({ contentView: view, contactedPlatform: state.contactedPlatform }, "", location.pathname);
+  }
 }
 
 function tagClass(tag) {
@@ -6087,6 +6144,27 @@ function renderReportsStatGrid(summary) {
     </div>`
     )
     .join("");
+
+  // Email engagement, from the tracking data (tracked_emails.status)
+  const es = summary.emailStats || { sent: 0, opened: 0, clicked: 0, unopened: 0 };
+  const emailCards = [
+    { label: "Emails Sent", value: es.sent, color: "#ece7dd" },
+    { label: "Opened", value: es.opened, color: "var(--warn)" },
+    { label: "Clicked", value: es.clicked, color: "var(--good)" },
+    { label: "Unopened", value: es.unopened, color: "var(--text-muted)" },
+  ];
+  const emailStatGrid = document.getElementById("reportsEmailStatGrid");
+  if (emailStatGrid) {
+    emailStatGrid.innerHTML = emailCards
+      .map(
+        (c) => `
+      <div class="report-stat-card">
+        <span class="report-stat-value" style="color:${c.color}">${c.value}</span>
+        <span class="report-stat-label">${c.label}</span>
+      </div>`
+      )
+      .join("");
+  }
 }
 
 function destroyReportsCharts() {
@@ -6186,49 +6264,51 @@ function renderReportsCharts(summary, timeseries) {
           options: pieDonutOptions,
         });
 
-        donutChartInstance = new Chart(donutCtx, {
-          type: "doughnut",
-          data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: currentTheme.colors["--panel"], borderWidth: 2 }] },
-          options: pieDonutOptions,
-        });
-
         const safeDays = timeseries && Array.isArray(timeseries.days) ? timeseries.days : [];
         const safeSeries = timeseries && timeseries.series ? timeseries.series : {};
         const lineLabels = safeDays.length ? safeDays : ["No data yet"];
-        lineChartInstance = new Chart(lineCtx, {
-          type: "line",
-          data: {
-            labels: lineLabels,
-            datasets: REPORT_STATUS_META.map((s) => ({
-              label: s.label,
-              data: safeDays.length ? safeSeries[s.key] || safeDays.map(() => 0) : [0],
-              borderColor: s.color,
-              backgroundColor: s.color,
-              borderWidth: 1.5,
-              tension: 0.3,
-              pointRadius: 3,
-              pointHoverRadius: 5,
-            })),
-          },
-          options: {
-            ...commonOptions,
-            interaction: { mode: "index", intersect: false },
-            plugins: {
-              ...commonOptions.plugins,
-              tooltip: {
-                mode: "index",
-                intersect: false,
-                callbacks: {
-                  title: (items) => items[0]?.label || "",
-                  label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y}`,
-                },
+        const lineDatasets = REPORT_STATUS_META.map((s) => ({
+          label: s.label,
+          data: safeDays.length ? safeSeries[s.key] || safeDays.map(() => 0) : [0],
+          borderColor: s.color,
+          backgroundColor: s.color,
+          borderWidth: 1.5,
+          tension: 0.3,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+        }));
+        const lineChartOptions = {
+          ...commonOptions,
+          interaction: { mode: "index", intersect: false },
+          plugins: {
+            ...commonOptions.plugins,
+            tooltip: {
+              mode: "index",
+              intersect: false,
+              callbacks: {
+                title: (items) => items[0]?.label || "",
+                label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y}`,
               },
             },
-            scales: {
-              x: { ticks: { color: currentTheme.colors["--text-muted"], font: { size: 10 } }, grid: { color: chartGridColor() } },
-              y: { beginAtZero: true, ticks: { color: currentTheme.colors["--text-muted"], precision: 0 }, grid: { color: chartGridColor() } },
-            },
           },
+          scales: {
+            x: { ticks: { color: currentTheme.colors["--text-muted"], font: { size: 10 } }, grid: { color: chartGridColor() } },
+            y: { beginAtZero: true, ticks: { color: currentTheme.colors["--text-muted"], font: { size: 10 }, precision: 0 }, grid: { color: chartGridColor() } },
+          },
+        };
+
+        // "Status breakdown" - a line chart with a separate line per
+        // status, replacing the previous doughnut per explicit request.
+        donutChartInstance = new Chart(donutCtx, {
+          type: "line",
+          data: { labels: lineLabels, datasets: lineDatasets },
+          options: lineChartOptions,
+        });
+
+        lineChartInstance = new Chart(lineCtx, {
+          type: "line",
+          data: { labels: lineLabels, datasets: lineDatasets },
+          options: lineChartOptions,
         });
 
         pieChartInstance.resize();
