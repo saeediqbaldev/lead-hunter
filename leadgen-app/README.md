@@ -6,6 +6,32 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.12
+Fixed a real correctness bug in reply detection, confirmed directly
+against your own inbox screenshot - out-of-office and automatic replies
+were being counted as genuine replies.
+
+- **Auto-reply/bounce filtering added** - checks the RFC 3834
+  Auto-Submitted header plus the common non-standard headers various
+  mail systems use instead (Auto-Submitted isn't set reliably by every
+  system, including some Exchange configurations), with subject-line
+  patterns ("Out of Office," "Automatic reply," "Undeliverable," etc.)
+  as a fallback for systems that set neither. Verified against the exact
+  messages from your screenshot - a real reply passed through correctly,
+  the out-of-office and automatic-reply messages were correctly excluded,
+  and a bounce notification was correctly excluded too.
+- **Fixed the timestamp bug that caused the "6 replies at the same
+  minute" confusion**: replied_at now uses the message's own Date header
+  instead of "whenever the check happened to run" - this is what made a
+  backlog from the first-ever check look like a burst of simultaneous
+  replies rather than what it actually was, a month of accumulated
+  inbox activity processed in one pass.
+- **Added a way to correct the false positives already in your
+  database** from before this fix existed - each replied email now has
+  a "not a real reply?" link that clears the mark (and un-blocks any
+  follow-up that reply had been suppressing). Verified end-to-end: mark
+  cleared from both the detail panel and the database.
+
 ## What's in this V15.11
 Reply detection - the ground-truth engagement signal opens/clicks can't
 provide, since both of those can fire from mail-client prefetching or

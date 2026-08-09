@@ -104,6 +104,24 @@ router.patch("/emails/:id", (req, res) => {
   }
 });
 
+// POST /api/tracker/emails/:id/clear-reply - clears a mistakenly-marked
+// reply (e.g. an out-of-office that slipped through before auto-reply
+// filtering existed). Also clears the linked campaign lead's replied_at,
+// so a false positive doesn't permanently block a legitimate follow-up.
+router.post("/emails/:id/clear-reply", (req, res) => {
+  const { id } = req.params;
+  const userId = req.session.userId;
+  try {
+    const info = db.prepare("UPDATE tracked_emails SET replied_at = NULL WHERE id = ? AND user_id = ?").run(id, userId);
+    if (info.changes === 0) return res.status(404).json({ error: "Not found" });
+    db.prepare("UPDATE email_campaign_leads SET replied_at = NULL WHERE tracked_email_id = ?").run(id);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Failed to clear reply mark:", err);
+    res.status(500).json({ error: "Failed to clear reply mark" });
+  }
+});
+
 // DELETE /api/tracker/emails/:id
 router.delete("/emails/:id", (req, res) => {
   const { id } = req.params;

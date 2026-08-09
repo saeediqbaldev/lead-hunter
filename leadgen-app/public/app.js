@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.09-15.11";
+const APP_VERSION = "2026.08.09-15.12";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -1077,7 +1077,14 @@ async function openContactedDetail(emailId) {
     <h3 style="margin-top:0;">${data.email.subject || "(no subject)"}</h3>
     <p class="hint">To: ${data.email.recipients.join(", ")}</p>
     <p class="hint">Sent ${formatContactedTimestamp(data.email.created_at)}</p>
-    ${data.email.replied_at ? `<p class="hint" style="color:var(--good); font-weight:600;"><i class="bi bi-reply-fill"></i> Replied ${formatContactedTimestamp(data.email.replied_at)}</p>` : ""}
+    ${
+      data.email.replied_at
+        ? `<p class="hint" style="color:var(--good); font-weight:600;">
+             <i class="bi bi-reply-fill"></i> Replied ${formatContactedTimestamp(data.email.replied_at)}
+             <button type="button" data-action="clear-reply-mark" data-email-id="${data.email.id}" style="background:none; border:none; color:var(--text-muted); text-decoration:underline; cursor:pointer; font-size:11.5px; font-weight:400; margin-left:6px;">not a real reply?</button>
+           </p>`
+        : ""
+    }
     <div class="settings-divider"></div>
     <h4>Message</h4>
     ${
@@ -1120,6 +1127,12 @@ async function openContactedDetail(emailId) {
       await api(`/api/tracker/emails/${emailId}`, { method: "DELETE" });
       panel.remove();
       showToast("Deleted", "success");
+      loadContactedTracking();
+    } else if (action === "clear-reply-mark") {
+      await api(`/api/tracker/emails/${emailId}/clear-reply`, { method: "POST" });
+      showToast("Cleared - no longer counted as a reply", "success");
+      panel.remove();
+      openContactedDetail(emailId);
       loadContactedTracking();
     }
   });

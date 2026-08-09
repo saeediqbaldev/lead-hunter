@@ -7,6 +7,31 @@ const { resolveSmtpConfig, HOSTINGER_IMAP_HOST, HOSTINGER_IMAP_PORT } = require(
 // arrived since the previous one, so this only matters once.
 const FIRST_CHECK_LOOKBACK_DAYS = 30;
 
+// Headers checked for auto-reply/bulk-mail signals, fetched alongside
+// the envelope. Not every mail system sets the RFC 3834-standard
+// Auto-Submitted header reliably (some Exchange configurations don't),
+// so several of the common non-standard alternatives are checked too -
+// this is genuinely a "check everything you can, trust none of them
+// alone" situation industry-wide, not a shortcut specific to this app.
+const AUTO_REPLY_HEADER_NAMES = ["auto-submitted", "x-autoreply", "x-autorespond", "precedence"];
+
+// Subject-line fallback for systems that set none of the above headers
+// at all - out-of-office tools and legacy autoresponders are
+// inconsistent about headers but consistently prefix the subject.
+const AUTO_REPLY_SUBJECT_PATTERN =
+  /^(auto(-|\s)?reply|automatic reply|out of office|out-of-office|away from|autoresponder|automated response|undeliverable|undelivered|mail delivery|delivery status notification|returned mail|vacation response)/i;
+
+function isAutomatedReply(envelope, headersBuffer) {
+  if (envelope?.subject && AUTO_REPLY_SUBJECT_PATTERN.test(envelope.subject.trim())) return true;
+
+  const headersText = (headersBuffer ? headersBuffer.toString("utf8") : "").toLowerCase();
+  if (/^auto-submitted:\s*(?!no\b)\S/im.test(headersText)) return true;
+  if (/^x-autoreply:/im.test(headersText) || /^x-autorespond:/im.test(headersText)) return true;
+  if (/^precedence:\s*(bulk|auto_reply|list)\b/im.test(headersText)) return true;
+
+  return false;
+}
+
 function extractEmailAddress(fromField) {
   // imapflow's envelope.from is an array of {name, address} objects (one
   // sender - occasionally more for group-sent mail) - address is what
@@ -38,16 +63,25 @@ async function checkRepliesForUser(userId) {
     logger: false,
   });
 
-  let repliedAddresses = new Set();
+  // Maps address -> the earliest genuine (non-automated) reply's actual
+  // date, not just a boolean - this is what lets replied_at reflect when
+  // the person actually wrote back, not whenever this check happened to
+  // run, which was the root of the "six replies at the same minute"
+  // confusion on the very first check after this feature shipped.
+  let genuineReplies = new Map();
   try {
     await client.connect();
     const lock = await client.getMailboxLock("INBOX");
     try {
       const uids = await client.search({ since: sinceDate }, { uid: true });
       if (Array.isArray(uids) && uids.length) {
-        for await (const message of client.fetch(uids, { envelope: true }, { uid: true })) {
+        for await (const message of client.fetch(uids, { envelope: true, headers: AUTO_REPLY_HEADER_NAMES }, { uid: true })) {
+          if (isAutomatedReply(message.envelope, message.headers)) continue; // out-of-office, bounce, or bulk-mail marker - not a real reply
           const address = extractEmailAddress(message.envelope?.from);
-          if (address) repliedAddresses.add(address);
+          if (!address) continue;
+          const messageDate = message.envelope?.date instanceof Date ? message.envelope.date : new Date();
+          const existing = genuineReplies.get(address);
+          if (!existing || messageDate < existing) genuineReplies.set(address, messageDate);
         }
       }
     } finally {
@@ -59,7 +93,7 @@ async function checkRepliesForUser(userId) {
     await client.logout().catch(() => {});
   }
 
-  if (repliedAddresses.size === 0) {
+  if (genuineReplies.size === 0) {
     db.prepare("UPDATE users SET last_reply_check_at = datetime('now') WHERE id = ?").run(userId);
     return { ok: true, newReplies: 0 };
   }
@@ -72,8 +106,8 @@ async function checkRepliesForUser(userId) {
 
   let newReplies = 0;
   const notifyStmt = db.prepare("INSERT INTO app_notifications (user_id, type, title, message, link) VALUES (?, 'reply_detected', ?, ?, ?)");
-  const markRepliedStmt = db.prepare("UPDATE tracked_emails SET replied_at = datetime('now') WHERE id = ?");
-  const markCampaignLeadStmt = db.prepare("UPDATE email_campaign_leads SET replied_at = datetime('now') WHERE tracked_email_id = ?");
+  const markRepliedStmt = db.prepare("UPDATE tracked_emails SET replied_at = ? WHERE id = ?");
+  const markCampaignLeadStmt = db.prepare("UPDATE email_campaign_leads SET replied_at = ? WHERE tracked_email_id = ?");
 
   for (const email of candidates) {
     let recipients = [];
@@ -82,16 +116,23 @@ async function checkRepliesForUser(userId) {
     } catch {
       recipients = [];
     }
-    const matched = recipients.some((r) => repliedAddresses.has((r || "").toLowerCase().trim()));
-    if (!matched) continue;
+    const matchedRecipient = recipients.find((r) => genuineReplies.has((r || "").toLowerCase().trim()));
+    if (!matchedRecipient) continue;
 
-    markRepliedStmt.run(email.id);
-    markCampaignLeadStmt.run(email.id); // no-op if this email isn't linked to a campaign lead
+    const replyDate = genuineReplies.get(matchedRecipient.toLowerCase().trim());
+    // SQLite's own datetime('now') format ("YYYY-MM-DD HH:MM:SS", UTC) -
+    // stored consistently with every other timestamp in this app, rather
+    // than a JS ISO string, so formatContactedTimestamp on the frontend
+    // parses it the same way it parses everything else.
+    const replyDateSql = replyDate.toISOString().slice(0, 19).replace("T", " ");
+
+    markRepliedStmt.run(replyDateSql, email.id);
+    markCampaignLeadStmt.run(replyDateSql, email.id); // no-op if this email isn't linked to a campaign lead
     newReplies++;
     notifyStmt.run(
       userId,
       "Reply received",
-      `"${email.subject || "(no subject)"}" got a reply from ${recipients[0] || "a recipient"}.`,
+      `"${email.subject || "(no subject)"}" got a reply from ${matchedRecipient}.`,
       `lead-email:${email.id}`
     );
   }
