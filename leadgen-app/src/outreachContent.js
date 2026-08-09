@@ -185,8 +185,63 @@ async function generateSubjectOnly(userId, { lead, tone, language, body, aiProvi
   return { ok: true, subject: result.text.trim().replace(/^["']|["']$/g, ""), provider: result.provider };
 }
 
+// A follow-up needs fundamentally different instructions than the
+// original pitch: short, references the prior email without repeating
+// it, and doesn't re-explain the business's problem from scratch (the
+// prospect already read that once). Kept as its own prompt/function
+// rather than adding more branches to the main pitch generator above.
+function buildFollowUpPrompt({ lead, tone, language, previousBody, touchNumber }) {
+  const languageInstruction =
+    language && language !== "English" ? `\nWrite the ENTIRE message in ${language} - not English, ${language}.` : "";
+  const salutationName = lead.owner_name?.trim() || computeBusinessShortName(lead.name);
+  const ordinal = touchNumber === 2 ? "first" : "previous";
+
+  return `Write a short, natural follow-up email to a business that hasn't replied to a ${ordinal} outreach email.
+
+Business: ${lead.name}
+Address them as: ${salutationName}
+Tone: ${tone || "Friendly, casual"}
+
+The ${ordinal} email said (for your context only - don't repeat it, just build on it naturally):
+"""
+${previousBody}
+"""
+
+Rules:
+- Keep it SHORT - 2-4 sentences max. This is a bump, not a re-pitch.
+- Don't restate the original problem/pitch in detail - reference it in passing at most ("following up on my note about...").
+- Sound like a real person nudging a conversation forward, not a template.
+- No guilt-tripping, no "just checking in" filler with nothing else said - add one small new angle, question, or reason to reply if possible.
+- Do not include a greeting salutation line like "Hi [name]," as the literal first line if it would feel redundant with a real email thread - a brief natural opening is fine.${languageInstruction}
+
+Return ONLY the follow-up email body text (no subject line, no signature).`;
+}
+
+// Generates a short follow-up email body, threaded against the original
+// send (touchNumber counts from 1 = the original email, so touchNumber 2
+// is the first follow-up). Reuses the same signature the original email
+// used - the recipient already saw it once, no need to regenerate it.
+async function generateFollowUpContent(userId, { lead, tone, language, previousBody, touchNumber, signature, aiProvider }) {
+  const prompt = buildFollowUpPrompt({ lead, tone, language, previousBody, touchNumber });
+  const result = await generateWithFallback(userId, prompt, { onlyProvider: aiProvider || undefined });
+  if (!result.ok) return result;
+  const signatureHtml = signature != null && signature !== "" ? signature : DEFAULT_SIGNATURE;
+  return { ok: true, content: result.text.trim(), signatureHtml, provider: result.provider };
+}
+
 const LENGTHS = ["Detailed", "Medium", "Short", "Concise"];
 
 const PLATFORM_LIST = ["email", "facebook", "instagram", "linkedin", "tiktok", "whatsapp"];
 
-module.exports = { TONES, LENGTHS, LANGUAGES, PLATFORM_LIST, PLATFORM_GUIDANCE, DEFAULT_SIGNATURE, buildContentPrompt, generateOutreachContent, generateSubjectOnly };
+module.exports = {
+  TONES,
+  LENGTHS,
+  LANGUAGES,
+  PLATFORM_LIST,
+  PLATFORM_GUIDANCE,
+  DEFAULT_SIGNATURE,
+  buildContentPrompt,
+  generateOutreachContent,
+  generateSubjectOnly,
+  generateFollowUpContent,
+};

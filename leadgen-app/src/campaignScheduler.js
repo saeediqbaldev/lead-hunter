@@ -2,9 +2,9 @@ const crypto = require("crypto");
 const db = require("./db");
 const analysisJobs = require("./analysisJobs");
 const { isValidEmailAddress } = require("./emailValidation");
-const { generateOutreachContent } = require("./outreachContent");
+const { generateOutreachContent, generateFollowUpContent } = require("./outreachContent");
 const { buildTrackedHtmlEmail } = require("./campaignEmailBuilder");
-const { sendCampaignEmail, resolveSmtpConfig } = require("./campaignSender");
+const { sendCampaignEmail, resolveSmtpConfig, checkForReply } = require("./campaignSender");
 const { getSetting } = require("./settingsStore");
 
 const TICK_INTERVAL_MS = 60000; // check every minute whether any campaign is due to send
@@ -37,6 +37,70 @@ function countSentToday(campaignId) {
   return row.c;
 }
 
+// Finds leads whose most recent touch is 'sent', past the configured
+// wait period, and hasn't already had a follow-up scheduled - safety-
+// checks each one for a reply via IMAP before creating the next touch.
+// Processes at most one candidate per tick (each check is a live IMAP
+// connection, and this deliberately doesn't need to be fast - a
+// follow-up being a few minutes later than the exact due time doesn't
+// matter the way an overdue campaign send might).
+async function scheduleFollowUps(campaign) {
+  if (!campaign.followup_enabled) return;
+
+  // Only the most recent touch per lead - a lead already on touch 2
+  // shouldn't also get a follow-up scheduled off its touch 1 row.
+  const candidates = db
+    .prepare(
+      `SELECT ecl.* FROM email_campaign_leads ecl
+       WHERE ecl.campaign_id = ?
+         AND ecl.status = 'sent'
+         AND ecl.touch_number < ?
+         AND ecl.replied_at IS NULL
+         AND ecl.id = (SELECT MAX(id) FROM email_campaign_leads WHERE campaign_id = ecl.campaign_id AND lead_id = ecl.lead_id)
+       ORDER BY ecl.sent_at ASC`
+    )
+    .all(campaign.id, campaign.followup_max_count + 1);
+
+  for (const row of candidates) {
+    const sentAtMs = new Date(row.sent_at.replace(" ", "T") + "Z").getTime();
+    const dueAtMs = sentAtMs + campaign.followup_wait_days * 86400000;
+    if (Date.now() < dueAtMs) continue;
+
+    const lead = db.prepare("SELECT * FROM leads WHERE id = ?").get(row.lead_id);
+    if (!lead) continue;
+    let socials = {};
+    try {
+      socials = JSON.parse(lead.socials || "{}");
+    } catch {
+      socials = {};
+    }
+    if (!isValidEmailAddress(socials.email)) continue;
+
+    let replied = false;
+    try {
+      replied = await checkForReply(campaign.user_id, socials.email, new Date(sentAtMs));
+    } catch (err) {
+      // Can't confirm it's safe to follow up - skip this tick and try
+      // again next time rather than risk sending on top of a reply we
+      // simply failed to detect.
+      console.error(`[campaign] Reply check failed for campaign ${campaign.id}, lead ${lead.id}:`, err.message);
+      continue;
+    }
+
+    if (replied) {
+      db.prepare("UPDATE email_campaign_leads SET replied_at = datetime('now') WHERE id = ?").run(row.id);
+      continue;
+    }
+
+    db.prepare("INSERT INTO email_campaign_leads (campaign_id, lead_id, status, touch_number) VALUES (?, ?, 'pending', ?)").run(
+      campaign.id,
+      row.lead_id,
+      row.touch_number + 1
+    );
+    return; // one per tick - the next candidate gets picked up on a later tick
+  }
+}
+
 async function waitForInspection(userId, lead, aiProvider) {
   const existing = analysisJobs.getAnalysis(lead.id);
   if (existing && existing.status === "done") return existing;
@@ -53,6 +117,20 @@ async function waitForInspection(userId, lead, aiProvider) {
     if (check && check.status === "failed") throw new Error(`Inspection failed: ${check.error || "unknown error"}`);
   }
   throw new Error("Inspection timed out");
+}
+
+// Simple strip for feeding a previous email's HTML body to the AI as
+// follow-up context - doesn't need to be pixel-perfect, just readable.
+function stripHtmlForContext(html) {
+  return (html || "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 async function processCampaignLead(campaign, campaignLeadRow) {
@@ -93,42 +171,82 @@ async function processCampaignLead(campaign, campaignLeadRow) {
   const inspectionProvider = campaign.ai_provider || userProviderPrefs?.preferred_inspection_provider || undefined;
   const contentProvider = campaign.ai_provider || userProviderPrefs?.preferred_content_provider || undefined;
 
-  // Step 1: inspect first, if requested and not already done
-  let analysis = null;
-  if (campaign.require_inspection) {
-    db.prepare("UPDATE email_campaign_leads SET status = 'inspecting' WHERE id = ?").run(campaignLeadRow.id);
-    analysis = await waitForInspection(campaign.user_id, lead, inspectionProvider);
-  } else {
-    analysis = analysisJobs.getAnalysis(lead.id);
-  }
+  const isFollowUp = campaignLeadRow.touch_number > 1;
+  let genResult;
+  let previousSubject = null;
 
-  // Step 2: generate the email content
-  db.prepare("UPDATE email_campaign_leads SET status = 'generating' WHERE id = ?").run(campaignLeadRow.id);
-  const userRow = db.prepare("SELECT signature FROM users WHERE id = ?").get(campaign.user_id);
-  const genResult = await generateOutreachContent(campaign.user_id, {
-    lead,
-    platform: "email",
-    tone: campaign.tone,
-    length: campaign.length,
-    analysis,
-    signature: userRow?.signature,
-    language: campaign.language || "English",
-    cta: !!campaign.cta,
-    meeting: !!campaign.meeting,
-    meetingLink: campaign.meeting_link,
-    aiProvider: contentProvider,
-  });
+  if (isFollowUp) {
+    // Follow-ups skip inspection entirely - the original email already
+    // used whatever analysis was available, and re-inspecting the same
+    // business for a two-sentence bump message isn't useful.
+    const previousTouch = db
+      .prepare(
+        "SELECT * FROM email_campaign_leads WHERE campaign_id = ? AND lead_id = ? AND touch_number = ? AND tracked_email_id IS NOT NULL"
+      )
+      .get(campaign.id, campaignLeadRow.lead_id, campaignLeadRow.touch_number - 1);
+    const previousEmail = previousTouch?.tracked_email_id
+      ? db.prepare("SELECT subject, body_html FROM tracked_emails WHERE id = ?").get(previousTouch.tracked_email_id)
+      : null;
+
+    if (!previousEmail) throw new Error("Could not find the previous email to follow up on");
+    previousSubject = previousEmail.subject;
+
+    db.prepare("UPDATE email_campaign_leads SET status = 'generating' WHERE id = ?").run(campaignLeadRow.id);
+    const userRow = db.prepare("SELECT signature FROM users WHERE id = ?").get(campaign.user_id);
+    genResult = await generateFollowUpContent(campaign.user_id, {
+      lead,
+      tone: campaign.tone,
+      language: campaign.language || "English",
+      previousBody: stripHtmlForContext(previousEmail.body_html),
+      touchNumber: campaignLeadRow.touch_number,
+      signature: userRow?.signature,
+      aiProvider: contentProvider,
+    });
+  } else {
+    // Step 1: inspect first, if requested and not already done
+    let analysis = null;
+    if (campaign.require_inspection) {
+      db.prepare("UPDATE email_campaign_leads SET status = 'inspecting' WHERE id = ?").run(campaignLeadRow.id);
+      analysis = await waitForInspection(campaign.user_id, lead, inspectionProvider);
+    } else {
+      analysis = analysisJobs.getAnalysis(lead.id);
+    }
+
+    // Step 2: generate the email content
+    db.prepare("UPDATE email_campaign_leads SET status = 'generating' WHERE id = ?").run(campaignLeadRow.id);
+    const userRow = db.prepare("SELECT signature FROM users WHERE id = ?").get(campaign.user_id);
+    genResult = await generateOutreachContent(campaign.user_id, {
+      lead,
+      platform: "email",
+      tone: campaign.tone,
+      length: campaign.length,
+      analysis,
+      signature: userRow?.signature,
+      language: campaign.language || "English",
+      cta: !!campaign.cta,
+      meeting: !!campaign.meeting,
+      meetingLink: campaign.meeting_link,
+      aiProvider: contentProvider,
+    });
+  }
   if (!genResult.ok) throw new Error(`Content generation failed: ${genResult.error}`);
+
+  const subject = isFollowUp ? `Re: ${previousSubject}` : genResult.subject || "A quick idea for your business";
 
   // Persist to outreach_content too, not just the sent email - this is
   // what the lead's own "Generate Content" panel reads from, so without
   // this, content a campaign generated and sent would be invisible when
   // checked later from the lead's expand panel (it would show "not
   // generated yet" despite having actually been generated and sent).
-  db.prepare(
-    `INSERT INTO outreach_content (lead_id, platform, tone, length, content, subject, provider, language, generated_at) VALUES (?, 'email', ?, ?, ?, ?, ?, ?, datetime('now'))
-     ON CONFLICT(lead_id, platform, language) DO UPDATE SET tone = excluded.tone, length = excluded.length, content = excluded.content, subject = excluded.subject, provider = excluded.provider, generated_at = excluded.generated_at`
-  ).run(lead.id, campaign.tone, campaign.length || null, genResult.content, genResult.subject || null, genResult.provider || null, campaign.language || "English");
+  // Follow-ups are deliberately excluded - this table represents the
+  // lead's main pitch, not each individual bump message, and a follow-up
+  // overwriting it would erase the original pitch from view.
+  if (!isFollowUp) {
+    db.prepare(
+      `INSERT INTO outreach_content (lead_id, platform, tone, length, content, subject, provider, language, generated_at) VALUES (?, 'email', ?, ?, ?, ?, ?, ?, datetime('now'))
+       ON CONFLICT(lead_id, platform, language) DO UPDATE SET tone = excluded.tone, length = excluded.length, content = excluded.content, subject = excluded.subject, provider = excluded.provider, generated_at = excluded.generated_at`
+    ).run(lead.id, campaign.tone, campaign.length || null, genResult.content, genResult.subject || null, genResult.provider || null, campaign.language || "English");
+  }
 
   // Step 3: create the tracked_email record (same table/mechanism the
   // extension's create-email call uses, just invoked directly in-process
@@ -137,7 +255,7 @@ async function processCampaignLead(campaign, campaignLeadRow) {
   const trackedId = crypto.randomUUID();
   db.prepare(
     `INSERT INTO tracked_emails (id, user_id, subject, recipients, sender, provider, status) VALUES (?, ?, ?, ?, ?, 'hostinger', 'sent')`
-  ).run(trackedId, campaign.user_id, genResult.subject || "", JSON.stringify([socials.email]), smtpCfg?.from || null);
+  ).run(trackedId, campaign.user_id, subject, JSON.stringify([socials.email]), smtpCfg?.from || null);
 
   // Step 4: build the tracked HTML and send
   const baseUrl = getSetting("app_base_url") || "http://localhost:3000";
@@ -150,7 +268,7 @@ async function processCampaignLead(campaign, campaignLeadRow) {
   });
 
   db.prepare("UPDATE email_campaign_leads SET status = 'sending' WHERE id = ?").run(campaignLeadRow.id);
-  const sendResult = await sendCampaignEmail(campaign.user_id, { to: socials.email, subject: genResult.subject || "A quick idea for your business", html });
+  const sendResult = await sendCampaignEmail(campaign.user_id, { to: socials.email, subject, html });
   if (!sendResult.ok) {
     db.prepare("DELETE FROM tracked_emails WHERE id = ?").run(trackedId); // never sent - don't leave a phantom tracked row
     throw new Error(sendResult.error);
@@ -170,6 +288,16 @@ async function tick() {
 
     if (countSentToday(campaign.id) >= campaign.max_per_day) continue; // today's cap reached, try again tomorrow
 
+    // Converts any due follow-up into a normal 'pending' row - this has
+    // to run before the send-pacing gap check below, not after. That gap
+    // check exists to space out actual sends, but a recent send from
+    // ANY lead in this campaign (including another lead's follow-up)
+    // would otherwise short-circuit this tick before scheduleFollowUps
+    // ever got a chance to run its reply-check for a completely
+    // different, unrelated lead. The row it creates still respects
+    // pacing normally once the main send logic below picks it up.
+    await scheduleFollowUps(campaign).catch((err) => console.error(`[campaign] Follow-up scheduling failed for campaign ${campaign.id}:`, err.message));
+
     const lastSent = db
       .prepare("SELECT sent_at FROM email_campaign_leads WHERE campaign_id = ? AND status = 'sent' ORDER BY sent_at DESC LIMIT 1")
       .get(campaign.id);
@@ -187,6 +315,24 @@ async function tick() {
       .get(campaign.id);
 
     if (!nextLead) {
+      // Not actually done if a lead is still waiting on a future
+      // follow-up - sent, hasn't hit its touch limit, hasn't replied.
+      // Those don't show up as 'pending' yet (scheduleFollowUps only
+      // creates that row once the wait period has actually elapsed), so
+      // without this check the campaign would be marked complete while
+      // follow-ups are still meant to go out later.
+      const stillWaitingOnFollowUp = campaign.followup_enabled
+        ? db
+            .prepare(
+              `SELECT 1 FROM email_campaign_leads
+               WHERE campaign_id = ? AND status = 'sent' AND touch_number < ? AND replied_at IS NULL
+                 AND id = (SELECT MAX(id) FROM email_campaign_leads WHERE campaign_id = ? AND lead_id = email_campaign_leads.lead_id)
+               LIMIT 1`
+            )
+            .get(campaign.id, campaign.followup_max_count + 1, campaign.id)
+        : null;
+      if (stillWaitingOnFollowUp) continue;
+
       db.prepare("UPDATE email_campaigns SET status = 'completed', completed_at = datetime('now') WHERE id = ?").run(campaign.id);
       notifyUser(campaign.user_id, {
         type: "campaign_completed",

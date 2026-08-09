@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.08-15.9";
+const APP_VERSION = "2026.08.09-15.10";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -1428,12 +1428,24 @@ async function showCampaignCreationForm() {
       </label>
     </div>
 
+    <h3 class="settings-subheading" style="margin-top:16px;">Follow-ups</h3>
+    <p class="hint">Automatically nudges a lead who hasn't replied - a real inbox check runs before each one, so a lead who already replied never gets a follow-up on top of it.</p>
+    <label class="site-visuals-toggle"><input type="checkbox" data-campaign-followup-enabled /> Enable follow-ups for this campaign</label>
+    <div class="smtp-field-row" data-campaign-followup-fields style="display:none; margin-top:8px;">
+      <label class="site-field-label">Max follow-ups<input type="number" data-campaign-followup-max-count value="2" min="1" max="10" style="width:90px;"></label>
+      <label class="site-field-label">Wait between touches (days)<input type="number" data-campaign-followup-wait-days value="3" min="1" style="width:90px;"></label>
+    </div>
+
     <div style="display:flex; gap:8px; margin-top:12px;">
       <button type="button" class="site-generate-btn" data-action="create-campaign"><i class="bi bi-send-fill"></i> Create Campaign</button>
       <button type="button" class="small-btn" data-action="cancel-campaign-form">Cancel</button>
     </div>
     <div class="settings-result" id="campaignFormResult" style="display:none;"></div>
   `;
+
+  body.querySelector("[data-campaign-followup-enabled]").addEventListener("change", (e) => {
+    body.querySelector("[data-campaign-followup-fields]").style.display = e.target.checked ? "flex" : "none";
+  });
 
   body.querySelector("[data-campaign-meeting]").addEventListener("change", (e) => {
     body.querySelector("[data-campaign-meeting-link-row]").style.display = e.target.checked ? "block" : "none";
@@ -1525,6 +1537,9 @@ async function showCampaignCreationForm() {
         maxPerDay: parseInt(body.querySelector("[data-campaign-max-per-day]").value, 10) || 100,
         minGapMinutes: parseInt(body.querySelector("[data-campaign-min-gap]").value, 10) || 5,
         maxGapMinutes: parseInt(body.querySelector("[data-campaign-max-gap]").value, 10) || 10,
+        followupEnabled: body.querySelector("[data-campaign-followup-enabled]").checked,
+        followupMaxCount: parseInt(body.querySelector("[data-campaign-followup-max-count]").value, 10) || 2,
+        followupWaitDays: parseInt(body.querySelector("[data-campaign-followup-wait-days]").value, 10) || 3,
       };
       if (!payload.name) {
         resultEl.style.display = "block";
@@ -1597,12 +1612,25 @@ function showCampaignEditForm(campaign) {
         </div>
       </label>
     </div>
+
+    <h3 class="settings-subheading" style="margin-top:16px;">Follow-ups</h3>
+    <p class="hint">Automatically nudges a lead who hasn't replied - a real inbox check runs before each one, so a lead who already replied never gets a follow-up on top of it.</p>
+    <label class="site-visuals-toggle"><input type="checkbox" data-edit-followup-enabled ${campaign.followup_enabled ? "checked" : ""} /> Enable follow-ups for this campaign</label>
+    <div class="smtp-field-row" data-edit-followup-fields style="display:${campaign.followup_enabled ? "flex" : "none"}; margin-top:8px;">
+      <label class="site-field-label">Max follow-ups<input type="number" data-edit-followup-max-count value="${campaign.followup_max_count}" min="1" max="10" style="width:90px;"></label>
+      <label class="site-field-label">Wait between touches (days)<input type="number" data-edit-followup-wait-days value="${campaign.followup_wait_days}" min="1" style="width:90px;"></label>
+    </div>
+
     <div style="display:flex; gap:8px; margin-top:12px;">
       <button type="button" class="site-generate-btn" data-action="save-campaign-edit">Save changes</button>
       <button type="button" class="small-btn" data-action="cancel-campaign-edit">Cancel</button>
     </div>
     <div class="settings-result" id="campaignEditResult" style="display:none;"></div>
   `;
+
+  body.querySelector("[data-edit-followup-enabled]").addEventListener("change", (e) => {
+    body.querySelector("[data-edit-followup-fields]").style.display = e.target.checked ? "flex" : "none";
+  });
 
   body.querySelector("[data-edit-meeting]").addEventListener("change", (e) => {
     body.querySelector("[data-edit-meeting-link-row]").style.display = e.target.checked ? "block" : "none";
@@ -1628,6 +1656,9 @@ function showCampaignEditForm(campaign) {
         maxPerDay: parseInt(body.querySelector("[data-edit-max-per-day]").value, 10) || 100,
         minGapMinutes: parseInt(body.querySelector("[data-edit-min-gap]").value, 10) || 5,
         maxGapMinutes: parseInt(body.querySelector("[data-edit-max-gap]").value, 10) || 10,
+        followupEnabled: body.querySelector("[data-edit-followup-enabled]").checked,
+        followupMaxCount: parseInt(body.querySelector("[data-edit-followup-max-count]").value, 10) || 2,
+        followupWaitDays: parseInt(body.querySelector("[data-edit-followup-wait-days]").value, 10) || 3,
       };
       const res = await api(`/api/campaigns/${campaign.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await res.json();

@@ -6,6 +6,39 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.10
+Follow-up sequences for Auto Send campaigns - automatically nudges a
+lead who hasn't replied, with a real inbox check before each one.
+
+- **A lead who hasn't replied after N days gets a short, natural
+  follow-up** - not a repeat of the original pitch. The AI is given the
+  actual prior email as context and told explicitly to write a brief
+  bump (2-4 sentences), not re-explain the business's problem from
+  scratch. Threaded with a "Re:" subject against the original.
+- **Safety-checked before every send**: the scheduler connects to your
+  inbox via IMAP and checks for any reply from that lead before sending
+  a follow-up. If they replied - even just to decline - no follow-up
+  goes out, and no further follow-ups are attempted for that lead.
+  Verified this exact scenario directly: a lead who replied correctly
+  got skipped, a lead who didn't correctly got a follow-up with the
+  right threaded subject and content.
+- **A real bug caught and fixed during this build**: the follow-up
+  scheduling check was placed after the existing send-pacing gap check
+  in the scheduler, which meant a recent send from any lead in the
+  campaign could block the reply-check for a completely different lead.
+  Fixed and reverified with the same failing scenario, deterministically
+  (zeroed pacing gap) to remove any doubt.
+- **Campaign completion logic corrected** - a campaign with leads still
+  waiting on a future follow-up no longer gets marked "completed"
+  prematurely just because nothing is immediately queued.
+- Configurable per campaign (both creating and editing): enable/disable,
+  max number of follow-ups, days to wait between touches - available on
+  both the campaign creation and edit forms, verified through the actual
+  UI end to end, not just via direct API calls.
+- Migration verified safe against a realistic pre-upgrade database with
+  real campaign data present - existing campaigns default to follow-ups
+  off, existing leads default cleanly to touch 1.
+
 ## What's in this V15.9
 The actual root cause behind the still-blank message content, and a
 working browser back button (the previous attempt at this had a bug of

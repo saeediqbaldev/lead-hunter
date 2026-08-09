@@ -647,6 +647,9 @@ CREATE TABLE IF NOT EXISTS email_campaigns (
   max_per_day INTEGER NOT NULL DEFAULT 100,
   min_gap_minutes INTEGER NOT NULL DEFAULT 5,
   max_gap_minutes INTEGER NOT NULL DEFAULT 10,
+  followup_enabled INTEGER NOT NULL DEFAULT 0,
+  followup_max_count INTEGER NOT NULL DEFAULT 2,
+  followup_wait_days INTEGER NOT NULL DEFAULT 3,
   pause_reason TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   started_at TEXT,
@@ -664,6 +667,8 @@ CREATE TABLE IF NOT EXISTS email_campaign_leads (
   tracked_email_id TEXT,
   error TEXT,
   sent_at TEXT,
+  touch_number INTEGER NOT NULL DEFAULT 1,
+  replied_at TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_campaign_leads_campaign ON email_campaign_leads(campaign_id);
@@ -723,6 +728,20 @@ CREATE INDEX IF NOT EXISTS idx_app_notifications_read ON app_notifications(is_re
   if (!catchLogCols.includes("country")) {
     db.exec("ALTER TABLE catch_logs ADD COLUMN country TEXT NOT NULL DEFAULT 'Unnamed'");
     console.log('[migration] Added "country" column to catch_logs - existing catch logs default to "Unnamed" (rename them individually from the tree).');
+  }
+}
+
+{
+  const campaignCols = db.prepare("PRAGMA table_info(email_campaigns)").all().map((c) => c.name);
+  if (!campaignCols.includes("followup_enabled")) {
+    db.exec("ALTER TABLE email_campaigns ADD COLUMN followup_enabled INTEGER NOT NULL DEFAULT 0");
+    db.exec("ALTER TABLE email_campaigns ADD COLUMN followup_max_count INTEGER NOT NULL DEFAULT 2");
+    db.exec("ALTER TABLE email_campaigns ADD COLUMN followup_wait_days INTEGER NOT NULL DEFAULT 3");
+  }
+  const campaignLeadCols = db.prepare("PRAGMA table_info(email_campaign_leads)").all().map((c) => c.name);
+  if (!campaignLeadCols.includes("touch_number")) {
+    db.exec("ALTER TABLE email_campaign_leads ADD COLUMN touch_number INTEGER NOT NULL DEFAULT 1");
+    db.exec("ALTER TABLE email_campaign_leads ADD COLUMN replied_at TEXT");
   }
 }
 

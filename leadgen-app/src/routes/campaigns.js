@@ -26,6 +26,9 @@ router.post("/", (req, res) => {
     minGapMinutes,
     maxGapMinutes,
     aiProvider,
+    followupEnabled,
+    followupMaxCount,
+    followupWaitDays,
   } = req.body || {};
 
   if (!name || !name.trim()) return res.status(400).json({ error: "Campaign name is required" });
@@ -84,8 +87,8 @@ router.post("/", (req, res) => {
 
   const info = db
     .prepare(
-      `INSERT INTO email_campaigns (user_id, name, niche_id, catch_log_id, catch_log_ids, require_inspection, tone, length, language, cta, meeting, meeting_link, ai_provider, max_per_day, min_gap_minutes, max_gap_minutes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO email_campaigns (user_id, name, niche_id, catch_log_id, catch_log_ids, require_inspection, tone, length, language, cta, meeting, meeting_link, ai_provider, max_per_day, min_gap_minutes, max_gap_minutes, followup_enabled, followup_max_count, followup_wait_days)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       userId,
@@ -103,7 +106,10 @@ router.post("/", (req, res) => {
       aiProvider || "",
       maxPerDay || 100,
       minGapMinutes || 5,
-      maxGapMinutes || 10
+      maxGapMinutes || 10,
+      followupEnabled ? 1 : 0,
+      Math.min(Math.max(parseInt(followupMaxCount, 10) || 2, 0), 10),
+      Math.max(parseInt(followupWaitDays, 10) || 3, 1)
     );
   const campaignId = info.lastInsertRowid;
 
@@ -241,7 +247,23 @@ router.put("/:id", requireOwnedCampaign, (req, res) => {
   if (!["draft", "paused"].includes(req.campaign.status)) {
     return res.status(400).json({ error: "Pause a running campaign before editing it." });
   }
-  const { name, requireInspection, tone, length, language, cta, meeting, meetingLink, aiProvider, maxPerDay, minGapMinutes, maxGapMinutes } = req.body || {};
+  const {
+    name,
+    requireInspection,
+    tone,
+    length,
+    language,
+    cta,
+    meeting,
+    meetingLink,
+    aiProvider,
+    maxPerDay,
+    minGapMinutes,
+    maxGapMinutes,
+    followupEnabled,
+    followupMaxCount,
+    followupWaitDays,
+  } = req.body || {};
   if (name !== undefined && !name.trim()) return res.status(400).json({ error: "Campaign name can't be empty" });
 
   db.prepare(
@@ -257,7 +279,10 @@ router.put("/:id", requireOwnedCampaign, (req, res) => {
       ai_provider = COALESCE(?, ai_provider),
       max_per_day = COALESCE(?, max_per_day),
       min_gap_minutes = COALESCE(?, min_gap_minutes),
-      max_gap_minutes = COALESCE(?, max_gap_minutes)
+      max_gap_minutes = COALESCE(?, max_gap_minutes),
+      followup_enabled = COALESCE(?, followup_enabled),
+      followup_max_count = COALESCE(?, followup_max_count),
+      followup_wait_days = COALESCE(?, followup_wait_days)
      WHERE id = ?`
   ).run(
     name !== undefined ? name.trim() : null,
@@ -272,6 +297,9 @@ router.put("/:id", requireOwnedCampaign, (req, res) => {
     maxPerDay !== undefined ? maxPerDay : null,
     minGapMinutes ?? null,
     maxGapMinutes ?? null,
+    followupEnabled !== undefined ? (followupEnabled ? 1 : 0) : null,
+    followupMaxCount !== undefined ? Math.min(Math.max(parseInt(followupMaxCount, 10) || 0, 0), 10) : null,
+    followupWaitDays !== undefined ? Math.max(parseInt(followupWaitDays, 10) || 1, 1) : null,
     req.campaign.id
   );
 

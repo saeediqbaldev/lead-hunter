@@ -91,10 +91,43 @@ async function appendToSentFolder(cfg, raw) {
   }
 }
 
+// Checks the inbox for any reply from a specific address since a given
+// date - used before sending a follow-up, so a lead who already replied
+// (even just to say "not interested") never gets a scheduled follow-up
+// on top of that reply. A failed/unreachable IMAP check is treated as
+// "can't confirm safety" rather than "no reply" - the caller should skip
+// sending rather than risk it, since the cost of a false negative here
+// (an unwanted follow-up landing on top of a real reply) is worse than
+// the cost of a delayed follow-up.
+async function checkForReply(userId, fromEmail, sinceDate) {
+  const cfg = resolveSmtpConfig(userId);
+  if (!cfg) throw new Error("SMTP/IMAP isn't configured for this account");
+
+  const client = new ImapFlow({
+    host: HOSTINGER_IMAP_HOST,
+    port: HOSTINGER_IMAP_PORT,
+    secure: true,
+    auth: { user: cfg.user, pass: cfg.pass },
+    logger: false,
+  });
+  await client.connect();
+  try {
+    const lock = await client.getMailboxLock("INBOX");
+    try {
+      const uids = await client.search({ from: fromEmail, since: sinceDate }, { uid: true });
+      return Array.isArray(uids) && uids.length > 0;
+    } finally {
+      lock.release();
+    }
+  } finally {
+    await client.logout().catch(() => {});
+  }
+}
+
 // Used by campaign creation to fail fast with a clear message rather than
 // silently queuing a campaign that will fail on its very first send.
 function hasSmtpConfigured(userId) {
   return !!resolveSmtpConfig(userId);
 }
 
-module.exports = { sendCampaignEmail, hasSmtpConfigured, resolveSmtpConfig };
+module.exports = { sendCampaignEmail, hasSmtpConfigured, resolveSmtpConfig, checkForReply };
