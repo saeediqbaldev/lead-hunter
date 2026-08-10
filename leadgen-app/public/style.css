@@ -1719,7 +1719,12 @@ a.site-generate-btn { color: #1a1310; }
 .platform-node-body { display: none; padding-left: 14px; }
 .platform-node.open .platform-node-body { display: block; }
 
-.campaigns-list { padding: 0 22px 22px; display: flex; flex-direction: column; gap: 10px; }
+.campaigns-list { padding: 0 22px 22px; display: flex; flex-direction: column; gap: 24px; }
+.campaign-niche-heading { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.campaigns-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.campaign-location-badge { display: inline-block; font-size: 11px; color: var(--text-muted); background: var(--panel-raised); border: 1px solid var(--border); border-radius: 5px; padding: 2px 7px; margin: 2px 0 8px; }
+@media (max-width: 1100px) { .campaigns-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 720px) { .campaigns-grid { grid-template-columns: 1fr; } }
 .campaign-card { background: var(--panel-raised); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; cursor: pointer; }
 .campaign-card:hover { border-color: var(--accent); }
 .campaign-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
@@ -1727,6 +1732,7 @@ a.site-generate-btn { color: #1a1310; }
 .campaign-status-pill { padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; text-transform: capitalize; }
 .campaign-status-draft { background: rgba(154,145,134,0.15); color: var(--text-muted); }
 .campaign-status-running { background: rgba(46,166,110,0.15); color: var(--good); }
+.campaign-status-followup-wait { background: rgba(154,145,134,0.18); color: var(--text-muted); }
 .campaign-status-paused { background: rgba(232,162,61,0.15); color: var(--warn); }
 .campaign-status-completed { background: rgba(255,106,61,0.15); color: var(--accent); }
 .campaign-status-cancelled, .campaign-status-failed { background: rgba(232,100,111,0.15); color: var(--danger); }

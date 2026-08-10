@@ -50,6 +50,7 @@ router.get("/emails", (req, res) => {
   const where = `WHERE ${clauses.join(" AND ")}`;
 
   try {
+    const total = db.prepare(`SELECT COUNT(*) AS c FROM tracked_emails ${where}`).get(...values).c;
     const rows = db
       .prepare(
         `SELECT id, subject, recipients, sender, provider, created_at, status,
@@ -59,7 +60,7 @@ router.get("/emails", (req, res) => {
       .all(...values, limit, offset)
       .map((r) => ({ ...r, recipients: JSON.parse(r.recipients || "[]") }));
 
-    res.json({ emails: rows });
+    res.json({ emails: rows, total, limit, offset });
   } catch (err) {
     console.error("Failed to list tracked emails:", err);
     res.status(500).json({ error: "Failed to list emails" });
@@ -512,6 +513,18 @@ router.get("/history", (req, res) => {
   }
 
   try {
+    const total = db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM (
+           SELECT 'open' AS type, id, email_id, opened_at AS ts, ip, user_agent, NULL AS url, browser, os, device, city, country FROM tracked_opens
+           UNION ALL
+           SELECT 'click' AS type, id, email_id, clicked_at AS ts, ip, user_agent, url, browser, os, device, city, country FROM tracked_clicks
+         ) ev
+         JOIN tracked_emails e ON e.id = ev.email_id
+         WHERE ${clauses.join(" AND ")}`
+      )
+      .get(...values).c;
+
     const rows = db
       .prepare(
         `SELECT ev.type, ev.id AS event_id, ev.ts, ev.ip, ev.user_agent, ev.url, ev.browser, ev.os, ev.device, ev.city, ev.country, e.id AS email_id, e.subject, e.recipients, e.provider
@@ -526,7 +539,7 @@ router.get("/history", (req, res) => {
       )
       .all(...values, limit, offset)
       .map((r) => ({ ...r, recipients: JSON.parse(r.recipients || "[]") }));
-    res.json({ events: rows });
+    res.json({ events: rows, total, limit, offset });
   } catch (err) {
     console.error("Failed to load tracker history:", err);
     res.status(500).json({ error: "Failed to load history" });

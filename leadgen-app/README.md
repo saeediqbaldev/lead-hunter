@@ -6,6 +6,39 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.13
+The Contacted Reports chart width bug, a donut view toggle, the "stuck
+Running" campaign bug, a niche-grouped campaign grid, and pagination for
+Tracking and History.
+
+- **Fixed the "Opens & clicks over time" chart not filling its width** -
+  every other chart in the app correctly sets Chart.js's
+  maintainAspectRatio to false; this one specifically was missing it,
+  so it fell back to a default fixed aspect ratio instead of filling
+  the card. Verified with real screenshots.
+- **Added a donut view toggle** for that same chart - caught and fixed a
+  real math error in my own first draft along the way (clicks can
+  exceed opens in this app's data model, since they're independent raw
+  event counts, not a strict funnel - my first attempt assumed clicks
+  implied opens, which doesn't hold here).
+- **Fixed the "stuck Running" campaign bug** - reproduced the exact
+  reported scenario (a fully-sent campaign with follow-ups enabled) and
+  confirmed status='running' was technically correct in the database
+  (the scheduler genuinely needs to keep watching for a future follow-up
+  window), but showing that as a blinking "Running" indicator was
+  misleading since nothing is actually happening for days. Now shows
+  "Follow-ups pending" instead, and the header indicator no longer
+  blinks for a dormant campaign. Verified both fixes directly.
+- **Campaigns list is now grouped by niche** (as section headings) with
+  a 3-column grid underneath each, plus a location badge showing each
+  campaign's dominant city/country. Verified with a real screenshot
+  across two niches.
+- **Pagination added to Tracking and History**, matching the Board
+  page's own pattern - verified across a real 65-email dataset spanning
+  two pages, including catching and fixing a bug in my own first attempt
+  (an uninitialized page counter produced "NaN" row numbers on first
+  load).
+
 ## What's in this V15.12
 Fixed a real correctness bug in reply detection, confirmed directly
 against your own inbox screenshot - out-of-office and automatic replies

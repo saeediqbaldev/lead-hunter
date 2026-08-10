@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="Xeven Leads" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=1512" />
+<link rel="stylesheet" href="style.css?v=1513" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -535,6 +535,11 @@
             <tbody id="contactedTableBody"></tbody>
           </table>
         </div>
+        <div class="pagination-row" id="contactedTrackingPaginationRow" style="display:none;">
+          <button id="contactedTrackingPrevPageBtn" class="small-btn">‹ Prev</button>
+          <span id="contactedTrackingPageInfo" class="page-info"></span>
+          <button id="contactedTrackingNextPageBtn" class="small-btn">Next ›</button>
+        </div>
       </section>
 
       <!-- ---------- Contacted: History ---------- -->
@@ -562,6 +567,11 @@
             <tbody id="contactedHistoryTableBody"></tbody>
           </table>
         </div>
+        <div class="pagination-row" id="contactedHistoryPaginationRow" style="display:none;">
+          <button id="contactedHistoryPrevPageBtn" class="small-btn">‹ Prev</button>
+          <span id="contactedHistoryPageInfo" class="page-info"></span>
+          <button id="contactedHistoryNextPageBtn" class="small-btn">Next ›</button>
+        </div>
       </section>
 
       <!-- ---------- Contacted: Reports ---------- -->
@@ -582,7 +592,10 @@
         <div class="contacted-stats-row" id="contactedReportsStatsRow"></div>
         <div class="reports-charts-grid">
           <div class="reports-chart-card reports-line-card">
-            <h3>Opens &amp; clicks over time</h3>
+            <div style="display:flex; align-items:center; justify-content:space-between;">
+              <h3>Opens &amp; clicks over time</h3>
+              <button type="button" id="contactedChartModeToggle" class="icon-toggle-btn" title="Switch chart view"><i class="bi bi-pie-chart"></i></button>
+            </div>
             <canvas id="contactedTimeseriesChart"></canvas>
           </div>
           <div class="reports-chart-card reports-line-card">
@@ -1006,7 +1019,7 @@
 
 
 
-  <script src="app.js?v=1512"></script>
+  <script src="app.js?v=1513"></script>
   <script src="pwa-install.js"></script>
 </body>
 </html>

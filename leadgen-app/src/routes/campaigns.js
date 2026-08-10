@@ -130,17 +130,40 @@ router.get("/", (req, res) => {
         (SELECT COUNT(*) FROM email_campaign_leads WHERE campaign_id = c.id) AS total_leads,
         (SELECT COUNT(*) FROM email_campaign_leads WHERE campaign_id = c.id AND status = 'sent') AS sent_count,
         (SELECT COUNT(*) FROM email_campaign_leads WHERE campaign_id = c.id AND status = 'failed') AS failed_count,
-        (SELECT COUNT(*) FROM email_campaign_leads WHERE campaign_id = c.id AND status = 'skipped') AS skipped_count
+        (SELECT COUNT(*) FROM email_campaign_leads WHERE campaign_id = c.id AND status = 'skipped') AS skipped_count,
+        (SELECT COUNT(*) FROM email_campaign_leads WHERE campaign_id = c.id AND status NOT IN ('sent', 'failed', 'skipped')) AS pending_work_count,
+        (SELECT l.catch_log_id FROM email_campaign_leads ecl2 JOIN leads l ON l.id = ecl2.lead_id
+           WHERE ecl2.campaign_id = c.id GROUP BY l.catch_log_id ORDER BY COUNT(*) DESC LIMIT 1) AS dominant_catch_log_id
        FROM email_campaigns c WHERE c.user_id = ? ORDER BY c.created_at DESC`
     )
     .all(req.session.userId);
-  res.json({ campaigns: rows });
+
+  // Resolve each campaign's dominant city/country in one batch query
+  // rather than one lookup per campaign row.
+  const catchLogIds = [...new Set(rows.map((r) => r.dominant_catch_log_id).filter(Boolean))];
+  const catchLogMap = new Map();
+  if (catchLogIds.length) {
+    const placeholders = catchLogIds.map(() => "?").join(",");
+    db.prepare(`SELECT id, name, country, niche_id FROM catch_logs WHERE id IN (${placeholders})`)
+      .all(...catchLogIds)
+      .forEach((cl) => catchLogMap.set(cl.id, cl));
+  }
+
+  const enriched = rows.map((r) => {
+    const cl = catchLogMap.get(r.dominant_catch_log_id);
+    return { ...r, dominant_city_name: cl?.name || null, dominant_country: cl?.country || null };
+  });
+
+  res.json({ campaigns: enriched });
 });
 
 // GET /api/campaigns/:id -> detail with the full per-lead queue
 router.get("/:id", (req, res) => {
   const campaign = db.prepare("SELECT * FROM email_campaigns WHERE id = ? AND user_id = ?").get(req.params.id, req.session.userId);
   if (!campaign) return res.status(404).json({ error: "Not found" });
+  campaign.pending_work_count = db
+    .prepare("SELECT COUNT(*) AS c FROM email_campaign_leads WHERE campaign_id = ? AND status NOT IN ('sent', 'failed', 'skipped')")
+    .get(campaign.id).c;
 
   const leads = db
     .prepare(

@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.09-15.12";
+const APP_VERSION = "2026.08.10-15.13";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -550,7 +550,7 @@ async function refreshHeaderCampaignIndicator() {
   try {
     const res = await api("/api/campaigns");
     const data = await res.json();
-    const running = data.campaigns.filter((c) => c.status === "running");
+    const running = data.campaigns.filter((c) => c.status === "running" && c.pending_work_count > 0);
     if (running.length) {
       const sent = running.reduce((sum, c) => sum + c.sent_count, 0);
       const total = running.reduce((sum, c) => sum + (c.total_leads - c.skipped_count), 0);
@@ -962,6 +962,25 @@ async function loadContactedSetup() {
 
 // ---------- Tracking ledger ----------
 let contactedStatusFilter = "";
+const CONTACTED_PAGE_SIZE = 50;
+
+// Shared by Tracking and History (both paginate the same way the Board
+// page does) - prefix picks which view's pagination row/buttons to
+// update, e.g. "contactedTracking" targets #contactedTrackingPageInfo.
+function updateGenericPagination(prefix, total, pageSize) {
+  const row = document.getElementById(`${prefix}PaginationRow`);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = state[`${prefix}Page`] || 1;
+  if (total === 0) {
+    row.style.display = "none";
+    return;
+  }
+  row.style.display = "flex";
+  document.getElementById(`${prefix}PageInfo`).textContent = `Page ${currentPage} of ${totalPages} (${total} total)`;
+  document.getElementById(`${prefix}PrevPageBtn`).disabled = currentPage <= 1;
+  document.getElementById(`${prefix}NextPageBtn`).disabled = currentPage >= totalPages;
+}
+
 async function loadContactedTracking() {
   const statsRes = await api(`/api/tracker/stats?provider=${state.contactedPlatform}`);
   const stats = await statsRes.json();
@@ -978,6 +997,7 @@ async function loadContactedTracking() {
   statsRow.querySelectorAll("[data-status-filter]").forEach((card) => {
     card.addEventListener("click", () => {
       contactedStatusFilter = card.dataset.statusFilter;
+      state.contactedTrackingPage = 1;
       renderContactedTable();
     });
   });
@@ -993,6 +1013,8 @@ async function renderContactedTable() {
   if (contactedStatusFilter) params.set("status", contactedStatusFilter);
   if (search) params.set("search", search);
   if (recipient) params.set("recipient", recipient);
+  params.set("limit", CONTACTED_PAGE_SIZE);
+  params.set("offset", (state.contactedTrackingPage - 1) * CONTACTED_PAGE_SIZE);
 
   const res = await api(`/api/tracker/emails?${params.toString()}`);
   const data = await res.json();
@@ -1000,6 +1022,7 @@ async function renderContactedTable() {
 
   if (!data.emails.length) {
     tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--text-muted); padding:24px;">No tracked emails yet - send one with the extension's Track toggle on.</td></tr>`;
+    updateGenericPagination("contactedTracking", 0, 0);
     return;
   }
 
@@ -1007,7 +1030,7 @@ async function renderContactedTable() {
     .map(
       (email, i) => `
     <tr class="contacted-row" data-email-id="${email.id}">
-      <td class="hint">${i + 1}</td>
+      <td class="hint">${(state.contactedTrackingPage - 1) * CONTACTED_PAGE_SIZE + i + 1}</td>
       <td><input type="checkbox" class="contacted-row-check" data-email-id="${email.id}" onclick="event.stopPropagation()"></td>
       <td>${email.subject || "(no subject)"}</td>
       <td>${email.recipients.join(", ")}</td>
@@ -1023,6 +1046,7 @@ async function renderContactedTable() {
     row.addEventListener("click", () => openContactedDetail(row.dataset.emailId));
   });
   updateContactedBulkDeleteVisibility();
+  updateGenericPagination("contactedTracking", data.total, CONTACTED_PAGE_SIZE);
 }
 
 function updateContactedBulkDeleteVisibility() {
@@ -1030,8 +1054,30 @@ function updateContactedBulkDeleteVisibility() {
   document.getElementById("contactedDeleteSelectedBtn").style.display = checked.length ? "inline-flex" : "none";
 }
 
-document.getElementById("contactedSearchInput").addEventListener("input", debounce(renderContactedTable, 300));
-document.getElementById("contactedRecipientInput").addEventListener("input", debounce(renderContactedTable, 300));
+document.getElementById("contactedSearchInput").addEventListener(
+  "input",
+  debounce(() => {
+    state.contactedTrackingPage = 1;
+    renderContactedTable();
+  }, 300)
+);
+document.getElementById("contactedRecipientInput").addEventListener(
+  "input",
+  debounce(() => {
+    state.contactedTrackingPage = 1;
+    renderContactedTable();
+  }, 300)
+);
+document.getElementById("contactedTrackingPrevPageBtn").addEventListener("click", () => {
+  if (state.contactedTrackingPage > 1) {
+    state.contactedTrackingPage--;
+    renderContactedTable();
+  }
+});
+document.getElementById("contactedTrackingNextPageBtn").addEventListener("click", () => {
+  state.contactedTrackingPage = (state.contactedTrackingPage || 1) + 1;
+  renderContactedTable();
+});
 document.getElementById("contactedRefreshBtn").addEventListener("click", loadContactedTracking);
 document.getElementById("contactedSelectAll").addEventListener("change", (e) => {
   document.querySelectorAll(".contacted-row-check").forEach((cb) => (cb.checked = e.target.checked));
@@ -1146,6 +1192,8 @@ async function loadContactedHistory() {
   params.set("provider", state.contactedPlatform);
   if (type) params.set("type", type);
   if (search) params.set("search", search);
+  params.set("limit", CONTACTED_PAGE_SIZE);
+  params.set("offset", (state.contactedHistoryPage - 1 || 0) * CONTACTED_PAGE_SIZE);
 
   const res = await api(`/api/tracker/history?${params.toString()}`);
   const data = await res.json();
@@ -1153,6 +1201,7 @@ async function loadContactedHistory() {
 
   if (!data.events.length) {
     tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding:24px;">No events yet.</td></tr>`;
+    updateGenericPagination("contactedHistory", 0, 0);
     return;
   }
 
@@ -1160,7 +1209,7 @@ async function loadContactedHistory() {
     .map(
       (ev, i) => `
     <tr class="contacted-row" data-history-email-id="${ev.email_id}">
-      <td class="hint">${i + 1}</td>
+      <td class="hint">${(state.contactedHistoryPage - 1 || 0) * CONTACTED_PAGE_SIZE + i + 1}</td>
       <td><span class="contacted-status-pill ${ev.type === "open" ? "opened" : "clicked"}">${ev.type}</span></td>
       <td>${ev.subject || "(no subject)"}</td>
       <td>${ev.recipients.join(", ")}</td>
@@ -1181,9 +1230,29 @@ async function loadContactedHistory() {
       loadContactedHistory();
     });
   });
+  updateGenericPagination("contactedHistory", data.total, CONTACTED_PAGE_SIZE);
 }
-document.getElementById("contactedHistoryTypeSelect").addEventListener("change", loadContactedHistory);
-document.getElementById("contactedHistorySearchInput").addEventListener("input", debounce(loadContactedHistory, 300));
+document.getElementById("contactedHistoryTypeSelect").addEventListener("change", () => {
+  state.contactedHistoryPage = 1;
+  loadContactedHistory();
+});
+document.getElementById("contactedHistorySearchInput").addEventListener(
+  "input",
+  debounce(() => {
+    state.contactedHistoryPage = 1;
+    loadContactedHistory();
+  }, 300)
+);
+document.getElementById("contactedHistoryPrevPageBtn").addEventListener("click", () => {
+  if (state.contactedHistoryPage > 1) {
+    state.contactedHistoryPage--;
+    loadContactedHistory();
+  }
+});
+document.getElementById("contactedHistoryNextPageBtn").addEventListener("click", () => {
+  state.contactedHistoryPage = (state.contactedHistoryPage || 1) + 1;
+  loadContactedHistory();
+});
 document.getElementById("contactedHistoryClearBtn").addEventListener("click", async () => {
   const confirmed = await openModal({
     title: "Clear all history?",
@@ -1199,6 +1268,47 @@ document.getElementById("contactedHistoryClearBtn").addEventListener("click", as
 
 // ---------- Reports ----------
 let contactedTimeseriesChartInstance = null;
+// Renders the "Opens & clicks over time" card in whichever mode is
+// currently selected - state.contactedReportsChartMode persists the
+// choice across range changes so switching to 7D/30D/etc doesn't reset
+// back to line view every time.
+function renderContactedTimeseriesChart(ctx, data) {
+  const mode = state.contactedReportsChartMode || "line";
+  const textColor = getComputedStyle(document.documentElement).getPropertyValue("--text");
+
+  if (mode === "donut") {
+    const s = data.summary;
+    const opened = s.unique_opened || 0;
+    const unopened = Math.max(s.sent - opened, 0);
+    contactedTimeseriesChartInstance = new Chart(ctx, {
+      type: "doughnut",
+      data: {
+        labels: ["Opened", "Unopened"],
+        datasets: [{ data: [opened, unopened], backgroundColor: ["#e8a23d", "#8c8378"] }],
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "right", labels: { color: textColor } } } },
+    });
+    return;
+  }
+
+  contactedTimeseriesChartInstance = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: data.timeseries.map((t) => t.bucket),
+      datasets: [
+        { label: "Opens", data: data.timeseries.map((t) => t.opens), borderColor: "#e8a23d", backgroundColor: "rgba(232,162,61,0.12)", tension: 0.3, fill: true },
+        { label: "Clicks", data: data.timeseries.map((t) => t.clicks), borderColor: "#2ea66e", backgroundColor: "rgba(46,166,110,0.12)", tension: 0.3, fill: true },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: textColor } } },
+      scales: { x: { ticks: { color: "#9a9186" } }, y: { ticks: { color: "#9a9186" }, beginAtZero: true } },
+    },
+  });
+}
+
 async function loadContactedReports(range) {
   document.querySelectorAll("#contactedReportsRangeGroup .range-pill").forEach((btn) => btn.classList.toggle("active", btn.dataset.range === range));
 
@@ -1219,17 +1329,8 @@ async function loadContactedReports(range) {
 
   const ctx = document.getElementById("contactedTimeseriesChart").getContext("2d");
   if (contactedTimeseriesChartInstance) contactedTimeseriesChartInstance.destroy();
-  contactedTimeseriesChartInstance = new Chart(ctx, {
-    type: "line",
-    data: {
-      labels: data.timeseries.map((t) => t.bucket),
-      datasets: [
-        { label: "Opens", data: data.timeseries.map((t) => t.opens), borderColor: "#e8a23d", backgroundColor: "rgba(232,162,61,0.12)", tension: 0.3, fill: true },
-        { label: "Clicks", data: data.timeseries.map((t) => t.clicks), borderColor: "#2ea66e", backgroundColor: "rgba(46,166,110,0.12)", tension: 0.3, fill: true },
-      ],
-    },
-    options: { responsive: true, plugins: { legend: { labels: { color: getComputedStyle(document.documentElement).getPropertyValue("--text") } } }, scales: { x: { ticks: { color: "#9a9186" } }, y: { ticks: { color: "#9a9186" }, beginAtZero: true } } },
-  });
+  state.contactedReportsData = data; // kept so the donut toggle can redraw without a re-fetch
+  renderContactedTimeseriesChart(ctx, data);
 
   const heatmapEl = document.getElementById("contactedHeatmap");
   const grid = new Map(data.heatmap.map((h) => [`${h.day}-${h.hour}`, h.count]));
@@ -1250,6 +1351,16 @@ async function loadContactedReports(range) {
 document.getElementById("contactedReportsRangeGroup").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-range]");
   if (btn) loadContactedReports(btn.dataset.range);
+});
+
+document.getElementById("contactedChartModeToggle").addEventListener("click", (e) => {
+  const nowDonut = state.contactedReportsChartMode !== "donut";
+  state.contactedReportsChartMode = nowDonut ? "donut" : "line";
+  e.currentTarget.querySelector("i").className = nowDonut ? "bi bi-graph-up" : "bi bi-pie-chart";
+  if (!state.contactedReportsData) return; // nothing loaded yet - the next load will use the new mode
+  const ctx = document.getElementById("contactedTimeseriesChart").getContext("2d");
+  if (contactedTimeseriesChartInstance) contactedTimeseriesChartInstance.destroy();
+  renderContactedTimeseriesChart(ctx, state.contactedReportsData);
 });
 
 // ---------- Alerts ----------
@@ -1337,6 +1448,19 @@ const CAMPAIGN_STATUS_LABEL = {
   cancelled: "Cancelled",
 };
 
+// A campaign can be status='running' in the DB for two meaningfully
+// different reasons: actively working through its queue right now, or
+// everything currently sendable is done and it's just dormant, waiting
+// days for a future follow-up window to open. Both are "running" as far
+// as the scheduler is concerned (it still needs to keep checking), but
+// only the first should look and blink like something is happening.
+function campaignDisplayStatus(c) {
+  if (c.status === "running" && c.pending_work_count === 0 && c.followup_enabled) {
+    return { key: "followup-wait", label: "Follow-ups pending" };
+  }
+  return { key: c.status, label: CAMPAIGN_STATUS_LABEL[c.status] || c.status };
+}
+
 function campaignProgressBarHtml(c) {
   const actionableTotal = (c.total_leads || 0) - (c.skipped_count || 0);
   const pct = actionableTotal > 0 ? Math.round((c.sent_count / actionableTotal) * 100) : 0;
@@ -1356,18 +1480,41 @@ async function loadContactedCampaigns() {
     return;
   }
 
-  list.innerHTML = data.campaigns
-    .map(
-      (c) => `
+  // Group by niche - a campaign without a niche_id (an older campaign
+  // from before niches were required, or one spanning a manually-picked
+  // lead set) falls into its own "Unassigned" group rather than being
+  // dropped or crashing the grouping.
+  const nicheGroups = new Map();
+  data.campaigns.forEach((c) => {
+    const key = c.niche_id || "unassigned";
+    if (!nicheGroups.has(key)) nicheGroups.set(key, []);
+    nicheGroups.get(key).push(c);
+  });
+
+  const cardHtml = (c) => {
+    const display = campaignDisplayStatus(c);
+    const locationBadge = c.dominant_city_name ? `<span class="campaign-location-badge">${c.dominant_city_name}${c.dominant_country ? `, ${c.dominant_country}` : ""}</span>` : "";
+    return `
     <div class="campaign-card" data-campaign-id="${c.id}">
       <div class="campaign-card-top">
         <span class="campaign-name">${c.name}</span>
-        <span class="campaign-status-pill campaign-status-${c.status}">${CAMPAIGN_STATUS_LABEL[c.status] || c.status}</span>
+        <span class="campaign-status-pill campaign-status-${display.key}">${display.label}</span>
       </div>
+      ${locationBadge}
       ${campaignProgressBarHtml(c)}
       <div class="campaign-card-meta">Every ${c.min_gap_minutes}-${c.max_gap_minutes} min, up to ${c.max_per_day}/day · Created ${formatContactedTimestamp(c.created_at)}</div>
-    </div>`
-    )
+    </div>`;
+  };
+
+  list.innerHTML = Array.from(nicheGroups.entries())
+    .map(([nicheKey, campaigns]) => {
+      const nicheName = nicheKey === "unassigned" ? "Unassigned" : state.niches.find((n) => n.id === nicheKey)?.name || "Unknown niche";
+      return `
+      <div class="campaign-niche-group">
+        <h3 class="campaign-niche-heading">${nicheName}</h3>
+        <div class="campaigns-grid">${campaigns.map(cardHtml).join("")}</div>
+      </div>`;
+    })
     .join("");
 
   list.querySelectorAll(".campaign-card").forEach((card) => {
@@ -1726,7 +1873,7 @@ async function pollCampaignDetail(campaignId) {
   }
   const { campaign, leads } = data;
 
-  document.getElementById("campaignDetailScope").textContent = `${CAMPAIGN_STATUS_LABEL[campaign.status]}${campaign.pause_reason ? ` - ${campaign.pause_reason}` : ""}`;
+  document.getElementById("campaignDetailScope").textContent = `${campaignDisplayStatus(campaign).label}${campaign.pause_reason ? ` - ${campaign.pause_reason}` : ""}`;
 
   leads.forEach((l) => {
     const row = document.querySelector(`[data-lead-row-toggle="${l.id}"]`);
@@ -1762,7 +1909,7 @@ async function loadCampaignDetail(campaignId) {
   const { campaign, leads } = data;
 
   document.getElementById("campaignDetailTitle").textContent = campaign.name;
-  document.getElementById("campaignDetailScope").textContent = `${CAMPAIGN_STATUS_LABEL[campaign.status]}${campaign.pause_reason ? ` - ${campaign.pause_reason}` : ""}`;
+  document.getElementById("campaignDetailScope").textContent = `${campaignDisplayStatus(campaign).label}${campaign.pause_reason ? ` - ${campaign.pause_reason}` : ""}`;
 
   const actionsEl = document.getElementById("campaignDetailActions");
   const actions = [];
@@ -3146,6 +3293,8 @@ const state = {
   openNicheIds: new Set(),
   openCountryKeys: new Set(), // "nicheId:countryName" -> expanded in the Hunt tree
   selectedNicheId: null, // for the Hunt form's niche dropdown
+  contactedTrackingPage: 1,
+  contactedHistoryPage: 1,
 
   contentView: "huntForm", // "huntForm" | "board" | "reports" - which content panel is shown
   contactedPlatform: "hostinger", // "hostinger" | "gmail" - which platform's data the Contacted pages show
