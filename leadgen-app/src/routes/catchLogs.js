@@ -176,28 +176,38 @@ router.post("/:id/scrape/start", async (req, res) => {
     });
   }
 
-  // Same catch log already holds the lock - could mean a prior job is still
-  // actively running (double-click, or reopening the panel and clicking
-  // Start again). Check the scraper's own live status before allowing a
-  // reset+reimport, since doing that mid-job would corrupt the counts by
-  // wiping out businesses the scraper is still actively processing.
-  const existingLock = scraperService.getLock();
-  if (existingLock && existingLock.userId === userId && existingLock.catchLogId === Number(catchLogId)) {
-    try {
-      const liveStatus = await scraperService.getStatus();
-      if (liveStatus.job_running) {
+  // Check the scraper's own live status before resetting, regardless of
+  // whether our in-memory lock survived - that lock resets to null on
+  // every app restart/redeploy, but the scraper is a separate, longer-
+  // lived process whose own "is a job running" state doesn't reset just
+  // because we did. Skipping this check whenever our lock happened to be
+  // empty was the actual bug: after a restart, the app would forget any
+  // job was running and go straight to reset, which the scraper (still
+  // correctly remembering its own job) would keep rejecting - forever,
+  // since nothing ever told it to stop. Every attempt failed the same way
+  // until someone intervened manually.
+  try {
+    const liveStatus = await scraperService.getStatus();
+    if (liveStatus.job_running) {
+      const existingLock = scraperService.getLock();
+      const isOurs = existingLock && existingLock.userId === userId && existingLock.catchLogId === Number(catchLogId);
+      if (isOurs) {
         return res.status(409).json({
           error: "A scrape for this catch log is already running. Wait for it to finish, or use Stop first.",
         });
       }
-      // Lock exists but nothing is actually running (e.g. a previous run
-      // finished and just hasn't been polled/released yet) - safe to release
-      // it ourselves and proceed with a fresh start below.
-      scraperService.releaseLock();
-    } catch (err) {
-      // Can't reach the scraper to check - safer to refuse than to guess.
-      return res.status(502).json({ error: `Could not reach the scraper service to check its status: ${err.message}` });
+      // Running with no corresponding lock on our side - orphaned by an
+      // app restart, not a real in-progress job anyone is still waiting
+      // on. Safe to stop it and proceed rather than getting stuck.
+      console.warn(
+        `[scraper] Found an orphaned job running with no matching lock (likely left over from a restart) - stopping it before starting catch log ${catchLogId}.`
+      );
+      await scraperService.stopScrape();
     }
+    scraperService.releaseLock();
+  } catch (err) {
+    // Can't reach the scraper to check - safer to refuse than to guess.
+    return res.status(502).json({ error: `Could not reach the scraper service to check its status: ${err.message}` });
   }
 
   // Scoped to whatever the current view actually shows (same filters as

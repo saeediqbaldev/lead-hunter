@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.10-15.15";
+const APP_VERSION = "2026.08.10-15.16";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -58,6 +58,24 @@ async function api(url, opts) {
     throw new Error("Not authenticated");
   }
   return res;
+}
+
+// A genuine server hiccup - a brief restart window, a reverse-proxy
+// timeout - can return an HTML error page instead of JSON. Letting that
+// raw SyntaxError ("Unexpected token '<'...") surface directly to the
+// user is confusing and gives no idea what actually happened; this
+// turns it into a clear, actionable message instead.
+async function safeJson(res) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(
+      res.ok
+        ? "The server sent back something unexpected instead of a normal response - try again in a moment."
+        : `Server error (${res.status}) - the server didn't respond as expected. Try again in a moment.`
+    );
+  }
 }
 
 document.getElementById("logoutBtn").addEventListener("click", async () => {
@@ -3804,7 +3822,7 @@ async function pollScrapeStatus() {
 
   try {
     const res = await api(`/api/catch-logs/${catchLogId}/scrape/status`);
-    const status = await res.json();
+    const status = await safeJson(res);
 
     if (!status.active) {
       clearInterval(scrapePollTimer);
@@ -3853,7 +3871,7 @@ scrapeBtn.addEventListener("click", async () => {
     if (catchLogId) {
       try {
         const res = await api(`/api/catch-logs/${catchLogId}/scrape/status`);
-        const status = await res.json();
+        const status = await safeJson(res);
         if (status.active && status.jobRunning) {
           scrapePollTimer = setInterval(pollScrapeStatus, 2500);
         }
@@ -3883,7 +3901,7 @@ scrapeStartBtn.addEventListener("click", async () => {
     if (filterState.inspected) params.set("inspected", "1");
 
     const res = await api(`/api/catch-logs/${catchLogId}/scrape/start?${params.toString()}`, { method: "POST" });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (!res.ok) throw new Error(data.error || "Could not start scrape");
 
     scrapeStatusLine.textContent = `Scraping ${data.queued} business(es)…`;

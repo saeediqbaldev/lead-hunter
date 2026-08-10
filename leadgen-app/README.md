@@ -6,6 +6,36 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.16
+Fixed the Contact Scrape "Unexpected token '<'" error, diagnosed directly
+from real Coolify logs.
+
+- **Found the actual root cause**: the app tracks whether a scrape is
+  running with an in-memory lock, which resets to empty every time the
+  app restarts or redeploys - but the separate scraper service is a
+  longer-lived process whose own "is a job running" state doesn't reset
+  along with it. If the app restarted while the scraper was genuinely
+  still mid-job, the app would forget that entirely and go straight to
+  resetting on the next scrape attempt, which the scraper (correctly
+  remembering its own job) would keep rejecting with a 409 - forever,
+  since nothing ever told it to stop. The logs showed exactly this: the
+  same 409 repeating over and over with no recovery.
+- **Fixed**: the scraper's own live status is now always checked first,
+  regardless of whether the app's lock survived a restart. A job still
+  running with no matching lock on the app's side is by definition
+  orphaned - safe to stop automatically and proceed, rather than getting
+  stuck in the same failure loop indefinitely. Verified this exact
+  scenario directly (empty lock, scraper still reporting a running job)
+  and confirmed a scrape now starts successfully instead of looping.
+  Separately verified a genuinely active job from the same user is
+  still correctly blocked with a clear message, rather than accidentally
+  interrupting real in-progress work.
+- **Hardened the frontend too**, as a safety net for any other cause of
+  a non-JSON response (a brief restart window, a reverse-proxy timeout):
+  the raw "Unexpected token '<'..." parse error is replaced with a clear,
+  actionable message across all three scrape-related calls (start,
+  status polling, and resuming polling on reopen).
+
 ## What's in this V15.15
 A full dashboard inside each campaign - four tabs instead of one flat
 list.
