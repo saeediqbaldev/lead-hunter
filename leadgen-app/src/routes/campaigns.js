@@ -171,7 +171,7 @@ router.get("/:id", (req, res) => {
 
   const leads = db
     .prepare(
-      `SELECT ecl.id, ecl.status, ecl.error, ecl.sent_at, ecl.tracked_email_id, ecl.created_at,
+      `SELECT ecl.id, ecl.status, ecl.error, ecl.sent_at, ecl.tracked_email_id, ecl.created_at, ecl.touch_number, ecl.replied_at,
               l.id AS lead_id, l.name AS lead_name, l.socials, l.address, l.phone, l.website,
               te.subject AS sent_subject, te.status AS tracked_status, te.open_count, te.click_count, te.first_opened_at
        FROM email_campaign_leads ecl
@@ -258,6 +258,30 @@ router.post("/:id/leads/:leadRowId/retry", requireOwnedCampaign, (req, res) => {
     db.prepare("UPDATE email_campaigns SET status = 'running', paused_at = NULL, pause_reason = NULL WHERE id = ?").run(req.campaign.id);
   }
   res.json({ ok: true });
+});
+
+// POST /api/campaigns/:id/leads/bulk-delete { leadRowIds: [...] } - removes
+// one or more leads from this campaign's roster. Doesn't touch the linked
+// tracked_email - a deleted row that was already sent stays fully visible
+// in Tracking/History, this only removes it from THIS campaign's own view.
+// Refuses to delete a row the scheduler is actively mid-processing right
+// now, to avoid a race with whatever it's in the middle of doing.
+router.post("/:id/leads/bulk-delete", requireOwnedCampaign, (req, res) => {
+  const { leadRowIds } = req.body || {};
+  if (!Array.isArray(leadRowIds) || leadRowIds.length === 0) return res.status(400).json({ error: "leadRowIds must be a non-empty array" });
+
+  const placeholders = leadRowIds.map(() => "?").join(",");
+  const rows = db
+    .prepare(`SELECT id, status FROM email_campaign_leads WHERE campaign_id = ? AND id IN (${placeholders})`)
+    .all(req.campaign.id, ...leadRowIds);
+
+  const busy = rows.filter((r) => ["inspecting", "generating", "sending"].includes(r.status));
+  if (busy.length) {
+    return res.status(409).json({ error: "One or more selected leads are actively being processed right now - try again in a moment." });
+  }
+
+  const info = db.prepare(`DELETE FROM email_campaign_leads WHERE campaign_id = ? AND id IN (${placeholders})`).run(req.campaign.id, ...leadRowIds);
+  res.json({ ok: true, deleted: info.changes });
 });
 
 router.post("/:id/cancel", requireOwnedCampaign, (req, res) => {

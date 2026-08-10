@@ -6,6 +6,40 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.15
+A full dashboard inside each campaign - four tabs instead of one flat
+list.
+
+- **Emails List** - every lead in the campaign, any status, with
+  checkboxes and a "Delete selected" bulk action to remove leads from
+  the campaign's roster (doesn't touch already-sent emails' history in
+  Tracking/History - only removes them from this campaign's own view).
+  Guards against deleting a lead the scheduler is actively mid-processing
+  right now, to avoid a race.
+- **Sent** - filtered to successfully sent emails, read-only.
+- **Replied** - filtered to leads with a genuine reply detected, read-only.
+- **Report** - campaign-scoped stats (sent, opened, clicked, replied,
+  failed, skipped, with rates), computed from the same data already
+  loaded rather than a separate round trip.
+- All three list tabs share the same rich per-lead expand panel from
+  before (subject, engagement, retry/skip for failed leads, full
+  Inspection/Content/Website detail) - nothing from the existing detail
+  view was lost in restructuring it into tabs.
+- **Caught and fixed a real bug while building this**: live campaign
+  status polling located cells by column position, which the new
+  checkbox column would have silently broken (a second time - this
+  exact class of bug happened once before with an earlier column
+  addition). Fixed properly this time with explicit data attributes
+  instead of position, so future column changes can't cause the same
+  problem again. Verified directly that polling updates the correct
+  cells without disturbing others.
+- Verified end-to-end with a realistic mixed dataset (sent, replied,
+  failed, skipped, pending all present at once): correct counts on every
+  tab, correct filtering, bulk delete correctly removing a lead and the
+  Report tab's numbers correctly reflecting it afterward. Also verified
+  the tab bar stays correctly hidden during campaign creation and
+  editing, which reuse the same view.
+
 ## What's in this V15.14
 Mobile header cleanup and per-campaign notification muting.
 

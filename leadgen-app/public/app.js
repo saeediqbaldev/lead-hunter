@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.10-15.14";
+const APP_VERSION = "2026.08.10-15.15";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -1546,6 +1546,7 @@ async function showCampaignCreationForm() {
   document.getElementById("campaignDetailTitle").textContent = "New Campaign";
   document.getElementById("campaignDetailScope").textContent = "Set up an automated sending run";
   document.getElementById("campaignDetailActions").innerHTML = "";
+  document.getElementById("campaignDetailTabs").style.display = "none";
 
   const [nichesRes] = await Promise.all([api("/api/niches")]);
   const niches = await nichesRes.json();
@@ -1758,6 +1759,7 @@ function showCampaignEditForm(campaign) {
   document.getElementById("campaignDetailScope").textContent = "Reconfigure this campaign - the lead scope (niche/city) can't be changed after creation";
   document.getElementById("campaignDetailActions").innerHTML = `<button class="icon-toggle-btn" data-campaign-action="cancel-edit" title="Back"><i class="bi bi-arrow-left"></i></button>`;
   document.getElementById("campaignDetailActions").querySelector("[data-campaign-action]").addEventListener("click", () => loadCampaignDetail(campaign.id));
+  document.getElementById("campaignDetailTabs").style.display = "none";
 
   const body = document.getElementById("campaignDetailBody");
   body.innerHTML = `
@@ -1903,16 +1905,21 @@ async function pollCampaignDetail(campaignId) {
     return; // transient network hiccup - try again on the next tick
   }
   const { campaign, leads } = data;
+  campaignDetailCache = data; // keep the tab-switch cache in sync with what polling just saw
 
   document.getElementById("campaignDetailScope").textContent = `${campaignDisplayStatus(campaign).label}${campaign.pause_reason ? ` - ${campaign.pause_reason}` : ""}`;
 
   leads.forEach((l) => {
     const row = document.querySelector(`[data-lead-row-toggle="${l.id}"]`);
     if (!row) return;
-    const statusCell = row.children[4];
-    const sentCell = row.children[5];
-    const newStatusHtml = `<span class="contacted-status-pill campaign-lead-${l.status}"><i class="bi ${CAMPAIGN_LEAD_STATUS_ICON[l.status] || "bi-circle"}"></i> ${l.status}</span>`;
-    if (statusCell.innerHTML !== newStatusHtml) statusCell.innerHTML = newStatusHtml;
+    const statusCell = row.querySelector('[data-role="status"]');
+    const sentCell = row.querySelector('[data-role="sent"]');
+    if (!statusCell || !sentCell) return;
+    const newStatusHtml = `<i class="bi ${CAMPAIGN_LEAD_STATUS_ICON[l.status] || "bi-circle"}"></i> ${l.status}`;
+    if (statusCell.innerHTML !== newStatusHtml) {
+      statusCell.innerHTML = newStatusHtml;
+      statusCell.className = `contacted-status-pill campaign-lead-${l.status}`;
+    }
     sentCell.textContent = formatContactedTimestamp(l.sent_at);
   });
 
@@ -1932,12 +1939,15 @@ function startCampaignDetailPolling(campaignId) {
   campaignDetailPollTimer = setInterval(() => pollCampaignDetail(campaignId), 3000);
 }
 
+let campaignDetailCache = null; // { campaign, leads } for the currently-viewed campaign - avoids re-fetching on every tab switch
+
 async function loadCampaignDetail(campaignId) {
   stopCampaignDetailPolling();
   setContentView("contacted-campaign-detail");
   const res = await api(`/api/campaigns/${campaignId}`);
   const data = await res.json();
-  const { campaign, leads } = data;
+  campaignDetailCache = data;
+  const { campaign } = data;
 
   document.getElementById("campaignDetailTitle").textContent = campaign.name;
   document.getElementById("campaignDetailScope").textContent = `${campaignDisplayStatus(campaign).label}${campaign.pause_reason ? ` - ${campaign.pause_reason}` : ""}`;
@@ -1985,29 +1995,108 @@ async function loadCampaignDetail(campaignId) {
     });
   });
 
+  if (!state.campaignDetailTab) state.campaignDetailTab = "emails";
+  renderCampaignDetailTabs();
+  renderActiveCampaignTab();
+
+  if (campaign.status === "running") startCampaignDetailPolling(campaign.id);
+}
+
+// The tab bar itself - shown only while viewing an existing campaign
+// (the create/edit forms reuse the same view but leave this hidden).
+function renderCampaignDetailTabs() {
+  const { leads } = campaignDetailCache;
+  const sentCount = leads.filter((l) => l.status === "sent").length;
+  const repliedCount = leads.filter((l) => l.replied_at).length;
+  const tabsEl = document.getElementById("campaignDetailTabs");
+  tabsEl.style.display = "flex";
+  const tabs = [
+    { key: "emails", label: "Emails List", count: leads.length },
+    { key: "sent", label: "Sent", count: sentCount },
+    { key: "replied", label: "Replied", count: repliedCount },
+    { key: "report", label: "Report", count: null },
+  ];
+  tabsEl.innerHTML = tabs
+    .map(
+      (t) =>
+        `<button type="button" class="campaign-detail-tab ${state.campaignDetailTab === t.key ? "active" : ""}" data-campaign-tab="${t.key}">${t.label}${
+          t.count != null ? ` <span class="campaign-tab-count">${t.count}</span>` : ""
+        }</button>`
+    )
+    .join("");
+  tabsEl.querySelectorAll("[data-campaign-tab]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.campaignDetailTab = btn.dataset.campaignTab;
+      renderCampaignDetailTabs();
+      renderActiveCampaignTab();
+    });
+  });
+}
+
+function renderActiveCampaignTab() {
+  const { campaign, leads } = campaignDetailCache;
   const bodyEl = document.getElementById("campaignDetailBody");
+  if (state.campaignDetailTab === "emails") {
+    renderCampaignLeadsTable(bodyEl, campaign, leads, { selectable: true, emptyMessage: "No leads in this campaign yet." });
+  } else if (state.campaignDetailTab === "sent") {
+    renderCampaignLeadsTable(bodyEl, campaign, leads.filter((l) => l.status === "sent"), { emptyMessage: "No emails sent yet." });
+  } else if (state.campaignDetailTab === "replied") {
+    renderCampaignLeadsTable(bodyEl, campaign, leads.filter((l) => l.replied_at), { emptyMessage: "No replies yet." });
+  } else if (state.campaignDetailTab === "report") {
+    renderCampaignReportTab(bodyEl, campaign, leads);
+  }
+}
+
+// Shared by the "Emails List", "Sent", and "Replied" tabs - all three
+// show the same row shape, just filtered differently, with select+delete
+// only enabled where it makes sense ("Emails List", the full roster).
+function renderCampaignLeadsTable(bodyEl, campaign, leads, { selectable = false, emptyMessage = "Nothing here yet." } = {}) {
+  if (!leads.length) {
+    bodyEl.innerHTML = `<p class="hint" style="padding:20px 0;">${emptyMessage}</p>`;
+    return;
+  }
+
+  const colCount = selectable ? 7 : 6;
+  const selectHeader = selectable ? `<th style="width:24px;"><input type="checkbox" data-campaign-select-all></th>` : "";
+  const bulkBar = selectable
+    ? `<div class="campaign-bulk-actions" data-campaign-bulk-bar style="display:none;">
+         <span data-campaign-bulk-count></span>
+         <button type="button" class="small-btn danger-btn" data-action="bulk-delete-campaign-leads"><i class="bi bi-trash"></i> Delete selected</button>
+       </div>`
+    : "";
+
   bodyEl.innerHTML = `
+    ${bulkBar}
     <table class="contacted-table campaign-detail-table">
-      <thead><tr><th style="width:36px;">S/N</th><th style="width:20px;"></th><th>Lead</th><th>Recipient</th><th>Status</th><th>Sent</th></tr></thead>
+      <thead><tr>${selectHeader}<th style="width:36px;">S/N</th><th style="width:20px;"></th><th>Lead</th><th>Recipient</th><th>Status</th><th>Sent</th></tr></thead>
       <tbody>
         ${leads
           .map((l, i) => {
             const openInfo = l.open_count != null ? `${l.open_count} open(s)${l.click_count ? `, ${l.click_count} click(s)` : ""}` : "";
+            const selectCell = selectable
+              ? `<td><input type="checkbox" class="campaign-lead-select" data-lead-row-id="${l.id}" onclick="event.stopPropagation()"></td>`
+              : "";
+            const repliedBadge = l.replied_at
+              ? ` <span class="contacted-status-pill clicked" title="Replied ${formatContactedTimestamp(l.replied_at)}"><i class="bi bi-reply-fill"></i> replied</span>`
+              : "";
+            const touchBadge = l.touch_number > 1 ? ` <span class="hint">touch ${l.touch_number}</span>` : "";
             return `
           <tr class="campaign-lead-row" data-lead-row-toggle="${l.id}" data-lead-id="${l.lead_id}">
+            ${selectCell}
             <td class="hint">${i + 1}</td>
             <td><i class="bi bi-chevron-right campaign-row-chevron" data-chevron="${l.id}"></i></td>
             <td>${l.lead_name}</td>
             <td>${l.recipient_email || "—"}</td>
-            <td><span class="contacted-status-pill campaign-lead-${l.status}"><i class="bi ${CAMPAIGN_LEAD_STATUS_ICON[l.status] || "bi-circle"}"></i> ${l.status}</span></td>
-            <td>${formatContactedTimestamp(l.sent_at)}</td>
+            <td><span class="contacted-status-pill campaign-lead-${l.status}" data-role="status"><i class="bi ${CAMPAIGN_LEAD_STATUS_ICON[l.status] || "bi-circle"}"></i> ${l.status}</span>${touchBadge}${repliedBadge}</td>
+            <td data-role="sent">${formatContactedTimestamp(l.sent_at)}</td>
           </tr>
           <tr class="campaign-lead-detail-row" id="campaign-detail-${l.id}" style="display:none;">
-            <td colspan="6">
+            <td colspan="${colCount}">
               <div class="campaign-lead-detail">
                 ${l.sent_subject ? `<div><b>Subject:</b> ${l.sent_subject}</div>` : ""}
                 ${openInfo ? `<div><b>Engagement:</b> ${openInfo}</div>` : ""}
                 ${l.first_opened_at ? `<div><b>First opened:</b> ${formatContactedTimestamp(l.first_opened_at)}</div>` : ""}
+                ${l.replied_at ? `<div><b>Replied:</b> ${formatContactedTimestamp(l.replied_at)}</div>` : ""}
                 ${l.error ? `<div style="color:var(--danger);"><b>Error:</b> ${l.error}</div>` : ""}
                 ${
                   l.status === "failed"
@@ -2089,8 +2178,77 @@ async function loadCampaignDetail(campaignId) {
     });
   });
 
-  if (campaign.status === "running") startCampaignDetailPolling(campaign.id);
+  if (!selectable) return;
+
+  const bulkBarEl = bodyEl.querySelector("[data-campaign-bulk-bar]");
+  const bulkCountEl = bodyEl.querySelector("[data-campaign-bulk-count]");
+  function refreshBulkBar() {
+    const checked = bodyEl.querySelectorAll(".campaign-lead-select:checked");
+    bulkBarEl.style.display = checked.length ? "flex" : "none";
+    bulkCountEl.textContent = `${checked.length} selected`;
+  }
+  bodyEl.querySelectorAll(".campaign-lead-select").forEach((cb) => cb.addEventListener("change", refreshBulkBar));
+  bodyEl.querySelector("[data-campaign-select-all]").addEventListener("change", (e) => {
+    bodyEl.querySelectorAll(".campaign-lead-select").forEach((cb) => (cb.checked = e.target.checked));
+    refreshBulkBar();
+  });
+  bodyEl.querySelector('[data-action="bulk-delete-campaign-leads"]').addEventListener("click", async () => {
+    const ids = Array.from(bodyEl.querySelectorAll(".campaign-lead-select:checked")).map((cb) => cb.dataset.leadRowId);
+    if (!ids.length) return;
+    const confirmed = await openModal({
+      title: `Remove ${ids.length} lead${ids.length === 1 ? "" : "s"} from this campaign?`,
+      message: "Already-sent emails stay fully visible in Tracking/History - this only removes them from this campaign's own roster. This cannot be undone.",
+      confirmText: "Remove",
+      danger: true,
+    });
+    if (!confirmed) return;
+    try {
+      await api(`/api/campaigns/${campaign.id}/leads/bulk-delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadRowIds: ids.map(Number) }),
+      });
+      showToast(`Removed ${ids.length} lead${ids.length === 1 ? "" : "s"}`, "success");
+      loadCampaignDetail(campaign.id);
+    } catch (err) {
+      showToast(`Couldn't remove: ${err.message}`, "error");
+    }
+  });
 }
+
+// The "Report" tab - campaign-scoped stats, computed client-side from the
+// already-fetched leads array rather than a separate backend round trip.
+function renderCampaignReportTab(bodyEl, campaign, leads) {
+  const sent = leads.filter((l) => l.status === "sent").length;
+  const opened = leads.filter((l) => l.tracked_status === "opened" || l.tracked_status === "clicked").length;
+  const clicked = leads.filter((l) => l.tracked_status === "clicked").length;
+  const replied = leads.filter((l) => l.replied_at).length;
+  const failed = leads.filter((l) => l.status === "failed").length;
+  const skipped = leads.filter((l) => l.status === "skipped").length;
+  const pct = (n) => (sent > 0 ? Math.round((n / sent) * 100) : 0);
+
+  const cards = [
+    { label: "Total leads", value: leads.length, color: "#ece7dd" },
+    { label: "Sent", value: sent, color: "#ece7dd" },
+    { label: "Opened", value: `${opened} (${pct(opened)}%)`, color: "var(--warn)" },
+    { label: "Clicked", value: `${clicked} (${pct(clicked)}%)`, color: "var(--good)" },
+    { label: "Replied", value: `${replied} (${pct(replied)}%)`, color: "var(--accent)" },
+    { label: "Failed", value: failed, color: "var(--danger)" },
+    { label: "Skipped", value: skipped, color: "var(--text-muted)" },
+  ];
+
+  bodyEl.innerHTML = `
+    <div class="contacted-stats-row">
+      ${cards.map((c) => `<div class="contacted-stat-card"><div class="num" style="color:${c.color};">${c.value}</div><div class="label">${c.label}</div></div>`).join("")}
+    </div>
+    ${
+      campaign.followup_enabled
+        ? `<p class="hint" style="margin-top:14px;">Follow-ups: up to ${campaign.followup_max_count}, ${campaign.followup_wait_days} day(s) apart. A reply stops further follow-ups for that lead automatically.</p>`
+        : ""
+    }
+  `;
+}
+
 
 const signatureEditor = document.getElementById("signatureEditor");
 const signatureSourceInput = document.getElementById("signatureSourceInput");
