@@ -6,6 +6,27 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.14
+Mobile header cleanup and per-campaign notification muting.
+
+- **Mobile header rebuilt to fit on one row** - theme switch and logout
+  moved into a 3-dot overflow menu, with the logo, daily lead cap ring,
+  and campaign sending indicator all shrunk down. Verified at iPhone SE
+  width with zero horizontal overflow (previously it wrapped to a second
+  row), the overflow menu opening and its theme toggle actually working,
+  and confirmed desktop is completely unaffected - the original buttons
+  stay fully functional there, just visually hidden on mobile.
+- **Per-campaign alert muting** - mute "opened" and/or "clicked" alerts
+  independently for any campaign, updatable anytime from its settings
+  (not just at creation). The open/click itself is always fully
+  recorded either way - muting only suppresses the alert, never the
+  underlying tracking data or your Reports numbers. Verified end-to-end
+  through the actual production pixel/click routes (not just direct
+  database writes): a muted open correctly updated status and open_count
+  but created zero notifications, while an unmuted click on the same
+  campaign correctly created one - confirming the two settings work
+  independently of each other, not as a single combined toggle.
+
 ## What's in this V15.13
 The Contacted Reports chart width bug, a donut view toggle, the "stuck
 Running" campaign bug, a niche-grouped campaign grid, and pagination for

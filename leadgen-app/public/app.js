@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.10-15.13";
+const APP_VERSION = "2026.08.10-15.14";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -68,6 +68,23 @@ document.getElementById("logoutBtn").addEventListener("click", async () => {
   } finally {
     window.location.href = "/login";
   }
+});
+
+document.getElementById("headerOverflowThemeBtn").addEventListener("click", () => {
+  document.getElementById("themeShortcutBtn").click();
+  document.getElementById("headerOverflowMenu").style.display = "none";
+});
+document.getElementById("headerOverflowLogoutBtn").addEventListener("click", () => {
+  document.getElementById("logoutBtn").click();
+});
+document.getElementById("headerOverflowBtn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const menu = document.getElementById("headerOverflowMenu");
+  menu.style.display = menu.style.display === "none" ? "block" : "none";
+});
+document.addEventListener("click", (e) => {
+  const menu = document.getElementById("headerOverflowMenu");
+  if (menu.style.display !== "none" && !e.target.closest(".header-overflow-wrap")) menu.style.display = "none";
 });
 
 // ---------- Settings modal (Google Places API keys, set from the UI) ----------
@@ -1597,6 +1614,11 @@ async function showCampaignCreationForm() {
       <label class="site-field-label">Wait between touches (days)<input type="number" data-campaign-followup-wait-days value="3" min="1" style="width:90px;"></label>
     </div>
 
+    <h3 class="settings-subheading" style="margin-top:16px;">Alert notifications</h3>
+    <p class="hint">The open/click itself is always recorded either way - this only controls whether it also creates an alert.</p>
+    <label class="site-visuals-toggle"><input type="checkbox" data-campaign-mute-opened /> Mute "opened" alerts for this campaign</label>
+    <label class="site-visuals-toggle"><input type="checkbox" data-campaign-mute-clicked /> Mute "clicked" alerts for this campaign</label>
+
     <div style="display:flex; gap:8px; margin-top:12px;">
       <button type="button" class="site-generate-btn" data-action="create-campaign"><i class="bi bi-send-fill"></i> Create Campaign</button>
       <button type="button" class="small-btn" data-action="cancel-campaign-form">Cancel</button>
@@ -1701,6 +1723,8 @@ async function showCampaignCreationForm() {
         followupEnabled: body.querySelector("[data-campaign-followup-enabled]").checked,
         followupMaxCount: parseInt(body.querySelector("[data-campaign-followup-max-count]").value, 10) || 2,
         followupWaitDays: parseInt(body.querySelector("[data-campaign-followup-wait-days]").value, 10) || 3,
+        muteOpenedAlerts: body.querySelector("[data-campaign-mute-opened]").checked,
+        muteClickedAlerts: body.querySelector("[data-campaign-mute-clicked]").checked,
       };
       if (!payload.name) {
         resultEl.style.display = "block";
@@ -1782,6 +1806,11 @@ function showCampaignEditForm(campaign) {
       <label class="site-field-label">Wait between touches (days)<input type="number" data-edit-followup-wait-days value="${campaign.followup_wait_days}" min="1" style="width:90px;"></label>
     </div>
 
+    <h3 class="settings-subheading" style="margin-top:16px;">Alert notifications</h3>
+    <p class="hint">The open/click itself is always recorded either way - this only controls whether it also creates an alert. Updatable anytime.</p>
+    <label class="site-visuals-toggle"><input type="checkbox" data-edit-mute-opened ${campaign.mute_opened_alerts ? "checked" : ""} /> Mute "opened" alerts for this campaign</label>
+    <label class="site-visuals-toggle"><input type="checkbox" data-edit-mute-clicked ${campaign.mute_clicked_alerts ? "checked" : ""} /> Mute "clicked" alerts for this campaign</label>
+
     <div style="display:flex; gap:8px; margin-top:12px;">
       <button type="button" class="site-generate-btn" data-action="save-campaign-edit">Save changes</button>
       <button type="button" class="small-btn" data-action="cancel-campaign-edit">Cancel</button>
@@ -1820,6 +1849,8 @@ function showCampaignEditForm(campaign) {
         followupEnabled: body.querySelector("[data-edit-followup-enabled]").checked,
         followupMaxCount: parseInt(body.querySelector("[data-edit-followup-max-count]").value, 10) || 2,
         followupWaitDays: parseInt(body.querySelector("[data-edit-followup-wait-days]").value, 10) || 3,
+        muteOpenedAlerts: body.querySelector("[data-edit-mute-opened]").checked,
+        muteClickedAlerts: body.querySelector("[data-edit-mute-clicked]").checked,
       };
       const res = await api(`/api/campaigns/${campaign.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await res.json();
@@ -2619,6 +2650,13 @@ function syncThemeShortcutBtn() {
   const isLight = currentTheme.mode === "light";
   btn.innerHTML = `<i class="bi ${isLight ? "bi-sun-fill" : "bi-moon-stars-fill"}"></i>`;
   btn.title = isLight ? "Switch to dark mode" : "Switch to light mode";
+
+  const overflowLabel = document.getElementById("headerOverflowThemeLabel");
+  const overflowBtn = document.getElementById("headerOverflowThemeBtn");
+  if (overflowLabel && overflowBtn) {
+    overflowLabel.textContent = isLight ? "Switch to dark mode" : "Switch to light mode";
+    overflowBtn.querySelector("i").className = `bi ${isLight ? "bi-sun-fill" : "bi-moon-stars-fill"}`;
+  }
 }
 
 document.getElementById("themeShortcutBtn").addEventListener("click", async () => {

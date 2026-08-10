@@ -431,6 +431,18 @@ body {
 .whatsapp-icon:hover { color: #a9e0b3; }
 
 .topbar-right { display: flex; align-items: center; gap: 16px; }
+.header-overflow-wrap { position: relative; display: none; }
+.header-overflow-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 50;
+  background: var(--panel-raised); border: 1px solid var(--border); border-radius: 8px;
+  min-width: 170px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+}
+.header-overflow-menu button {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  background: none; border: none; color: var(--text); font-size: 13px; padding: 8px 10px;
+  border-radius: 5px; cursor: pointer;
+}
+.header-overflow-menu button:hover { background: rgba(255,255,255,0.05); }
 
 /* ---------- Themed dropdown (replaces native <select> for niche picking) ---------- */
 .theme-dropdown { position: relative; margin-bottom: 4px; }
@@ -1848,13 +1860,34 @@ a.site-generate-btn { color: #1a1310; }
 @media (max-width: 900px) {
   .mobile-nav-toggle-btn { display: inline-flex; align-items: center; }
 
-  .topbar { padding: 12px 14px; gap: 8px; }
-  .brand-name { font-size: 18px; }
+  .topbar { padding: 10px 10px; gap: 6px; }
+  .brand { gap: 5px; }
+  .brand-mark { font-size: 17px; }
+  .brand-name { font-size: 14px; }
   .version-tag { display: none; }
   .username-tag { display: none; }
-  .topbar-right { gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-  .quota-text small { display: none; }
-  .header-campaign-indicator span#headerCampaignCount { font-size: 11px; }
+  .topbar-right { gap: 4px; flex-wrap: nowrap; justify-content: flex-end; }
+
+  /* Theme/logout move into the 3-dot overflow menu on mobile - the
+     original buttons stay in the DOM (so their click handlers and any
+     desktop-only logic keep working untouched) but are visually hidden,
+     while the overflow menu's own buttons just click them by proxy. */
+  #themeShortcutBtn, #logoutBtn { display: none; }
+  .header-overflow-wrap { display: block; }
+
+  /* Daily lead cap ring: icon-only, no numeric/label text, so it reads
+     as a compact progress indicator rather than eating row width. */
+  .quota { gap: 0; padding: 0; }
+  .quota-ring { width: 26px; height: 26px; }
+  .quota-text { display: none; }
+
+  /* Campaign sending indicator: icon plus the count only, no title text
+     competing for space (still available via the title attribute on
+     hover/long-press). */
+  .header-campaign-indicator { padding: 4px 6px; gap: 4px; }
+  .header-campaign-indicator span#headerCampaignCount { font-size: 10px; }
+
+  .small-btn.icon-btn-labeled { padding: 5px 7px; }
 
   .layout {
     grid-template-columns: 1fr;

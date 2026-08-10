@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="Xeven Leads" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=1513" />
+<link rel="stylesheet" href="style.css?v=1514" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -61,6 +61,14 @@
       </button>
       <button id="themeShortcutBtn" class="small-btn icon-btn-labeled" title="Switch to light mode"><i class="bi bi-moon-stars-fill"></i></button>
       <button id="logoutBtn" class="small-btn icon-btn-labeled" title="Log out"><i class="bi bi-power"></i></button>
+
+      <div class="header-overflow-wrap">
+        <button id="headerOverflowBtn" class="small-btn icon-btn-labeled" title="More"><i class="bi bi-three-dots-vertical"></i></button>
+        <div id="headerOverflowMenu" class="header-overflow-menu" style="display:none;">
+          <button type="button" id="headerOverflowThemeBtn"><i class="bi bi-moon-stars-fill"></i> <span id="headerOverflowThemeLabel">Switch to light mode</span></button>
+          <button type="button" id="headerOverflowLogoutBtn"><i class="bi bi-power"></i> Log out</button>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -1019,7 +1027,7 @@
 
 
 
-  <script src="app.js?v=1513"></script>
+  <script src="app.js?v=1514"></script>
   <script src="pwa-install.js"></script>
 </body>
 </html>

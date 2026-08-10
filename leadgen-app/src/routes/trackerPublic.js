@@ -23,6 +23,27 @@ function autoPinLeadForEmail(trackedEmailId, reason) {
   }
 }
 
+// Checks whether the campaign behind a tracked email has muted this
+// specific alert type ("open" or "click"). Same lookup pattern as
+// autoPinLeadForEmail above - a manually-sent email (no campaign link)
+// is never muted, since there's no campaign setting to apply to it.
+function isAlertMuted(trackedEmailId, alertType) {
+  try {
+    const column = alertType === "click" ? "mute_clicked_alerts" : "mute_opened_alerts";
+    const row = db
+      .prepare(
+        `SELECT c.${column} AS muted FROM email_campaign_leads ecl
+         JOIN email_campaigns c ON c.id = ecl.campaign_id
+         WHERE ecl.tracked_email_id = ? LIMIT 1`
+      )
+      .get(trackedEmailId);
+    return !!row?.muted;
+  } catch (err) {
+    console.error("[alert-mute] Failed to check mute status for tracked email", trackedEmailId, ":", err.message);
+    return false; // fail open - a lookup error shouldn't silently suppress a real alert
+  }
+}
+
 
 const TRANSPARENT_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
@@ -201,7 +222,7 @@ router.get("/t/:id/pixel.png", (req, res) => {
 
           autoPinLeadForEmail(id, "Email Seen");
 
-          if (isFirstOpen) {
+          if (isFirstOpen && !isAlertMuted(id, "open")) {
             const recipients = JSON.parse(email.recipients || "[]");
             const who = recipients.join(", ") || "unknown recipient";
             const subj = email.subject || "(no subject)";
@@ -275,7 +296,7 @@ router.get("/t/:id/click", (req, res) => {
         .catch(() => {});
 
       const email = db.prepare("SELECT subject, recipients, user_id FROM tracked_emails WHERE id = ?").get(id);
-      if (email) {
+      if (email && !isAlertMuted(id, "click")) {
         const recipients = JSON.parse(email.recipients || "[]");
         const who = recipients.join(", ") || "unknown recipient";
         const subj = email.subject || "(no subject)";

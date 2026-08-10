@@ -651,6 +651,8 @@ CREATE TABLE IF NOT EXISTS email_campaigns (
   followup_enabled INTEGER NOT NULL DEFAULT 0,
   followup_max_count INTEGER NOT NULL DEFAULT 2,
   followup_wait_days INTEGER NOT NULL DEFAULT 3,
+  mute_opened_alerts INTEGER NOT NULL DEFAULT 0,
+  mute_clicked_alerts INTEGER NOT NULL DEFAULT 0,
   pause_reason TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   started_at TEXT,
@@ -738,6 +740,10 @@ CREATE INDEX IF NOT EXISTS idx_app_notifications_read ON app_notifications(is_re
     db.exec("ALTER TABLE email_campaigns ADD COLUMN followup_enabled INTEGER NOT NULL DEFAULT 0");
     db.exec("ALTER TABLE email_campaigns ADD COLUMN followup_max_count INTEGER NOT NULL DEFAULT 2");
     db.exec("ALTER TABLE email_campaigns ADD COLUMN followup_wait_days INTEGER NOT NULL DEFAULT 3");
+  }
+  if (!campaignCols.includes("mute_opened_alerts")) {
+    db.exec("ALTER TABLE email_campaigns ADD COLUMN mute_opened_alerts INTEGER NOT NULL DEFAULT 0");
+    db.exec("ALTER TABLE email_campaigns ADD COLUMN mute_clicked_alerts INTEGER NOT NULL DEFAULT 0");
   }
   const campaignLeadCols = db.prepare("PRAGMA table_info(email_campaign_leads)").all().map((c) => c.name);
   if (!campaignLeadCols.includes("touch_number")) {
