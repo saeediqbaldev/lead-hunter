@@ -13,7 +13,7 @@ const FIRST_CHECK_LOOKBACK_DAYS = 30;
 // so several of the common non-standard alternatives are checked too -
 // this is genuinely a "check everything you can, trust none of them
 // alone" situation industry-wide, not a shortcut specific to this app.
-const AUTO_REPLY_HEADER_NAMES = ["auto-submitted", "x-autoreply", "x-autorespond", "precedence"];
+const AUTO_REPLY_HEADER_NAMES = ["auto-submitted", "x-autoreply", "x-autorespond", "precedence", "content-type"];
 
 // Subject-line fallback for systems that set none of the above headers
 // at all - out-of-office tools and legacy autoresponders are
@@ -30,6 +30,29 @@ function isAutomatedReply(envelope, headersBuffer) {
   if (/^precedence:\s*(bulk|auto_reply|list)\b/im.test(headersText)) return true;
 
   return false;
+}
+
+// Deliberately stricter than isAutomatedReply above - that one only
+// decides "don't count this as a reply," a low-stakes call to get
+// slightly wrong. This one decides "move this email out of the inbox,"
+// which needs to be right essentially every time. The RFC 3464 marker
+// is trusted on its own since real mail practically never carries it;
+// the subject/sender signals are only trusted in combination, never
+// individually, since either alone is exactly the kind of thing a
+// legitimate email could coincidentally match.
+const BOUNCE_SUBJECT_PATTERN = /^(undeliverable|undelivered mail|mail delivery (failed|failure)|delivery status notification|returned mail|failure notice|mail system error)/i;
+const BOUNCE_SENDER_PATTERN = /^(mailer-daemon|postmaster|mail delivery subsystem)/i;
+
+function isBounceMessage(envelope, headersBuffer) {
+  const headersText = (headersBuffer ? headersBuffer.toString("utf8") : "").toLowerCase();
+  if (/content-type:[^\r\n]*(multipart\/report|report-type=delivery-status)/i.test(headersText)) return true;
+
+  const subject = (envelope?.subject || "").trim();
+  const fromAddress = extractEmailAddress(envelope?.from) || "";
+  const fromName = (envelope?.from?.[0]?.name || "").trim();
+  const senderLooksSystemic = BOUNCE_SENDER_PATTERN.test(fromAddress) || BOUNCE_SENDER_PATTERN.test(fromName);
+
+  return BOUNCE_SUBJECT_PATTERN.test(subject) && senderLooksSystemic;
 }
 
 function extractEmailAddress(fromField) {
@@ -69,6 +92,9 @@ async function checkRepliesForUser(userId) {
   // run, which was the root of the "six replies at the same minute"
   // confusion on the very first check after this feature shipped.
   let genuineReplies = new Map();
+  const bounceUids = [];
+  const bounceSummary = [];
+  const MAX_BOUNCES_PER_CYCLE = 200; // defensive cap - if detection ever misbehaves, this limits the blast radius to one cycle's worth rather than the whole mailbox
   try {
     await client.connect();
     const lock = await client.getMailboxLock("INBOX");
@@ -76,12 +102,42 @@ async function checkRepliesForUser(userId) {
       const uids = await client.search({ since: sinceDate }, { uid: true });
       if (Array.isArray(uids) && uids.length) {
         for await (const message of client.fetch(uids, { envelope: true, headers: AUTO_REPLY_HEADER_NAMES }, { uid: true })) {
-          if (isAutomatedReply(message.envelope, message.headers)) continue; // out-of-office, bounce, or bulk-mail marker - not a real reply
+          if (isBounceMessage(message.envelope, message.headers)) {
+            if (bounceUids.length < MAX_BOUNCES_PER_CYCLE) {
+              bounceUids.push(message.uid);
+              bounceSummary.push({ from: extractEmailAddress(message.envelope?.from), subject: message.envelope?.subject || "(no subject)" });
+            }
+            continue; // never counts as a reply either, regardless of the weaker auto-reply signals below
+          }
+          if (isAutomatedReply(message.envelope, message.headers)) continue; // out-of-office or bulk-mail marker - not a real reply
           const address = extractEmailAddress(message.envelope?.from);
           if (!address) continue;
           const messageDate = message.envelope?.date instanceof Date ? message.envelope.date : new Date();
           const existing = genuineReplies.get(address);
           if (!existing || messageDate < existing) genuineReplies.set(address, messageDate);
+        }
+      }
+
+      // Moved to Trash, not permanently expunged - functionally "deleted"
+      // from the inbox (which is what decluttering it actually requires),
+      // while still leaving a recovery path if this was ever wrong about
+      // a specific message, the same way deleting an email in any normal
+      // mail client works.
+      if (bounceUids.length) {
+        try {
+          const mailboxes = await client.list();
+          const trashBox = mailboxes.find((m) => m.specialUse === "\\Trash") || mailboxes.find((m) => /trash|deleted/i.test(m.path));
+          if (trashBox) {
+            await client.messageMove(bounceUids, trashBox.path, { uid: true });
+          } else {
+            console.error("[reply-checker] Found bounce messages to remove but no Trash folder - leaving them in place.");
+            bounceUids.length = 0;
+            bounceSummary.length = 0;
+          }
+        } catch (err) {
+          console.error("[reply-checker] Failed to move bounce messages to Trash:", err.message);
+          bounceUids.length = 0;
+          bounceSummary.length = 0;
         }
       }
     } finally {
@@ -91,6 +147,15 @@ async function checkRepliesForUser(userId) {
     return { ok: false, error: err.message };
   } finally {
     await client.logout().catch(() => {});
+  }
+
+  if (bounceSummary.length) {
+    console.log(`[reply-checker] Moved ${bounceSummary.length} bounce message(s) to Trash for user ${userId}:`, bounceSummary.map((b) => `${b.from} - "${b.subject}"`));
+    db.prepare("INSERT INTO app_notifications (user_id, type, title, message, link) VALUES (?, 'bounce_cleanup', ?, ?, NULL)").run(
+      userId,
+      "Cleaned up bounce emails",
+      `Moved ${bounceSummary.length} "undelivered mail" notice${bounceSummary.length === 1 ? "" : "s"} to Trash.`
+    );
   }
 
   if (genuineReplies.size === 0) {

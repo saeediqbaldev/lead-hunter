@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.10-15.16";
+const APP_VERSION = "2026.08.11-15.18";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -1474,7 +1474,7 @@ document.getElementById("contactedAlertsClearBtn").addEventListener("click", asy
   refreshContactedUnreadBadge();
 });
 
-// ---------- Campaigns (Auto Send) ----------
+// ---------- Campaigns ----------
 const CAMPAIGN_STATUS_LABEL = {
   draft: "Draft",
   running: "Running",
@@ -1515,15 +1515,23 @@ async function loadContactedCampaigns() {
     return;
   }
 
-  // Group by niche - a campaign without a niche_id (an older campaign
-  // from before niches were required, or one spanning a manually-picked
-  // lead set) falls into its own "Unassigned" group rather than being
-  // dropped or crashing the grouping.
+  // Three-level grouping: niche -> country -> city, using each campaign's
+  // dominant city/country (whichever has the most of its leads, resolved
+  // server-side) - a campaign without a niche_id (an older campaign from
+  // before niches were required) falls into its own "Unassigned" group
+  // rather than being dropped or crashing the grouping, and the same for
+  // a campaign with no resolvable dominant city.
   const nicheGroups = new Map();
   data.campaigns.forEach((c) => {
-    const key = c.niche_id || "unassigned";
-    if (!nicheGroups.has(key)) nicheGroups.set(key, []);
-    nicheGroups.get(key).push(c);
+    const nicheKey = c.niche_id || "unassigned";
+    if (!nicheGroups.has(nicheKey)) nicheGroups.set(nicheKey, new Map());
+    const countryMap = nicheGroups.get(nicheKey);
+    const countryKey = c.dominant_country || "Unassigned";
+    if (!countryMap.has(countryKey)) countryMap.set(countryKey, new Map());
+    const cityMap = countryMap.get(countryKey);
+    const cityKey = c.dominant_city_name || "Unassigned";
+    if (!cityMap.has(cityKey)) cityMap.set(cityKey, []);
+    cityMap.get(cityKey).push(c);
   });
 
   const cardHtml = (c) => {
@@ -1541,19 +1549,98 @@ async function loadContactedCampaigns() {
     </div>`;
   };
 
+  // Niches default open (there are usually only a handful); country and
+  // city default closed (there could be many) - the same balance Hunt's
+  // own tree strikes, so a first-time niche gets auto-opened once so the
+  // page doesn't look empty on first load.
+  if (!state.campaignsOpenNicheIds) state.campaignsOpenNicheIds = new Set(nicheGroups.keys());
+  if (!state.campaignsOpenCountryKeys) state.campaignsOpenCountryKeys = new Set();
+  if (!state.campaignsOpenCityKeys) state.campaignsOpenCityKeys = new Set();
+
   list.innerHTML = Array.from(nicheGroups.entries())
-    .map(([nicheKey, campaigns]) => {
+    .map(([nicheKey, countryMap]) => {
       const nicheName = nicheKey === "unassigned" ? "Unassigned" : state.niches.find((n) => n.id === nicheKey)?.name || "Unknown niche";
+      const nicheCampaignCount = Array.from(countryMap.values()).reduce((sum, cityMap) => sum + Array.from(cityMap.values()).reduce((s, arr) => s + arr.length, 0), 0);
+      const nicheOpen = state.campaignsOpenNicheIds.has(nicheKey);
+
+      const countriesHtml = Array.from(countryMap.entries())
+        .map(([country, cityMap]) => {
+          const countryKey = `${nicheKey}:${country}`;
+          const countryOpen = state.campaignsOpenCountryKeys.has(countryKey);
+          const countryCampaignCount = Array.from(cityMap.values()).reduce((sum, arr) => sum + arr.length, 0);
+
+          const citiesHtml = Array.from(cityMap.entries())
+            .map(([city, campaigns]) => {
+              const cityKey = `${countryKey}:${city}`;
+              const cityOpen = state.campaignsOpenCityKeys.has(cityKey);
+              return `
+              <div class="campaigns-city-block ${cityOpen ? "open" : ""}" data-campaigns-city-key="${escapeHtmlAttr(cityKey)}">
+                <div class="country-row" data-action="toggle-campaigns-city" data-campaigns-city-key="${escapeHtmlAttr(cityKey)}">
+                  <span class="niche-caret small">▶</span>
+                  <span class="country-name"><i class="bi bi-geo-alt"></i> ${escapeHtml(city)}</span>
+                  <span class="niche-count">${campaigns.length}</span>
+                </div>
+                <div class="campaigns-grid" style="padding:10px 0 10px 20px;">${campaigns.map(cardHtml).join("")}</div>
+              </div>`;
+            })
+            .join("");
+
+          return `
+          <div class="country-block ${countryOpen ? "open" : ""}" data-campaigns-country-key="${escapeHtmlAttr(countryKey)}">
+            <div class="country-row" data-action="toggle-campaigns-country" data-campaigns-country-key="${escapeHtmlAttr(countryKey)}">
+              <span class="niche-caret small">▶</span>
+              <span class="country-name"><i class="bi bi-flag"></i> ${escapeHtml(country)}</span>
+              <span class="niche-count">${countryCampaignCount}</span>
+            </div>
+            <div class="catchlog-list" style="padding-left:16px;">${citiesHtml}</div>
+          </div>`;
+        })
+        .join("");
+
       return `
-      <div class="campaign-niche-group">
-        <h3 class="campaign-niche-heading">${nicheName}</h3>
-        <div class="campaigns-grid">${campaigns.map(cardHtml).join("")}</div>
+      <div class="campaign-niche-group niche-block ${nicheOpen ? "open" : ""}" data-campaigns-niche-key="${nicheKey}">
+        <h3 class="campaign-niche-heading" data-action="toggle-campaigns-niche" data-campaigns-niche-key="${nicheKey}" style="cursor:pointer; display:flex; align-items:center; gap:6px;">
+          <span class="niche-caret small">▶</span> ${escapeHtml(nicheName)} <span class="niche-count">${nicheCampaignCount}</span>
+        </h3>
+        <div class="country-list">${countriesHtml}</div>
       </div>`;
     })
     .join("");
 
+  // Niche/country/city rows toggle expand state; only a leaf campaign
+  // card actually navigates - stopPropagation on the card keeps a click
+  // there from also bubbling up and toggling whichever row contains it.
+  list.querySelectorAll('[data-action="toggle-campaigns-niche"]').forEach((el) => {
+    el.addEventListener("click", () => {
+      const key = el.dataset.campaignsNicheKey;
+      if (state.campaignsOpenNicheIds.has(key)) state.campaignsOpenNicheIds.delete(key);
+      else state.campaignsOpenNicheIds.add(key);
+      loadContactedCampaigns();
+    });
+  });
+  list.querySelectorAll('[data-action="toggle-campaigns-country"]').forEach((el) => {
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const key = el.dataset.campaignsCountryKey;
+      if (state.campaignsOpenCountryKeys.has(key)) state.campaignsOpenCountryKeys.delete(key);
+      else state.campaignsOpenCountryKeys.add(key);
+      loadContactedCampaigns();
+    });
+  });
+  list.querySelectorAll('[data-action="toggle-campaigns-city"]').forEach((el) => {
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const key = el.dataset.campaignsCityKey;
+      if (state.campaignsOpenCityKeys.has(key)) state.campaignsOpenCityKeys.delete(key);
+      else state.campaignsOpenCityKeys.add(key);
+      loadContactedCampaigns();
+    });
+  });
   list.querySelectorAll(".campaign-card").forEach((card) => {
-    card.addEventListener("click", () => loadCampaignDetail(card.dataset.campaignId));
+    card.addEventListener("click", (e) => {
+      e.stopPropagation();
+      loadCampaignDetail(card.dataset.campaignId);
+    });
   });
 }
 
@@ -1695,23 +1782,34 @@ async function showCampaignCreationForm() {
     });
 
     cityChecklist.innerHTML = Array.from(countryMap.entries())
-      .map(
-        ([country, countryCities]) => `
+      .map(([country, countryCities]) => {
+        const countryAttr = escapeHtmlAttr(country);
+        return `
       <div class="campaign-city-country-group">
-        <div class="campaign-city-country-label"><i class="bi bi-flag"></i> ${country}</div>
+        <label class="campaign-city-country-label" style="cursor:pointer;">
+          <input type="checkbox" data-campaign-country-select-all="${countryAttr}">
+          <i class="bi bi-flag"></i> ${escapeHtml(country)} <span class="hint">(select all)</span>
+        </label>
         ${countryCities
           .map(
             (c) => `
         <label class="campaign-city-check-row">
-          <input type="checkbox" value="${c.id}" data-campaign-city-checkbox>
+          <input type="checkbox" value="${c.id}" data-campaign-city-checkbox data-campaign-city-country="${countryAttr}">
           ${c.name} <span class="hint">(${c.lead_count} leads)</span>
         </label>`
           )
           .join("")}
-      </div>`
-      )
+      </div>`;
+      })
       .join("");
     cityChecklist.querySelectorAll("[data-campaign-city-checkbox]").forEach((cb) => cb.addEventListener("change", updateLeadPreview));
+    cityChecklist.querySelectorAll("[data-campaign-country-select-all]").forEach((cb) => {
+      cb.addEventListener("change", (e) => {
+        const country = e.target.dataset.campaignCountrySelectAll;
+        cityChecklist.querySelectorAll(`[data-campaign-city-country="${country}"]`).forEach((cityCb) => (cityCb.checked = e.target.checked));
+        updateLeadPreview();
+      });
+    });
   });
 
   body.addEventListener("click", async (e) => {

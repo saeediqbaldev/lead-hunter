@@ -1734,6 +1734,14 @@ a.site-generate-btn { color: #1a1310; }
 .campaigns-list { padding: 0 22px 22px; display: flex; flex-direction: column; gap: 24px; }
 .campaign-niche-heading { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
 .campaigns-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+/* When .campaigns-grid also carries .catchlog-list (the campaigns tree's
+   City level), the combined selector's higher specificity is what makes
+   this reliably win over the plain .campaigns-grid rule above, rather
+   than depending on which one happens to be declared later in the file. */
+.campaigns-city-block > .campaigns-grid { display: none; }
+.campaigns-city-block.open > .campaigns-grid { display: grid; }
+.campaigns-city-block.open > .country-row .niche-caret { transform: rotate(90deg); }
+.campaigns-city-block.open > .country-row .country-name { color: var(--accent); }
 .campaign-location-badge { display: inline-block; font-size: 11px; color: var(--text-muted); background: var(--panel-raised); border: 1px solid var(--border); border-radius: 5px; padding: 2px 7px; margin: 2px 0 8px; }
 @media (max-width: 1100px) { .campaigns-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 720px) { .campaigns-grid { grid-template-columns: 1fr; } }

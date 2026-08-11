@@ -6,6 +6,59 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.18
+Campaigns restructured to match the requested Niche > Country > City
+tree, and renamed from "Auto Send."
+
+- **"Auto Send" renamed to "Campaigns"** throughout - sidebar label and
+  page header.
+- **The campaigns list is now a genuine expandable tree** - Niche >
+  Country > City, matching the same drill-down interaction as Hunt/
+  Reach Out/Pinned, with the existing rich campaign cards (status,
+  progress, location) appearing as leaves once a city is expanded.
+  Niches default open (there are usually only a handful); country and
+  city default closed, the same balance Hunt's own tree strikes.
+- **A real bug found and fixed during this build**: the City level
+  initially reused the same CSS class as the Country level, which meant
+  an existing, broader visibility rule (built for the simpler two-level
+  Hunt/Reach Out/Pinned trees) incorrectly cascaded through a *closed*
+  City whenever its Country ancestor was open, since descendant
+  selectors match at any depth, not just direct children - campaign
+  cards were appearing one click too early. Fixed by giving the City
+  level its own dedicated, fully isolated class rather than fighting a
+  specificity war with a rule used elsewhere. Verified precisely at each
+  step: hidden with everything collapsed, still hidden with only the
+  country expanded, correctly visible (and correctly isolated to that
+  one city) only once the city itself is also expanded - and separately
+  confirmed the original Hunt tree is unaffected by this change.
+
+## What's in this V15.17
+Automatic bounce-message cleanup (destructive, by explicit request) and
+select-all-in-country for campaign creation.
+
+- **"Undelivered Mail Returned to Sender" and similar bounce notices are
+  now automatically moved to Trash** during the existing periodic inbox
+  check - not permanently expunged, so there's still a recovery path if
+  a specific message was ever misjudged, the same way "delete" works in
+  any normal mail client. Detection is deliberately stricter than the
+  existing auto-reply filter, since this one leads to removal, not just
+  "don't count as a reply": the RFC 3464 delivery-status marker is
+  trusted alone (real mail essentially never carries it), but the
+  subject/sender-pattern signals are only trusted together, never
+  individually, to keep false positives close to zero. Tested against 7
+  cases including both real examples from your screenshot (both
+  correctly caught) and four plausible false-positive risks - a genuine
+  email merely mentioning "undeliverable," a bounce-shaped subject from
+  a real person, a systemic-looking sender with an unrelated subject,
+  and an ordinary reply (all four correctly left alone). A notification
+  summarizes what was cleaned up each time, and a defensive cap limits
+  how many get processed in a single cycle.
+- **Select-all-in-country** added to the campaign creation city picker -
+  one checkbox per country checks (or unchecks) every city under it.
+  Verified correct isolation between countries (selecting all of Germany
+  doesn't touch Austria) and that unchecking correctly clears the whole
+  group.
+
 ## What's in this V15.16
 Fixed the Contact Scrape "Unexpected token '<'" error, diagnosed directly
 from real Coolify logs.
