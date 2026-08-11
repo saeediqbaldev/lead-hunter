@@ -6,6 +6,63 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.22
+A new "Follow-ups" tab inside each campaign - full control over every
+upcoming follow-up without waiting for it to just happen on its own.
+
+- Shows every lead with a future follow-up still ahead of it: which
+  touch is next, and either its scheduled date/time or "Due now" if
+  it's overdue.
+- **Send now** - jumps the wait entirely for one specific lead. Still
+  runs the same reply check the normal scheduled send uses first, so
+  this can't accidentally send a follow-up on top of a reply that
+  arrived but hasn't been detected yet - skipping that check just
+  because it's a manual action would be a real risk, not just a
+  formality.
+- **Stop** - permanently stops future follow-ups for that one lead,
+  without touching any of its earlier, already-sent touches. Built to
+  reuse the scheduler's own existing logic rather than needing new
+  scheduler code: verified directly that the scheduler's own candidate
+  query independently agrees the lead is no longer eligible after
+  stopping it.
+- The list itself reuses the exact same "which leads are due for a
+  follow-up" query the scheduler runs internally, so what's shown here
+  can never drift out of sync with what will actually happen.
+- Verified end-to-end in a real browser: the tab appears only when
+  follow-ups are enabled, an overdue follow-up correctly shows "Due
+  now," and clicking Send Now correctly queues it and removes the row
+  once it's no longer upcoming.
+
+## What's in this V15.21
+Auto-pin on real pipeline progress, delivery-failure tracking, and more
+human-sounding AI content.
+
+- **Auto-pin logic replaced**: opening an email no longer pins a lead
+  (an open only means a mail client rendered an image, not that
+  anything actually happened) - instead, a lead is auto-pinned the
+  moment its status moves to Engaged, Won, or Converted, which is real
+  progress worth surfacing. An explicit unpin in the same request still
+  wins over the auto-pin. Existing pins from the old logic are left
+  alone (only the trigger going forward changed, not historical data).
+- **Bounced emails no longer count as "Sent"**: extended the existing
+  bounce-detection scan to also parse each bounce's body for the actual
+  address that failed, match it back to the original send, and mark it.
+  Every "Sent" count in the app now excludes these (Reports, the
+  extension popup, campaign Report tabs), and the Tracking table shows
+  a distinct "delivery failed" badge so it's clear why a row's count
+  doesn't match what's visible. Verified end-to-end with a realistic
+  bounce body and confirmed the match against a real tracked send, plus
+  fixed a bug of my own along the way (a leftover reference from an
+  in-progress refactor that would have broken bounce cleanup entirely
+  had it shipped).
+- **AI-generated content is more human now**: every content prompt
+  (pitch, subject, follow-up) now explicitly avoids em dashes, AI
+  cliches ("unlock", "elevate", "game-changer", etc), and long
+  run-on sentences. Backed by a deterministic safety net that strips
+  any em dash or en dash that slips through anyway, tested against a
+  mocked AI response that deliberately used one in both the body and
+  the subject line, confirming both came out clean.
+
 ## What's in this V15.20
 Threaded conversation view, dual meeting/WhatsApp links, smarter
 follow-ups, and city tracking for campaigns.

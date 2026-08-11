@@ -123,10 +123,26 @@ router.patch("/:id", (req, res) => {
 
   const newStatus = status !== undefined ? status : existing.status;
   const newNotes = notes !== undefined ? notes : existing.notes;
-  const newPinned = pinned !== undefined ? (pinned ? 1 : 0) : existing.pinned;
   const newOwnerName = ownerName !== undefined ? ownerName : existing.owner_name;
 
-  db.prepare("UPDATE leads SET status = ?, notes = ?, pinned = ?, owner_name = ? WHERE id = ?").run(newStatus, newNotes, newPinned, newOwnerName, id);
+  // Auto-pin on real pipeline progress (engaged/won/converted), not just
+  // an email being opened - an open only means a mail client rendered an
+  // image, not that anything actually happened. Only fires on an actual
+  // status change (not a no-op PATCH repeating the current value), and
+  // never overrides an explicit pinned value sent in the same request.
+  const AUTO_PIN_STATUSES = ["engaged", "won", "converted"];
+  const statusChangedToAutoPin = status !== undefined && status !== existing.status && AUTO_PIN_STATUSES.includes(status);
+  const newPinned = pinned !== undefined ? (pinned ? 1 : 0) : statusChangedToAutoPin ? 1 : existing.pinned;
+  const newPinReason = pinned === undefined && statusChangedToAutoPin ? `Status: ${status.charAt(0).toUpperCase()}${status.slice(1)}` : existing.pin_reason;
+
+  db.prepare("UPDATE leads SET status = ?, notes = ?, pinned = ?, pin_reason = ?, owner_name = ? WHERE id = ?").run(
+    newStatus,
+    newNotes,
+    newPinned,
+    newPinReason,
+    newOwnerName,
+    id
+  );
   res.json(rowToLead(db.prepare("SELECT * FROM leads WHERE id = ?").get(id)));
 });
 

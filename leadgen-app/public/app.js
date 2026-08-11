@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.11-15.20";
+const APP_VERSION = "2026.08.11-15.22";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -1069,7 +1069,7 @@ async function renderContactedTable() {
       <td><input type="checkbox" class="contacted-row-check" data-email-id="${email.id}" onclick="event.stopPropagation()"></td>
       <td>${email.subject || "(no subject)"}</td>
       <td>${email.recipients.join(", ")}</td>
-      <td><span class="contacted-status-pill ${email.status}">${email.status}</span>${email.replied_at ? ` <span class="contacted-status-pill clicked" title="Replied ${formatContactedTimestamp(email.replied_at)}"><i class="bi bi-reply-fill"></i> replied</span>` : ""}</td>
+      <td><span class="contacted-status-pill ${email.status}">${email.status}</span>${email.replied_at ? ` <span class="contacted-status-pill clicked" title="Replied ${formatContactedTimestamp(email.replied_at)}"><i class="bi bi-reply-fill"></i> replied</span>` : ""}${email.delivery_failed_at ? ` <span class="contacted-status-pill" style="background:rgba(217,93,93,0.15); color:var(--danger);" title="Bounced ${formatContactedTimestamp(email.delivery_failed_at)} - excluded from Sent counts"><i class="bi bi-exclamation-triangle-fill"></i> delivery failed</span>` : ""}</td>
       <td>${email.open_count}</td>
       <td>${email.click_count}</td>
       <td>${formatContactedTimestamp(email.created_at)}</td>
@@ -2207,7 +2207,7 @@ async function loadCampaignDetail(campaignId) {
 // The tab bar itself - shown only while viewing an existing campaign
 // (the create/edit forms reuse the same view but leave this hidden).
 function renderCampaignDetailTabs() {
-  const { leads } = campaignDetailCache;
+  const { campaign, leads } = campaignDetailCache;
   const sentCount = leads.filter((l) => l.status === "sent").length;
   const repliedCount = leads.filter((l) => l.replied_at).length;
   const tabsEl = document.getElementById("campaignDetailTabs");
@@ -2216,6 +2216,7 @@ function renderCampaignDetailTabs() {
     { key: "emails", label: "Emails List", count: leads.length },
     { key: "sent", label: "Sent", count: sentCount },
     { key: "replied", label: "Replied", count: repliedCount },
+    ...(campaign.followup_enabled ? [{ key: "followups", label: "Follow-ups", count: null }] : []),
     { key: "report", label: "Report", count: null },
   ];
   tabsEl.innerHTML = tabs
@@ -2244,6 +2245,8 @@ function renderActiveCampaignTab() {
     renderCampaignLeadsTable(bodyEl, campaign, leads.filter((l) => l.status === "sent"), { emptyMessage: "No emails sent yet." });
   } else if (state.campaignDetailTab === "replied") {
     renderCampaignLeadsTable(bodyEl, campaign, leads.filter((l) => l.replied_at), { emptyMessage: "No replies yet." });
+  } else if (state.campaignDetailTab === "followups") {
+    renderCampaignFollowupsTab(bodyEl, campaign);
   } else if (state.campaignDetailTab === "report") {
     renderCampaignReportTab(bodyEl, campaign, leads);
   }
@@ -2444,12 +2447,82 @@ function renderCampaignLeadsTable(bodyEl, campaign, leads, { selectable = false,
 
 // The "Report" tab - campaign-scoped stats, computed client-side from the
 // already-fetched leads array rather than a separate backend round trip.
+// The "Follow-ups" tab - every lead with a future follow-up still ahead
+// of it, fetched fresh each time (not derived from the already-cached
+// leads array, since the "latest touch per lead" + due-date logic is
+// non-trivial to replicate correctly in JS and the backend already does
+// it exactly right for the scheduler itself).
+async function renderCampaignFollowupsTab(bodyEl, campaign) {
+  bodyEl.innerHTML = `<p class="hint" style="padding:20px 0;">Loading upcoming follow-ups…</p>`;
+  const data = await api(`/api/campaigns/${campaign.id}/upcoming-followups`).then((r) => r.json());
+
+  if (!data.upcoming.length) {
+    bodyEl.innerHTML = `<p class="hint" style="padding:20px 0;">No upcoming follow-ups right now - every lead has either replied, run out of follow-up touches, or hasn't been sent to yet.</p>`;
+    return;
+  }
+
+  bodyEl.innerHTML = `
+    <table class="contacted-table campaign-detail-table">
+      <thead><tr><th>Lead</th><th>Recipient</th><th>Next touch</th><th>Scheduled for</th><th></th></tr></thead>
+      <tbody>
+        ${data.upcoming
+          .map(
+            (u) => `
+        <tr>
+          <td>${u.leadName}</td>
+          <td>${u.recipientEmail || "—"}</td>
+          <td>Follow-up ${u.nextTouchNumber - 1}</td>
+          <td>${u.overdue ? `<span style="color:var(--warn);">Due now</span>` : formatContactedTimestamp(u.scheduledAt)}</td>
+          <td style="white-space:nowrap;">
+            <button type="button" class="small-btn" data-action="send-followup-now" data-campaign-lead-id="${u.campaignLeadId}"><i class="bi bi-send-fill"></i> Send now</button>
+            <button type="button" class="small-btn danger-btn" data-action="stop-followups" data-campaign-lead-id="${u.campaignLeadId}"><i class="bi bi-x-circle"></i> Stop</button>
+          </td>
+        </tr>`
+          )
+          .join("")}
+      </tbody>
+    </table>
+  `;
+
+  bodyEl.querySelectorAll('[data-action="send-followup-now"]').forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        const res = await api(`/api/campaigns/${campaign.id}/leads/${btn.dataset.campaignLeadId}/send-followup-now`, { method: "POST" });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || "Could not send");
+        showToast("Queued - will send within the next minute", "success");
+        renderCampaignFollowupsTab(bodyEl, campaign);
+      } catch (err) {
+        showToast(err.message, "error");
+        btn.disabled = false;
+      }
+    });
+  });
+
+  bodyEl.querySelectorAll('[data-action="stop-followups"]').forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const confirmed = await openModal({
+        title: "Stop follow-ups for this lead?",
+        message: "This lead won't get any more follow-up emails in this campaign. Already-sent touches aren't affected.",
+        confirmText: "Stop follow-ups",
+        danger: true,
+      });
+      if (!confirmed) return;
+      await api(`/api/campaigns/${campaign.id}/leads/${btn.dataset.campaignLeadId}/stop-followups`, { method: "POST" });
+      showToast("Follow-ups stopped for this lead", "success");
+      renderCampaignFollowupsTab(bodyEl, campaign);
+    });
+  });
+}
+
 function renderCampaignReportTab(bodyEl, campaign, leads) {
-  const sent = leads.filter((l) => l.status === "sent").length;
+  const sent = leads.filter((l) => l.status === "sent" && !l.delivery_failed_at).length;
   const opened = leads.filter((l) => l.tracked_status === "opened" || l.tracked_status === "clicked").length;
   const clicked = leads.filter((l) => l.tracked_status === "clicked").length;
   const replied = leads.filter((l) => l.replied_at).length;
   const failed = leads.filter((l) => l.status === "failed").length;
+  const deliveryFailed = leads.filter((l) => l.status === "sent" && l.delivery_failed_at).length;
   const skipped = leads.filter((l) => l.status === "skipped").length;
   const pct = (n) => (sent > 0 ? Math.round((n / sent) * 100) : 0);
 
@@ -2460,6 +2533,7 @@ function renderCampaignReportTab(bodyEl, campaign, leads) {
     { label: "Clicked", value: `${clicked} (${pct(clicked)}%)`, color: "var(--good)" },
     { label: "Replied", value: `${replied} (${pct(replied)}%)`, color: "var(--accent)" },
     { label: "Failed", value: failed, color: "var(--danger)" },
+    { label: "Delivery failed", value: deliveryFailed, color: "var(--danger)" },
     { label: "Skipped", value: skipped, color: "var(--text-muted)" },
   ];
 

@@ -139,6 +139,18 @@ function extractEmailAddress(fromField) {
   return (fromField[0].address || "").toLowerCase().trim();
 }
 
+// Bounce notices vary a lot in format across mail servers, but virtually
+// all of them include the actual failed address somewhere in the body
+// text - a broad email-pattern extraction plus later cross-referencing
+// against known recent sends is more reliable than trying to parse any
+// one specific NDR format.
+const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+
+function extractEmailAddressesFromText(text) {
+  if (!text) return [];
+  return [...new Set((text.match(EMAIL_PATTERN) || []).map((a) => a.toLowerCase()))];
+}
+
 // Scans this user's inbox once (not once per recipient - a single
 // search-and-fetch pass, then cross-referenced in JS against everything
 // they've sent) and marks any tracked_emails row a reply genuinely
@@ -168,8 +180,8 @@ async function checkRepliesForUser(userId) {
   // run, which was the root of the "six replies at the same minute"
   // confusion on the very first check after this feature shipped.
   let genuineReplies = new Map();
-  const bounceUids = [];
-  const bounceSummary = [];
+  const bounceRecords = []; // { uid, from, subject, candidateAddresses } - candidateAddresses filled in by the second pass below
+  let bouncesMoved = false;
   const MAX_BOUNCES_PER_CYCLE = 200; // defensive cap - if detection ever misbehaves, this limits the blast radius to one cycle's worth rather than the whole mailbox
   // Passed the cheap envelope/header checks, so provisionally look like a
   // genuine reply - body text hasn't been checked yet at this point.
@@ -183,9 +195,8 @@ async function checkRepliesForUser(userId) {
       if (Array.isArray(uids) && uids.length) {
         for await (const message of client.fetch(uids, { envelope: true, headers: AUTO_REPLY_HEADER_NAMES }, { uid: true })) {
           if (isBounceMessage(message.envelope, message.headers)) {
-            if (bounceUids.length < MAX_BOUNCES_PER_CYCLE) {
-              bounceUids.push(message.uid);
-              bounceSummary.push({ from: extractEmailAddress(message.envelope?.from), subject: message.envelope?.subject || "(no subject)" });
+            if (bounceRecords.length < MAX_BOUNCES_PER_CYCLE) {
+              bounceRecords.push({ uid: message.uid, from: extractEmailAddress(message.envelope?.from), subject: message.envelope?.subject || "(no subject)" });
             }
             continue; // never counts as a reply either, regardless of the weaker auto-reply signals below
           }
@@ -223,26 +234,41 @@ async function checkRepliesForUser(userId) {
         if (bodyText) redirectCandidates.push({ address: candidate.address, subject: candidate.subject, bodyText });
       }
 
+      // Same idea for bounces - the body is needed to find which address
+      // actually failed, since that's essentially never in the envelope
+      // or subject, only inside the NDR text itself.
+      for (const bounce of bounceRecords) {
+        try {
+          const { content } = await client.download(String(bounce.uid), undefined, { uid: true, maxBytes: MAX_BODY_DOWNLOAD_BYTES });
+          const parsed = await simpleParser(content);
+          const bodyText = (parsed.text || parsed.html || "").slice(0, MAX_BODY_TEXT_CHARS);
+          bounce.candidateAddresses = extractEmailAddressesFromText(bodyText);
+        } catch (err) {
+          console.error(`[reply-checker] Failed to fetch bounce body for uid ${bounce.uid}:`, err.message);
+        }
+      }
+
       // Moved to Trash, not permanently expunged - functionally "deleted"
       // from the inbox (which is what decluttering it actually requires),
       // while still leaving a recovery path if this was ever wrong about
       // a specific message, the same way deleting an email in any normal
       // mail client works.
-      if (bounceUids.length) {
+      if (bounceRecords.length) {
         try {
           const mailboxes = await client.list();
           const trashBox = mailboxes.find((m) => m.specialUse === "\\Trash") || mailboxes.find((m) => /trash|deleted/i.test(m.path));
           if (trashBox) {
-            await client.messageMove(bounceUids, trashBox.path, { uid: true });
+            await client.messageMove(
+              bounceRecords.map((b) => b.uid),
+              trashBox.path,
+              { uid: true }
+            );
+            bouncesMoved = true;
           } else {
             console.error("[reply-checker] Found bounce messages to remove but no Trash folder - leaving them in place.");
-            bounceUids.length = 0;
-            bounceSummary.length = 0;
           }
         } catch (err) {
           console.error("[reply-checker] Failed to move bounce messages to Trash:", err.message);
-          bounceUids.length = 0;
-          bounceSummary.length = 0;
         }
       }
     } finally {
@@ -254,13 +280,39 @@ async function checkRepliesForUser(userId) {
     await client.logout().catch(() => {});
   }
 
-  if (bounceSummary.length) {
-    console.log(`[reply-checker] Moved ${bounceSummary.length} bounce message(s) to Trash for user ${userId}:`, bounceSummary.map((b) => `${b.from} - "${b.subject}"`));
-    db.prepare("INSERT INTO app_notifications (user_id, type, title, message, link) VALUES (?, 'bounce_cleanup', ?, ?, NULL)").run(
-      userId,
-      "Cleaned up bounce emails",
-      `Moved ${bounceSummary.length} "undelivered mail" notice${bounceSummary.length === 1 ? "" : "s"} to Trash.`
+  if (bounceRecords.length) {
+    console.log(`[reply-checker] Found ${bounceRecords.length} bounce message(s) for user ${userId}:`, bounceRecords.map((b) => `${b.from} - "${b.subject}"`));
+    if (bouncesMoved) {
+      db.prepare("INSERT INTO app_notifications (user_id, type, title, message, link) VALUES (?, 'bounce_cleanup', ?, ?, NULL)").run(
+        userId,
+        "Cleaned up bounce emails",
+        `Moved ${bounceRecords.length} "undelivered mail" notice${bounceRecords.length === 1 ? "" : "s"} to Trash.`
+      );
+    }
+
+    // Match each bounce back to the send it's actually reporting on, so
+    // that send can be excluded from "Sent" counts everywhere - the SMTP
+    // handshake succeeding doesn't mean the message actually arrived, and
+    // counting it as sent when it demonstrably never was is misleading.
+    const findRecentSend = db.prepare(
+      `SELECT id FROM tracked_emails
+       WHERE user_id = ? AND recipients LIKE ? AND delivery_failed_at IS NULL AND replied_at IS NULL
+         AND created_at >= datetime('now', '-14 days')
+       ORDER BY created_at DESC LIMIT 1`
     );
+    const markFailed = db.prepare("UPDATE tracked_emails SET delivery_failed_at = datetime('now') WHERE id = ?");
+    let markedCount = 0;
+    for (const bounce of bounceRecords) {
+      for (const address of bounce.candidateAddresses || []) {
+        const match = findRecentSend.get(userId, `%${address}%`);
+        if (match) {
+          markFailed.run(match.id);
+          markedCount++;
+          break; // one match per bounce is enough - stop trying its other candidate addresses
+        }
+      }
+    }
+    if (markedCount) console.log(`[reply-checker] Matched ${markedCount} bounce(s) to an original send - excluded from Sent counts.`);
   }
 
   if (genuineReplies.size === 0) {

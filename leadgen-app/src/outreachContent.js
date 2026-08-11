@@ -6,6 +6,18 @@
 // or briefly down doesn't fail the whole request.
 const { generateWithFallback } = require("./aiProviders");
 
+// Injected into every content-generation prompt below (pitch, subject,
+// follow-up) - the goal is copy that reads like a real person wrote it
+// quickly, not something visibly AI-generated. Called out specifically
+// since these are the most common, recognizable tells.
+const HUMANIZE_INSTRUCTION = `
+Write like a real person sent this in a couple of minutes, not like an AI wrote it. Concretely:
+- Keep sentences short and simple. Break up anything that would run more than about 20 words into two sentences.
+- Never use an em dash (—) or en dash (–). Use a period, comma, or "and"/"but" instead.
+- Skip AI-sounding phrases and cliches: "unlock", "elevate", "seamless", "dive into", "in today's fast-paced world", "game-changer", "it's worth noting", "furthermore", "moreover", "in the realm of", "take it to the next level".
+- Don't open with a rhetorical question or a grand statement. Just say the thing.
+- Contractions are fine and often better ("you're" not "you are").`;
+
 // Signature is now a per-user setting (Account Settings -> Signature),
 // not hardcoded - this default only applies if a user somehow has no
 // signature saved at all (shouldn't normally happen, since the DB column
@@ -156,6 +168,7 @@ Write the message now. Requirements:
 - Where it fits naturally, ground the pitch in a concrete number or figure (a realistic industry benchmark, a plausible percentage, a rough time/cost estimate) rather than vague claims like "more customers" or "better results" - specific numbers read as credible and human, not like padding
 - Reference the specific context above where relevant (don't invent facts not given, and don't fabricate statistics about THIS business specifically - general industry figures are fine, made-up specifics about them are not)
 - End with a natural closing line appropriate to the message${extraInstructions.length ? " (working in the items listed above)" : " (a soft, low-pressure call-to-action)"}
+${HUMANIZE_INSTRUCTION}
 - Do NOT include a signature or sign-off - that will be added separately
 - Plain text only - no markdown formatting of any kind (no **asterisks** for bold, no _underscores_ for italics, no # headers, no markdown links). Write it exactly as it should be read, since this goes straight into an email/DM with no markdown rendering.
 - Output ONLY the message content itself, nothing else (no preamble, no explanation)`;
@@ -173,11 +186,26 @@ Requirements:
 - Under 8 words, no clickbait, no spam-trigger phrases ("Free!!!", ALL CAPS, excessive punctuation)
 - Specific to this business, not generic ("Quick question", "Following up")
 - Plain text only, no markdown, no quotation marks around it
+- Never use an em dash (—) or en dash (–)
+- Sound like a real person typed it fast, not like an AI wrote it - skip cliches like "unlock", "elevate", "game-changer"
 - Output ONLY the subject line itself, nothing else`;
 }
 
 function escapeRegExp(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Safety net for the em-dash/en-dash instruction above - a prompt rule
+// reduces the risk but can't guarantee the AI never uses one. Handles
+// both the common " — " (spaced) form and a bare word—word form,
+// falling back to a plain comma for anything else so a stray dash never
+// reaches the recipient regardless of how it was used.
+function stripAiDashes(text) {
+  if (!text) return text;
+  return text
+    .replace(/\s+[—–]\s+/g, ", ")
+    .replace(/([^\s])[—–]([^\s])/g, "$1, $2")
+    .replace(/[—–]/g, ",");
 }
 
 // The prompt instructions above reduce the risk of the AI mangling or
@@ -213,7 +241,7 @@ async function generateOutreachContent(userId, { lead, platform, tone, length, a
   if (!result.ok) return result;
 
   const signatureHtml = signature != null && signature !== "" ? signature : DEFAULT_SIGNATURE;
-  const bodyText = ensureLinksPresent(result.text.trim(), [
+  const bodyText = ensureLinksPresent(stripAiDashes(result.text.trim()), [
     { label: "Book a time", url: meeting ? meetingLink : null },
     { label: "WhatsApp", url: whatsapp ? whatsappLink : null },
     { label: "See an example", url: website ? websiteLink : null },
@@ -223,7 +251,7 @@ async function generateOutreachContent(userId, { lead, platform, tone, length, a
     const subjectResult = await generateWithFallback(userId, buildSubjectPrompt({ lead, tone, language, body: bodyText }), {
       onlyProvider: aiProvider || undefined,
     });
-    const subject = subjectResult.ok ? subjectResult.text.trim().replace(/^["']|["']$/g, "") : `A quick idea for ${lead.name}`;
+    const subject = subjectResult.ok ? stripAiDashes(subjectResult.text.trim().replace(/^["']|["']$/g, "")) : `A quick idea for ${lead.name}`;
     return { ok: true, content: bodyText, signatureHtml, subject, provider: result.provider };
   }
 
@@ -233,7 +261,7 @@ async function generateOutreachContent(userId, { lead, platform, tone, length, a
 async function generateSubjectOnly(userId, { lead, tone, language, body, aiProvider }) {
   const result = await generateWithFallback(userId, buildSubjectPrompt({ lead, tone, language, body }), { onlyProvider: aiProvider || undefined });
   if (!result.ok) return result;
-  return { ok: true, subject: result.text.trim().replace(/^["']|["']$/g, ""), provider: result.provider };
+  return { ok: true, subject: stripAiDashes(result.text.trim().replace(/^["']|["']$/g, "")), provider: result.provider };
 }
 
 // A follow-up needs fundamentally different instructions than the
@@ -294,6 +322,7 @@ Rules:
 - Sound like a real person nudging a conversation forward, not a template.
 - No guilt-tripping, no "just checking in" filler with nothing else said - add one small new angle, question, or reason to reply if possible.
 - Do not include a greeting salutation line like "Hi [name]," as the literal first line if it would feel redundant with a real email thread - a brief natural opening is fine.${languageInstruction}${linkSection}${linkSeparationRule}${customSection}
+${HUMANIZE_INSTRUCTION}
 
 Return ONLY the follow-up email body text (no subject line, no signature).`;
 }
@@ -307,7 +336,7 @@ async function generateFollowUpContent(userId, { lead, tone, language, previousB
   const result = await generateWithFallback(userId, prompt, { onlyProvider: aiProvider || undefined });
   if (!result.ok) return result;
   const signatureHtml = signature != null && signature !== "" ? signature : DEFAULT_SIGNATURE;
-  const bodyText = ensureLinksPresent(result.text.trim(), [
+  const bodyText = ensureLinksPresent(stripAiDashes(result.text.trim()), [
     { label: "Book a time", url: meeting ? meetingLink : null },
     { label: "WhatsApp", url: whatsapp ? whatsappLink : null },
   ]);

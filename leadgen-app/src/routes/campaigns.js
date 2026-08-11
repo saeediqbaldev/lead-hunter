@@ -1,7 +1,7 @@
 const express = require("express");
 const db = require("../db");
 const { isValidEmailAddress } = require("../emailValidation");
-const { hasSmtpConfigured } = require("../campaignSender");
+const { hasSmtpConfigured, checkForReply } = require("../campaignSender");
 
 const router = express.Router();
 
@@ -184,7 +184,7 @@ router.get("/:id", (req, res) => {
     .prepare(
       `SELECT ecl.id, ecl.status, ecl.error, ecl.sent_at, ecl.tracked_email_id, ecl.created_at, ecl.touch_number, ecl.replied_at,
               l.id AS lead_id, l.name AS lead_name, l.socials, l.address, l.phone, l.website, cl.name AS city_name,
-              te.subject AS sent_subject, te.status AS tracked_status, te.open_count, te.click_count, te.first_opened_at
+              te.subject AS sent_subject, te.status AS tracked_status, te.open_count, te.click_count, te.first_opened_at, te.delivery_failed_at
        FROM email_campaign_leads ecl
        JOIN leads l ON l.id = ecl.lead_id
        JOIN catch_logs cl ON cl.id = l.catch_log_id
@@ -269,6 +269,126 @@ router.post("/:id/leads/:leadRowId/retry", requireOwnedCampaign, (req, res) => {
   if (req.campaign.status === "paused") {
     db.prepare("UPDATE email_campaigns SET status = 'running', paused_at = NULL, pause_reason = NULL WHERE id = ?").run(req.campaign.id);
   }
+  res.json({ ok: true });
+});
+
+// GET /api/campaigns/:id/upcoming-followups - every lead with a future
+// follow-up still ahead of it: latest touch sent, not replied, and room
+// left under followup_max_count. Reuses the exact same "latest touch per
+// lead" query the scheduler itself uses (see scheduleFollowUps in
+// campaignScheduler.js) so this list can never drift out of sync with
+// what will actually happen.
+router.get("/:id/upcoming-followups", requireOwnedCampaign, (req, res) => {
+  if (!req.campaign.followup_enabled) return res.json({ upcoming: [] });
+
+  const rows = db
+    .prepare(
+      `SELECT ecl.id, ecl.lead_id, ecl.touch_number, ecl.sent_at, l.name AS lead_name, l.socials
+       FROM email_campaign_leads ecl
+       JOIN leads l ON l.id = ecl.lead_id
+       WHERE ecl.campaign_id = ?
+         AND ecl.status = 'sent'
+         AND ecl.touch_number < ?
+         AND ecl.replied_at IS NULL
+         AND ecl.id = (SELECT MAX(id) FROM email_campaign_leads WHERE campaign_id = ecl.campaign_id AND lead_id = ecl.lead_id)
+       ORDER BY ecl.sent_at ASC`
+    )
+    .all(req.campaign.id, req.campaign.followup_max_count + 1);
+
+  const upcoming = rows.map((row) => {
+    let email = null;
+    try {
+      email = JSON.parse(row.socials || "{}").email || null;
+    } catch {
+      email = null;
+    }
+    const sentAtMs = new Date(row.sent_at.replace(" ", "T") + "Z").getTime();
+    const scheduledAt = new Date(sentAtMs + req.campaign.followup_wait_days * 86400000).toISOString();
+    return {
+      campaignLeadId: row.id,
+      leadId: row.lead_id,
+      leadName: row.lead_name,
+      recipientEmail: email,
+      currentTouchNumber: row.touch_number,
+      nextTouchNumber: row.touch_number + 1,
+      scheduledAt,
+      overdue: Date.now() >= sentAtMs + req.campaign.followup_wait_days * 86400000,
+    };
+  });
+
+  res.json({ upcoming });
+});
+
+// POST /api/campaigns/:id/leads/:leadRowId/send-followup-now - jumps the
+// wait entirely for one specific lead. Still runs the same reply check
+// the normal scheduled path uses first (cheap, and this is exactly the
+// safety check that stops a follow-up from landing on top of a reply
+// that arrived but hasn't been detected yet) before queuing it -
+// skipping that check just because this is manual would be a real risk,
+// not just a formality.
+router.post("/:id/leads/:leadRowId/send-followup-now", requireOwnedCampaign, async (req, res) => {
+  const leadRow = db.prepare("SELECT * FROM email_campaign_leads WHERE id = ? AND campaign_id = ?").get(req.params.leadRowId, req.campaign.id);
+  if (!leadRow) return res.status(404).json({ error: "Lead not found in this campaign" });
+  if (leadRow.status !== "sent") return res.status(400).json({ error: "This lead doesn't have a pending follow-up to send" });
+
+  const latest = db
+    .prepare("SELECT MAX(id) AS maxId FROM email_campaign_leads WHERE campaign_id = ? AND lead_id = ?")
+    .get(req.campaign.id, leadRow.lead_id);
+  if (latest.maxId !== leadRow.id) return res.status(400).json({ error: "This isn't the most recent touch for this lead" });
+
+  const lead = db.prepare("SELECT * FROM leads WHERE id = ?").get(leadRow.lead_id);
+  let socials = {};
+  try {
+    socials = JSON.parse(lead?.socials || "{}");
+  } catch {
+    socials = {};
+  }
+  if (!isValidEmailAddress(socials.email)) return res.status(400).json({ error: "No valid email address on file for this lead" });
+
+  try {
+    const sentAtMs = new Date(leadRow.sent_at.replace(" ", "T") + "Z").getTime();
+    const replied = await checkForReply(req.campaign.user_id, socials.email, new Date(sentAtMs));
+    if (replied) {
+      db.prepare("UPDATE email_campaign_leads SET replied_at = datetime('now') WHERE id = ?").run(leadRow.id);
+      return res.status(409).json({ error: "This lead has actually replied - marked as replied instead of sending a follow-up on top of it." });
+    }
+  } catch (err) {
+    return res.status(502).json({ error: `Could not confirm no reply has arrived yet: ${err.message}` });
+  }
+
+  db.prepare("INSERT INTO email_campaign_leads (campaign_id, lead_id, status, touch_number) VALUES (?, ?, 'pending', ?)").run(
+    req.campaign.id,
+    leadRow.lead_id,
+    leadRow.touch_number + 1
+  );
+
+  if (req.campaign.status === "paused") {
+    db.prepare("UPDATE email_campaigns SET status = 'running', paused_at = NULL, pause_reason = NULL WHERE id = ?").run(req.campaign.id);
+  }
+  res.json({ ok: true });
+});
+
+// POST /api/campaigns/:id/leads/:leadRowId/stop-followups - permanently
+// stops future follow-ups for this one lead without touching any of its
+// earlier, already-sent touches. Works by inserting a 'skipped' row for
+// the next touch number - this becomes the new "latest touch" for the
+// lead, and since it isn't status='sent', the scheduler's own candidate
+// query (which only ever looks at the latest touch) naturally never
+// picks this lead up again. No changes needed to the scheduler itself.
+router.post("/:id/leads/:leadRowId/stop-followups", requireOwnedCampaign, (req, res) => {
+  const leadRow = db.prepare("SELECT * FROM email_campaign_leads WHERE id = ? AND campaign_id = ?").get(req.params.leadRowId, req.campaign.id);
+  if (!leadRow) return res.status(404).json({ error: "Lead not found in this campaign" });
+
+  const latest = db
+    .prepare("SELECT MAX(id) AS maxId FROM email_campaign_leads WHERE campaign_id = ? AND lead_id = ?")
+    .get(req.campaign.id, leadRow.lead_id);
+  if (latest.maxId !== leadRow.id) return res.status(400).json({ error: "This isn't the most recent touch for this lead" });
+
+  db.prepare("INSERT INTO email_campaign_leads (campaign_id, lead_id, status, touch_number, error) VALUES (?, ?, 'skipped', ?, 'Follow-ups stopped manually')").run(
+    req.campaign.id,
+    leadRow.lead_id,
+    leadRow.touch_number + 1
+  );
   res.json({ ok: true });
 });
 

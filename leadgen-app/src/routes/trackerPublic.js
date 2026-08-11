@@ -148,7 +148,7 @@ router.get("/api/tracker/stats", requireSessionOrApiKey, (req, res) => {
           SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) AS total_unopened,
           SUM(CASE WHEN status = 'clicked' THEN 1 ELSE 0 END) AS total_clicked,
           COALESCE(SUM(open_count), 0) AS total_open_events
-        FROM tracked_emails WHERE user_id = ? ${providerClause}`
+        FROM tracked_emails WHERE user_id = ? AND delivery_failed_at IS NULL ${providerClause}`
       )
       .get(req.trackerUserId, ...providerArgs);
     const openRate = row.total_sent > 0 ? row.total_opened / row.total_sent : 0;
@@ -219,8 +219,6 @@ router.get("/t/:id/pixel.png", (req, res) => {
                  last_opened_at = datetime('now')
              WHERE id = ?`
           ).run(id);
-
-          autoPinLeadForEmail(id, "Email Seen");
 
           if (isFirstOpen && !isAlertMuted(id, "open")) {
             const recipients = JSON.parse(email.recipients || "[]");

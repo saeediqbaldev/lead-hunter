@@ -54,7 +54,7 @@ router.get("/emails", (req, res) => {
     const rows = db
       .prepare(
         `SELECT id, subject, recipients, sender, provider, created_at, status,
-                open_count, click_count, first_opened_at, last_opened_at, replied_at
+                open_count, click_count, first_opened_at, last_opened_at, replied_at, delivery_failed_at
          FROM tracked_emails ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`
       )
       .all(...values, limit, offset)
@@ -500,7 +500,7 @@ router.get("/analytics", (req, res) => {
     const since = db.prepare(`SELECT datetime('now', ?) AS since`).get(modifier).since;
 
     const sent = db
-      .prepare(`SELECT COUNT(*) AS c FROM tracked_emails e WHERE created_at >= ? AND user_id = ? ${providerClause}`)
+      .prepare(`SELECT COUNT(*) AS c FROM tracked_emails e WHERE created_at >= ? AND user_id = ? AND delivery_failed_at IS NULL ${providerClause}`)
       .get(since, userId, ...providerArgs).c;
     const opens = db
       .prepare(`SELECT COUNT(*) AS c FROM tracked_opens o JOIN tracked_emails e ON e.id = o.email_id WHERE o.opened_at >= ? AND e.user_id = ? ${providerClause}`)
