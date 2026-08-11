@@ -1,11 +1,87 @@
 const { ImapFlow } = require("imapflow");
+const { simpleParser } = require("mailparser");
 const db = require("./db");
 const { resolveSmtpConfig, HOSTINGER_IMAP_HOST, HOSTINGER_IMAP_PORT } = require("./campaignSender");
+
+// Catches the class of reply that passes every subject/header check above
+// (a normal-looking subject, no Auto-Submitted header - many support
+// ticket systems don't set either) but is still an automated
+// acknowledgment, not a person actually writing back: "we've received
+// your email, our team will review it, no reply is needed" and similar.
+// Requires matching the body text itself, which the cheaper checks above
+// never look at.
+const AUTO_ACK_BODY_PATTERNS = [
+  /we('ve| have) received your (email|message|inquiry|enquiry|request)/i,
+  /our team will (review|respond|get back to you)/i,
+  /you (can|will) expect (a reply|to receive a reply|a response)/i,
+  /no (reply|response) is (needed|required|necessary)/i,
+  /this is an automat(ed|ic) (response|reply|message|email|acknowledg)/i,
+  /a?\s?ticket (has been|number|created|assigned)/i,
+  /your request has been (logged|received|submitted)/i,
+  /is just for your information.{0,20}(acknowledge|no reply)/i,
+  /out of office|automatic reply/i,
+];
+
+function bodyLooksLikeAutoAck(text) {
+  if (!text) return false;
+  return AUTO_ACK_BODY_PATTERNS.some((p) => p.test(text));
+}
+
+const { generateWithFallback } = require("./aiProviders");
+
+// Cheap pre-filter before ever calling the AI - the large majority of
+// genuine replies don't redirect to another address at all, and this
+// avoids a wasted call for all of them. Deliberately loose (a false
+// pass here just costs one extra AI call, not a wrong outcome) since
+// the AI call after it is what actually decides.
+const REDIRECT_HINT_PATTERN = /instead|correct (department|email|address)|wrong (email|address|department)|forward(ed)? (this|your)|please contact|should be sent to|redirect/i;
+
+function bodyHintsAtRedirect(text) {
+  return /@/.test(text) && REDIRECT_HINT_PATTERN.test(text);
+}
+
+// Uses the AI to check whether a reply is redirecting the sender to a
+// different contact address ("this mailbox isn't monitored, please
+// email sales@company.com instead") - genuinely needs language
+// understanding, not just a keyword match, to distinguish that from an
+// incidental, unrelated mention of some other address in the message.
+async function detectRedirectEmail(userId, bodyText) {
+  const prompt = `An email reply is shown below. Determine whether it instructs the sender to contact a DIFFERENT email address instead of the one the reply came from - for example because the original email reached the wrong department, an unmonitored mailbox, or the wrong person.
+
+Reply text:
+"""
+${bodyText}
+"""
+
+Respond with ONLY a JSON object, no other text:
+{"hasRedirect": true or false, "suggestedEmail": "the email address to use instead, or null if hasRedirect is false", "reason": "a short phrase quoting or paraphrasing why, or null"}`;
+
+  const result = await generateWithFallback(userId, prompt, { jsonMode: true, maxTokens: 300 });
+  if (!result.ok) return { hasRedirect: false };
+  try {
+    const parsed = JSON.parse(result.text);
+    if (!parsed.hasRedirect || !parsed.suggestedEmail) return { hasRedirect: false };
+    // The AI can hallucinate a plausible-looking but wrong address - a
+    // basic shape check is a cheap sanity floor before this gets
+    // surfaced to the user as a suggestion.
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(parsed.suggestedEmail.trim())) return { hasRedirect: false };
+    return { hasRedirect: true, suggestedEmail: parsed.suggestedEmail.trim().toLowerCase(), reason: parsed.reason || null };
+  } catch {
+    return { hasRedirect: false };
+  }
+}
 
 // How far back to look on a user's very first check - after that,
 // last_reply_check_at takes over and each check only looks at what's
 // arrived since the previous one, so this only matters once.
 const FIRST_CHECK_LOOKBACK_DAYS = 30;
+
+// Bounds on the second-pass body download/parse - acknowledgment phrases
+// and "please contact X instead" redirects almost always appear in the
+// first part of a message, not buried at the end, so there's no need to
+// download or parse more than this to catch them.
+const MAX_BODY_DOWNLOAD_BYTES = 50000;
+const MAX_BODY_TEXT_CHARS = 3000;
 
 // Headers checked for auto-reply/bulk-mail signals, fetched alongside
 // the envelope. Not every mail system sets the RFC 3834-standard
@@ -95,6 +171,10 @@ async function checkRepliesForUser(userId) {
   const bounceUids = [];
   const bounceSummary = [];
   const MAX_BOUNCES_PER_CYCLE = 200; // defensive cap - if detection ever misbehaves, this limits the blast radius to one cycle's worth rather than the whole mailbox
+  // Passed the cheap envelope/header checks, so provisionally look like a
+  // genuine reply - body text hasn't been checked yet at this point.
+  const candidateReplies = []; // { uid, address, date, subject }
+  const redirectCandidates = []; // { address, subject, bodyText } - genuine replies whose body is worth an AI check for a "please contact this address instead" instruction, filled in below
   try {
     await client.connect();
     const lock = await client.getMailboxLock("INBOX");
@@ -113,9 +193,34 @@ async function checkRepliesForUser(userId) {
           const address = extractEmailAddress(message.envelope?.from);
           if (!address) continue;
           const messageDate = message.envelope?.date instanceof Date ? message.envelope.date : new Date();
-          const existing = genuineReplies.get(address);
-          if (!existing || messageDate < existing) genuineReplies.set(address, messageDate);
+          candidateReplies.push({ uid: message.uid, address, date: messageDate, subject: message.envelope?.subject || "" });
         }
+      }
+
+      // Second pass: only for messages that passed the cheap checks above
+      // (a small subset, not the whole mailbox) - downloads and parses
+      // the actual body text, since support-ticket-style acknowledgments
+      // ("we've received your email, no reply needed") often use a
+      // normal-looking subject and set none of the headers checked above,
+      // so they'd otherwise be counted as a genuine reply.
+      for (const candidate of candidateReplies) {
+        let bodyText = "";
+        try {
+          const { content } = await client.download(String(candidate.uid), undefined, { uid: true, maxBytes: MAX_BODY_DOWNLOAD_BYTES });
+          const parsed = await simpleParser(content);
+          bodyText = (parsed.text || parsed.html || "").slice(0, MAX_BODY_TEXT_CHARS);
+        } catch (err) {
+          // Couldn't fetch/parse this one specific message's body - falls
+          // back to trusting the cheaper checks it already passed, rather
+          // than dropping it or failing the whole cycle over one message.
+          console.error(`[reply-checker] Failed to fetch body for uid ${candidate.uid}:`, err.message);
+        }
+
+        if (bodyText && bodyLooksLikeAutoAck(bodyText)) continue; // an automated acknowledgment, not a genuine reply
+
+        const existing = genuineReplies.get(candidate.address);
+        if (!existing || candidate.date < existing) genuineReplies.set(candidate.address, candidate.date);
+        if (bodyText) redirectCandidates.push({ address: candidate.address, subject: candidate.subject, bodyText });
       }
 
       // Moved to Trash, not permanently expunged - functionally "deleted"
@@ -200,6 +305,35 @@ async function checkRepliesForUser(userId) {
       `"${email.subject || "(no subject)"}" got a reply from ${matchedRecipient}.`,
       `lead-email:${email.id}`
     );
+
+    // If this reply's body hinted at a redirect ("please contact us at
+    // this address instead"), check with the AI and - if confirmed -
+    // store it on the lead as a suggestion. Never auto-resends anywhere;
+    // this is surfaced for the user to review and act on themselves,
+    // since acting on a wrong extraction would mean emailing an address
+    // that never asked for it.
+    const redirectCandidate = redirectCandidates.find((r) => r.address === matchedRecipient.toLowerCase().trim());
+    if (redirectCandidate && bodyHintsAtRedirect(redirectCandidate.bodyText)) {
+      try {
+        const redirectResult = await detectRedirectEmail(userId, redirectCandidate.bodyText);
+        if (redirectResult.hasRedirect) {
+          const campaignLead = db.prepare("SELECT lead_id FROM email_campaign_leads WHERE tracked_email_id = ?").get(email.id);
+          if (campaignLead) {
+            db.prepare(
+              "UPDATE leads SET suggested_contact_email = ?, suggested_contact_reason = ?, suggested_contact_detected_at = datetime('now') WHERE id = ?"
+            ).run(redirectResult.suggestedEmail, redirectResult.reason, campaignLead.lead_id);
+            db.prepare("INSERT INTO app_notifications (user_id, type, title, message, link) VALUES (?, 'contact_redirect', ?, ?, ?)").run(
+              userId,
+              "Reply suggests a different contact",
+              `A reply to "${email.subject || "(no subject)"}" suggests emailing ${redirectResult.suggestedEmail} instead.`,
+              `lead:${campaignLead.lead_id}`
+            );
+          }
+        }
+      } catch (err) {
+        console.error(`[reply-checker] Redirect detection failed for tracked email ${email.id}:`, err.message);
+      }
+    }
   }
 
   db.prepare("UPDATE users SET last_reply_check_at = datetime('now') WHERE id = ?").run(userId);

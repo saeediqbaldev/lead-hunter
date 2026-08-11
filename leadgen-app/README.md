@@ -6,6 +6,40 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.19
+Body-content reply detection, redirect-email suggestions, and a real
+search bar for History and Alerts.
+
+- **Search bar added to History and Alerts, and expanded on History** -
+  now searches subject, recipient email, and body text ("a sentence"),
+  not just subject. Alerts had no search at all before. Verified finding
+  results by email address specifically on both.
+- **Found and fixed a real gap in reply detection**: support-ticket-style
+  acknowledgments ("we've received your email, our team will review it,
+  no reply is needed") were being counted as genuine replies, since the
+  existing detection only checked the subject line and headers - many
+  systems send this kind of reply with a normal-looking subject and none
+  of the headers checked. Fixed by adding a second pass that downloads
+  and parses the actual body text (new dependency: mailparser) for
+  messages that pass the cheaper checks, checking for common
+  acknowledgment phrasing before finalizing anything as a genuine reply.
+  Verified against the exact real-world example provided - correctly
+  excluded.
+- **Redirect-email suggestions**: when a reply's body hints at
+  redirecting to a different contact ("wrong department, please email
+  sales@company.com instead"), an AI call confirms it and extracts the
+  address. Never auto-resends anywhere - the suggestion is stored on the
+  lead and surfaced as a banner in its expand panel, with "Use this
+  email instead" or "Dismiss." Verified end-to-end: detection, storage,
+  the banner appearing, applying it and the lead's actual contact email
+  updating correctly, and the suggestion clearing afterward.
+- **On the contact scraper "decision-maker" request**: this needs to be
+  addressed honestly rather than guessed at - the scraper only returns
+  one email per business today, and the logic that picks it lives in the
+  separate Python scraper service, whose source isn't in this
+  repository. That can't be changed from here; it would need work on the
+  scraper service itself.
+
 ## What's in this V15.18
 Campaigns restructured to match the requested Niche > Country > City
 tree, and renamed from "Auto Send."

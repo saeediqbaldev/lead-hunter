@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.11-15.18";
+const APP_VERSION = "2026.08.11-15.19";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -1402,10 +1402,12 @@ document.getElementById("contactedChartModeToggle").addEventListener("click", (e
 async function loadContactedAlerts() {
   const type = document.getElementById("contactedAlertsTypeSelect").value;
   const unreadOnly = document.getElementById("contactedUnreadOnlyToggle").checked;
+  const search = document.getElementById("contactedAlertsSearchInput").value.trim();
   const params = new URLSearchParams();
   params.set("provider", state.contactedPlatform);
   if (type) params.set("type", type);
   if (unreadOnly) params.set("unread", "true");
+  if (search) params.set("search", search);
 
   const res = await api(`/api/tracker/notifications?${params.toString()}`);
   const data = await res.json();
@@ -1450,6 +1452,7 @@ async function loadContactedAlerts() {
 }
 document.getElementById("contactedAlertsTypeSelect").addEventListener("change", loadContactedAlerts);
 document.getElementById("contactedUnreadOnlyToggle").addEventListener("change", loadContactedAlerts);
+document.getElementById("contactedAlertsSearchInput").addEventListener("input", debounce(loadContactedAlerts, 300));
 document.getElementById("contactedMarkAllReadBtn").addEventListener("click", async () => {
   await api("/api/tracker/notifications/mark-all-read", {
     method: "POST",
@@ -5519,6 +5522,19 @@ function buildExpandPanelHtml(lead) {
         : ""
     }
 
+    ${
+      lead.suggested_contact_email
+        ? `<div class="suggested-contact-banner" data-suggested-contact-banner="${lead.id}">
+             <div><i class="bi bi-signpost-split-fill"></i> A reply suggested a different contact: <b>${escapeHtml(lead.suggested_contact_email)}</b></div>
+             ${lead.suggested_contact_reason ? `<div class="hint" style="margin:2px 0 8px;">${escapeHtml(lead.suggested_contact_reason)}</div>` : ""}
+             <div style="display:flex; gap:6px;">
+               <button type="button" class="small-btn" data-action="apply-suggested-contact" data-lead-id="${lead.id}">Use this email instead</button>
+               <button type="button" class="small-btn" data-action="dismiss-suggested-contact" data-lead-id="${lead.id}">Dismiss</button>
+             </div>
+           </div>`
+        : ""
+    }
+
     <div class="expand-section" data-inspect-section>
       <div class="expand-section-head">
         <span class="expand-section-title"><i class="bi bi-clipboard-data"></i> Business Inspection</span>
@@ -5853,6 +5869,23 @@ async function wireLeadExpandPanel(expandRow, leadId, lead) {
       });
       lead.owner_name = value || null;
       showToast("Owner name saved", "success");
+      return;
+    }
+
+    if (action === "apply-suggested-contact") {
+      const updated = await api(`/api/leads/${leadId}/apply-suggested-contact`, { method: "POST" }).then((r) => r.json());
+      lead.suggested_contact_email = null;
+      lead.socials = updated.socials;
+      expandRow.querySelector(`[data-suggested-contact-banner="${leadId}"]`)?.remove();
+      showToast("Contact email updated", "success");
+      return;
+    }
+
+    if (action === "dismiss-suggested-contact") {
+      await api(`/api/leads/${leadId}/dismiss-suggested-contact`, { method: "POST" });
+      lead.suggested_contact_email = null;
+      expandRow.querySelector(`[data-suggested-contact-banner="${leadId}"]`)?.remove();
+      showToast("Dismissed", "success");
       return;
     }
 

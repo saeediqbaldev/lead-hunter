@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="Xeven Leads" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=1518" />
+<link rel="stylesheet" href="style.css?v=1519" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -564,7 +564,7 @@
             <option value="open">Opens only</option>
             <option value="click">Clicks only</option>
           </select>
-          <input type="text" id="contactedHistorySearchInput" placeholder="Search subject…" />
+          <input type="text" id="contactedHistorySearchInput" placeholder="Search subject, email, or a sentence…" />
           <button type="button" id="contactedHistoryClearBtn" class="small-btn danger-btn" style="margin-left:auto;"><i class="bi bi-trash"></i> Clear all</button>
         </div>
         <div class="contacted-table-wrap">
@@ -628,6 +628,7 @@
           </div>
         </div>
         <div class="contacted-filters-row">
+          <input type="text" id="contactedAlertsSearchInput" placeholder="Search subject, email, or a sentence…" style="flex:1; min-width:200px;" />
           <select id="contactedAlertsTypeSelect">
             <option value="">All</option>
             <option value="open">Opens</option>
@@ -1028,7 +1029,7 @@
 
 
 
-  <script src="app.js?v=1518"></script>
+  <script src="app.js?v=1519"></script>
   <script src="pwa-install.js"></script>
 </body>
 </html>

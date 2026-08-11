@@ -621,6 +621,10 @@ body {
 }
 .settings-result.ok { background: rgba(127,184,138,0.1); color: var(--good); border: 1px solid rgba(127,184,138,0.3); }
 .settings-result.bad { background: rgba(217,93,93,0.1); color: var(--danger); border: 1px solid rgba(217,93,93,0.3); }
+.suggested-contact-banner {
+  background: rgba(232,162,61,0.1); border: 1px solid rgba(232,162,61,0.3); border-radius: 8px;
+  padding: 10px 12px; margin-bottom: 10px; font-size: 13px;
+}
 .settings-actions { flex-wrap: wrap; }
 .settings-actions .danger-btn { margin-right: auto; }
 

@@ -156,7 +156,7 @@ router.post("/emails/bulk-delete", (req, res) => {
 // ==================== Notifications ====================
 // GET /api/tracker/notifications?unread=true&type=open
 router.get("/notifications", (req, res) => {
-  const { unread, type, provider } = req.query;
+  const { unread, type, provider, search } = req.query;
   const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
   const offset = parseInt(req.query.offset, 10) || 0;
   const userId = req.session.userId;
@@ -171,6 +171,10 @@ router.get("/notifications", (req, res) => {
   if (provider) {
     clauses.push("e.provider = ?");
     values.push(provider);
+  }
+  if (search) {
+    clauses.push("(n.message LIKE ? OR e.subject LIKE ? OR e.recipients LIKE ?)");
+    values.push(`%${search}%`, `%${search}%`, `%${search}%`);
   }
 
   try {
@@ -500,8 +504,8 @@ router.get("/history", (req, res) => {
     values.push(type);
   }
   if (search) {
-    clauses.push("e.subject LIKE ?");
-    values.push(`%${search}%`);
+    clauses.push("(e.subject LIKE ? OR e.recipients LIKE ? OR e.body_html LIKE ?)");
+    values.push(`%${search}%`, `%${search}%`, `%${search}%`);
   }
   if (from) {
     clauses.push("ev.ts >= ?");

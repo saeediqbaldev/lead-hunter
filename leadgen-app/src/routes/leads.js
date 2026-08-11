@@ -130,6 +130,40 @@ router.patch("/:id", (req, res) => {
   res.json(rowToLead(db.prepare("SELECT * FROM leads WHERE id = ?").get(id)));
 });
 
+// POST /api/leads/:id/apply-suggested-contact - updates this lead's
+// actual contact email to the one a reply suggested instead, then clears
+// the suggestion (it's been acted on, so it shouldn't linger).
+router.post("/:id/apply-suggested-contact", (req, res) => {
+  const existing = getOwnedLead(req.session.userId, req.params.id);
+  if (!existing) return res.status(404).json({ error: "Lead not found" });
+  if (!existing.suggested_contact_email) return res.status(400).json({ error: "No suggested contact on this lead" });
+
+  let socials = {};
+  try {
+    socials = JSON.parse(existing.socials || "{}");
+  } catch {
+    socials = {};
+  }
+  socials.email = existing.suggested_contact_email;
+
+  db.prepare(
+    "UPDATE leads SET socials = ?, suggested_contact_email = NULL, suggested_contact_reason = NULL, suggested_contact_detected_at = NULL WHERE id = ?"
+  ).run(JSON.stringify(socials), req.params.id);
+  res.json(rowToLead(db.prepare("SELECT * FROM leads WHERE id = ?").get(req.params.id)));
+});
+
+// POST /api/leads/:id/dismiss-suggested-contact - clears a suggestion
+// that wasn't useful, without changing the lead's actual contact email.
+router.post("/:id/dismiss-suggested-contact", (req, res) => {
+  const existing = getOwnedLead(req.session.userId, req.params.id);
+  if (!existing) return res.status(404).json({ error: "Lead not found" });
+
+  db.prepare("UPDATE leads SET suggested_contact_email = NULL, suggested_contact_reason = NULL, suggested_contact_detected_at = NULL WHERE id = ?").run(
+    req.params.id
+  );
+  res.json(rowToLead(db.prepare("SELECT * FROM leads WHERE id = ?").get(req.params.id)));
+});
+
 // DELETE /api/leads/:id
 router.delete("/:id", (req, res) => {
   const existing = getOwnedLead(req.session.userId, req.params.id);
