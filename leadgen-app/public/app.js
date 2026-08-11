@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.11-15.19";
+const APP_VERSION = "2026.08.11-15.20";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -1145,9 +1145,57 @@ function trackingMetaLine(ev) {
   return parts.join(" · ") || "unknown";
 }
 
+// Renders a full email thread (original + every follow-up + reply
+// status), used by the shared detail panel below regardless of whether
+// it was opened from Tracking, History, or Alerts - so clicking any
+// touch in a sequence shows the whole conversation, not just that one
+// message in isolation.
+function renderEmailThreadHtml(thread, nextFollowUpAt, provider) {
+  if (!thread || thread.length <= 1) {
+    // No campaign/follow-up sequence - just the single message, same as
+    // before this feature existed.
+    const only = thread?.[0];
+    return only?.bodyHtml
+      ? `<iframe class="contacted-detail-body-frame" srcdoc="${escapeHtmlAttr(only.bodyHtml)}" sandbox=""></iframe>`
+      : `<p class="hint">No content captured for this email - it was sent manually via the ${provider} extension, which only reports tracking metadata, not the message body.</p>`;
+  }
+
+  const items = thread
+    .map((t, i) => {
+      const label = t.touchNumber === 1 ? "1st email" : `Follow-up ${t.touchNumber - 1}`;
+      const repliedBadge = t.repliedAt
+        ? `<span class="contacted-status-pill clicked" style="margin-left:6px;"><i class="bi bi-reply-fill"></i> Replied ${formatContactedTimestamp(t.repliedAt)}</span>`
+        : "";
+      return `
+      <div class="email-thread-item">
+        <div class="email-thread-item-head" data-action="toggle-thread-item" data-thread-index="${i}">
+          <span class="niche-caret small">▶</span>
+          <b>${label}</b>
+          <span class="hint">${formatContactedTimestamp(t.sentAt)}</span>
+          ${repliedBadge}
+        </div>
+        <div class="email-thread-item-body" data-thread-body="${i}" style="display:none;">
+          ${
+            t.bodyHtml
+              ? `<iframe class="contacted-detail-body-frame" srcdoc="${escapeHtmlAttr(t.bodyHtml)}" sandbox=""></iframe>`
+              : `<p class="hint">No content captured.</p>`
+          }
+        </div>
+      </div>`;
+    })
+    .join("");
+
+  const nextFollowUpHtml = nextFollowUpAt
+    ? `<p class="hint" style="margin-top:8px;"><i class="bi bi-clock-history"></i> Next follow-up scheduled for ${formatContactedTimestamp(nextFollowUpAt)}</p>`
+    : "";
+
+  return `<div class="email-thread">${items}</div>${nextFollowUpHtml}`;
+}
+
 async function openContactedDetail(emailId) {
   const res = await api(`/api/tracker/emails/${emailId}`);
   const data = await res.json();
+  const threadData = await api(`/api/tracker/emails/${emailId}/thread`).then((r) => r.json());
   const existing = document.querySelector(".contacted-detail-panel");
   if (existing) existing.remove();
 
@@ -1167,12 +1215,8 @@ async function openContactedDetail(emailId) {
         : ""
     }
     <div class="settings-divider"></div>
-    <h4>Message</h4>
-    ${
-      data.email.body_html
-        ? `<iframe class="contacted-detail-body-frame" srcdoc="${escapeHtmlAttr(data.email.body_html)}" sandbox=""></iframe>`
-        : `<p class="hint">No content captured for this email - it was sent manually via the ${data.email.provider} extension, which only reports tracking metadata, not the message body.</p>`
-    }
+    <h4>${threadData.thread.length > 1 ? "Conversation" : "Message"}</h4>
+    ${renderEmailThreadHtml(threadData.thread, threadData.nextFollowUpAt, data.email.provider)}
     <div class="settings-divider"></div>
     <label class="site-field-label">Notes<textarea data-detail-notes rows="3" style="width:100%; background:var(--panel-raised); border:1px solid var(--border); border-radius:6px; color:var(--text); padding:8px;">${data.email.notes || ""}</textarea></label>
     <button type="button" class="small-btn" data-action="save-detail-notes">Save note</button>
@@ -1192,6 +1236,17 @@ async function openContactedDetail(emailId) {
   `;
   document.body.appendChild(panel);
   requestAnimationFrame(() => panel.classList.add("open"));
+
+  panel.querySelectorAll('[data-action="toggle-thread-item"]').forEach((head) => {
+    head.addEventListener("click", () => {
+      const idx = head.dataset.threadIndex;
+      const body = panel.querySelector(`[data-thread-body="${idx}"]`);
+      const caret = head.querySelector(".niche-caret");
+      const isOpen = body.style.display !== "none";
+      body.style.display = isOpen ? "none" : "block";
+      caret.classList.toggle("bi-chevron-down", !isOpen);
+    });
+  });
 
   panel.addEventListener("click", async (e) => {
     const action = e.target.closest("[data-action]")?.dataset.action;
@@ -1701,6 +1756,8 @@ async function showCampaignCreationForm() {
     <label class="site-visuals-toggle"><input type="checkbox" data-campaign-cta> Weave in a clear call-to-action</label>
     <label class="site-visuals-toggle"><input type="checkbox" data-campaign-meeting> Invite them to a meeting/call</label>
     <label class="site-field-label" data-campaign-meeting-link-row style="display:none;">Meeting booking link<input type="text" data-campaign-meeting-link placeholder="https://cal.com/you/15min"></label>
+    <label class="site-visuals-toggle"><input type="checkbox" data-campaign-whatsapp> Offer WhatsApp as a way to reach out</label>
+    <label class="site-field-label" data-campaign-whatsapp-link-row style="display:none;">WhatsApp link<input type="text" data-campaign-whatsapp-link placeholder="https://wa.me/971500000000"></label>
 
     <div class="settings-divider"></div>
     <h3 class="settings-subheading">Sending pace</h3>
@@ -1722,6 +1779,10 @@ async function showCampaignCreationForm() {
       <label class="site-field-label">Max follow-ups<input type="number" data-campaign-followup-max-count value="2" min="1" max="10" style="width:90px;"></label>
       <label class="site-field-label">Wait between touches (days)<input type="number" data-campaign-followup-wait-days value="3" min="1" style="width:90px;"></label>
     </div>
+    <label class="site-field-label" data-campaign-followup-instructions-row style="display:none; margin-top:8px;">
+      Custom follow-up instructions <small class="optional">(optional - follow-ups already escalate urgency by touch and reference the business's specific pain points automatically; add anything else you want every follow-up in this campaign to do)</small>
+      <textarea data-campaign-followup-instructions rows="2" placeholder="e.g. Always mention our roofing-specific case studies" style="width:100%; margin-top:4px;"></textarea>
+    </label>
 
     <h3 class="settings-subheading" style="margin-top:16px;">Alert notifications</h3>
     <p class="hint">The open/click itself is always recorded either way - this only controls whether it also creates an alert.</p>
@@ -1737,6 +1798,11 @@ async function showCampaignCreationForm() {
 
   body.querySelector("[data-campaign-followup-enabled]").addEventListener("change", (e) => {
     body.querySelector("[data-campaign-followup-fields]").style.display = e.target.checked ? "flex" : "none";
+    body.querySelector("[data-campaign-followup-instructions-row]").style.display = e.target.checked ? "block" : "none";
+  });
+
+  body.querySelector("[data-campaign-whatsapp]").addEventListener("change", (e) => {
+    body.querySelector("[data-campaign-whatsapp-link-row]").style.display = e.target.checked ? "block" : "none";
   });
 
   body.querySelector("[data-campaign-meeting]").addEventListener("change", (e) => {
@@ -1796,9 +1862,9 @@ async function showCampaignCreationForm() {
         ${countryCities
           .map(
             (c) => `
-        <label class="campaign-city-check-row">
-          <input type="checkbox" value="${c.id}" data-campaign-city-checkbox data-campaign-city-country="${countryAttr}">
-          ${c.name} <span class="hint">(${c.lead_count} leads)</span>
+        <label class="campaign-city-check-row" ${c.used_in_campaign ? 'style="opacity:0.55;"' : ""}>
+          <input type="checkbox" value="${c.id}" data-campaign-city-checkbox data-campaign-city-country="${countryAttr}" ${c.used_in_campaign ? "disabled" : ""}>
+          ${c.name} <span class="hint">(${c.lead_count} leads)${c.used_in_campaign ? " - already contacted in a previous campaign" : ""}</span>
         </label>`
           )
           .join("")}
@@ -1809,7 +1875,7 @@ async function showCampaignCreationForm() {
     cityChecklist.querySelectorAll("[data-campaign-country-select-all]").forEach((cb) => {
       cb.addEventListener("change", (e) => {
         const country = e.target.dataset.campaignCountrySelectAll;
-        cityChecklist.querySelectorAll(`[data-campaign-city-country="${country}"]`).forEach((cityCb) => (cityCb.checked = e.target.checked));
+        cityChecklist.querySelectorAll(`[data-campaign-city-country="${country}"]:not(:disabled)`).forEach((cityCb) => (cityCb.checked = e.target.checked));
         updateLeadPreview();
       });
     });
@@ -1836,6 +1902,8 @@ async function showCampaignCreationForm() {
         cta: body.querySelector("[data-campaign-cta]").checked,
         meeting: body.querySelector("[data-campaign-meeting]").checked,
         meetingLink: body.querySelector("[data-campaign-meeting-link]").value.trim() || undefined,
+        whatsapp: body.querySelector("[data-campaign-whatsapp]").checked,
+        whatsappLink: body.querySelector("[data-campaign-whatsapp-link]").value.trim() || undefined,
         aiProvider: body.querySelector("[data-campaign-ai-provider]").value || undefined,
         maxPerDay: parseInt(body.querySelector("[data-campaign-max-per-day]").value, 10) || 100,
         minGapMinutes: parseInt(body.querySelector("[data-campaign-min-gap]").value, 10) || 5,
@@ -1843,6 +1911,7 @@ async function showCampaignCreationForm() {
         followupEnabled: body.querySelector("[data-campaign-followup-enabled]").checked,
         followupMaxCount: parseInt(body.querySelector("[data-campaign-followup-max-count]").value, 10) || 2,
         followupWaitDays: parseInt(body.querySelector("[data-campaign-followup-wait-days]").value, 10) || 3,
+        followupCustomInstructions: body.querySelector("[data-campaign-followup-instructions]").value.trim() || undefined,
         muteOpenedAlerts: body.querySelector("[data-campaign-mute-opened]").checked,
         muteClickedAlerts: body.querySelector("[data-campaign-mute-clicked]").checked,
       };
@@ -1907,6 +1976,8 @@ function showCampaignEditForm(campaign) {
     <label class="site-visuals-toggle"><input type="checkbox" data-edit-cta ${campaign.cta ? "checked" : ""}> Weave in a clear call-to-action</label>
     <label class="site-visuals-toggle"><input type="checkbox" data-edit-meeting ${campaign.meeting ? "checked" : ""}> Invite them to a meeting/call</label>
     <label class="site-field-label" data-edit-meeting-link-row style="${campaign.meeting ? "" : "display:none;"}">Meeting booking link<input type="text" data-edit-meeting-link value="${campaign.meeting_link || ""}"></label>
+    <label class="site-visuals-toggle"><input type="checkbox" data-edit-whatsapp ${campaign.whatsapp ? "checked" : ""}> Offer WhatsApp as a way to reach out</label>
+    <label class="site-field-label" data-edit-whatsapp-link-row style="${campaign.whatsapp ? "" : "display:none;"}">WhatsApp link<input type="text" data-edit-whatsapp-link value="${campaign.whatsapp_link || ""}"></label>
     <div class="settings-divider"></div>
     <h3 class="settings-subheading">Sending pace</h3>
     <div class="smtp-field-row">
@@ -1926,6 +1997,10 @@ function showCampaignEditForm(campaign) {
       <label class="site-field-label">Max follow-ups<input type="number" data-edit-followup-max-count value="${campaign.followup_max_count}" min="1" max="10" style="width:90px;"></label>
       <label class="site-field-label">Wait between touches (days)<input type="number" data-edit-followup-wait-days value="${campaign.followup_wait_days}" min="1" style="width:90px;"></label>
     </div>
+    <label class="site-field-label" data-edit-followup-instructions-row style="display:${campaign.followup_enabled ? "block" : "none"}; margin-top:8px;">
+      Custom follow-up instructions <small class="optional">(optional - follow-ups already escalate urgency by touch and reference the business's specific pain points automatically)</small>
+      <textarea data-edit-followup-instructions rows="2" style="width:100%; margin-top:4px;">${escapeHtml(campaign.followup_custom_instructions || "")}</textarea>
+    </label>
 
     <h3 class="settings-subheading" style="margin-top:16px;">Alert notifications</h3>
     <p class="hint">The open/click itself is always recorded either way - this only controls whether it also creates an alert. Updatable anytime.</p>
@@ -1941,10 +2016,15 @@ function showCampaignEditForm(campaign) {
 
   body.querySelector("[data-edit-followup-enabled]").addEventListener("change", (e) => {
     body.querySelector("[data-edit-followup-fields]").style.display = e.target.checked ? "flex" : "none";
+    body.querySelector("[data-edit-followup-instructions-row]").style.display = e.target.checked ? "block" : "none";
   });
 
   body.querySelector("[data-edit-meeting]").addEventListener("change", (e) => {
     body.querySelector("[data-edit-meeting-link-row]").style.display = e.target.checked ? "block" : "none";
+  });
+
+  body.querySelector("[data-edit-whatsapp]").addEventListener("change", (e) => {
+    body.querySelector("[data-edit-whatsapp-link-row]").style.display = e.target.checked ? "block" : "none";
   });
 
   body.addEventListener("click", async (e) => {
@@ -1964,12 +2044,15 @@ function showCampaignEditForm(campaign) {
         cta: body.querySelector("[data-edit-cta]").checked,
         meeting: body.querySelector("[data-edit-meeting]").checked,
         meetingLink: body.querySelector("[data-edit-meeting-link]").value.trim(),
+        whatsapp: body.querySelector("[data-edit-whatsapp]").checked,
+        whatsappLink: body.querySelector("[data-edit-whatsapp-link]").value.trim(),
         maxPerDay: parseInt(body.querySelector("[data-edit-max-per-day]").value, 10) || 100,
         minGapMinutes: parseInt(body.querySelector("[data-edit-min-gap]").value, 10) || 5,
         maxGapMinutes: parseInt(body.querySelector("[data-edit-max-gap]").value, 10) || 10,
         followupEnabled: body.querySelector("[data-edit-followup-enabled]").checked,
         followupMaxCount: parseInt(body.querySelector("[data-edit-followup-max-count]").value, 10) || 2,
         followupWaitDays: parseInt(body.querySelector("[data-edit-followup-wait-days]").value, 10) || 3,
+        followupCustomInstructions: body.querySelector("[data-edit-followup-instructions]").value.trim(),
         muteOpenedAlerts: body.querySelector("[data-edit-mute-opened]").checked,
         muteClickedAlerts: body.querySelector("[data-edit-mute-clicked]").checked,
       };
@@ -2212,10 +2295,13 @@ function renderCampaignLeadsTable(bodyEl, campaign, leads, { selectable = false,
           <tr class="campaign-lead-detail-row" id="campaign-detail-${l.id}" style="display:none;">
             <td colspan="${colCount}">
               <div class="campaign-lead-detail">
-                ${l.sent_subject ? `<div><b>Subject:</b> ${l.sent_subject}</div>` : ""}
-                ${openInfo ? `<div><b>Engagement:</b> ${openInfo}</div>` : ""}
-                ${l.first_opened_at ? `<div><b>First opened:</b> ${formatContactedTimestamp(l.first_opened_at)}</div>` : ""}
-                ${l.replied_at ? `<div><b>Replied:</b> ${formatContactedTimestamp(l.replied_at)}</div>` : ""}
+                ${
+                  l.tracked_email_id
+                    ? `<div class="campaign-thread-wrap" data-campaign-thread-container="${l.id}" data-tracked-email-id="${l.tracked_email_id}">
+                         <p class="hint" style="padding:4px 0;">Loading conversation…</p>
+                       </div>`
+                    : ""
+                }
                 ${l.error ? `<div style="color:var(--danger);"><b>Error:</b> ${l.error}</div>` : ""}
                 ${
                   l.status === "failed"
@@ -2262,6 +2348,27 @@ function renderCampaignLeadsTable(bodyEl, campaign, leads, { selectable = false,
           await wireLeadExpandPanel(container, Number(leadId), lead);
         } catch (err) {
           container.innerHTML = `<p class="hint" style="color:var(--danger);">Could not load this lead's details: ${err.message}</p>`;
+        }
+      }
+
+      const threadContainer = document.querySelector(`[data-campaign-thread-container="${id}"]`);
+      if (!isOpen && threadContainer && !threadContainer.dataset.loaded) {
+        threadContainer.dataset.loaded = "1";
+        try {
+          const threadData = await api(`/api/tracker/emails/${threadContainer.dataset.trackedEmailId}/thread`).then((r) => r.json());
+          threadContainer.innerHTML = renderEmailThreadHtml(threadData.thread, threadData.nextFollowUpAt);
+          threadContainer.querySelectorAll('[data-action="toggle-thread-item"]').forEach((head) => {
+            head.addEventListener("click", () => {
+              const idx = head.dataset.threadIndex;
+              const body = threadContainer.querySelector(`[data-thread-body="${idx}"]`);
+              const caret = head.querySelector(".niche-caret");
+              const open = body.style.display !== "none";
+              body.style.display = open ? "none" : "block";
+              caret.classList.toggle("bi-chevron-down", !open);
+            });
+          });
+        } catch (err) {
+          threadContainer.innerHTML = `<p class="hint" style="color:var(--danger);">Could not load the conversation: ${err.message}</p>`;
         }
       }
     });
@@ -5570,6 +5677,7 @@ function buildExpandPanelHtml(lead) {
         <span class="gen-provider-row-label">Add organically:</span>
         <button type="button" class="gen-extra-toggle" data-extra="cta" title="Weave in a clear call-to-action"><i class="bi bi-megaphone-fill"></i> CTA</button>
         <button type="button" class="gen-extra-toggle" data-extra="meeting" title="Invite them to a short meeting/call"><i class="bi bi-calendar-event-fill"></i> Meeting</button>
+        <button type="button" class="gen-extra-toggle" data-extra="whatsapp" title="Offer WhatsApp as a way to reach out"><i class="bi bi-whatsapp"></i> WhatsApp</button>
         <button type="button" class="gen-extra-toggle" data-extra="website" title="Reference a demo/reference website"><i class="bi bi-globe2"></i> Website</button>
         <span class="gen-row-divider"></span>
         <span class="gen-provider-row-label">AI provider:</span>
@@ -5580,6 +5688,9 @@ function buildExpandPanelHtml(lead) {
       </div>
       <div class="gen-extra-link-row" data-extra-link="meeting" style="display:none;">
         <input type="text" data-meeting-link-input placeholder="Meeting booking link (e.g. https://cal.com/you/15min) - optional" />
+      </div>
+      <div class="gen-extra-link-row" data-extra-link="whatsapp" style="display:none;">
+        <input type="text" data-whatsapp-link-input placeholder="WhatsApp link (e.g. https://wa.me/971500000000) - optional" />
       </div>
       <div class="gen-extra-link-row" data-extra-link="website" style="display:none;">
         <input type="text" data-website-link-input placeholder="Demo/reference website link - optional" />
@@ -5657,6 +5768,7 @@ async function wireLeadExpandPanel(expandRow, leadId, lead) {
   let ctaEnabled = false;
   let meetingEnabled = false;
   let websiteEnabled = false;
+  let whatsappEnabled = false;
 
   const inspectBody = expandRow.querySelector("[data-inspect-body]");
   await loadAndRenderInspect(leadId, inspectBody);
@@ -5739,6 +5851,10 @@ async function wireLeadExpandPanel(expandRow, leadId, lead) {
         websiteEnabled = !websiteEnabled;
         btn.classList.toggle("active", websiteEnabled);
         expandRow.querySelector('[data-extra-link="website"]').style.display = websiteEnabled ? "block" : "none";
+      } else if (extra === "whatsapp") {
+        whatsappEnabled = !whatsappEnabled;
+        btn.classList.toggle("active", whatsappEnabled);
+        expandRow.querySelector('[data-extra-link="whatsapp"]').style.display = whatsappEnabled ? "block" : "none";
       }
     });
   });
@@ -5747,6 +5863,7 @@ async function wireLeadExpandPanel(expandRow, leadId, lead) {
     .then((data) => {
       expandRow.querySelector("[data-meeting-link-input]").value = data.meetingLink || "";
       expandRow.querySelector("[data-website-link-input]").value = data.websiteLink || "";
+      expandRow.querySelector("[data-whatsapp-link-input]").value = data.whatsappLink || "";
     })
     .catch(() => {});
 
@@ -5810,6 +5927,8 @@ async function wireLeadExpandPanel(expandRow, leadId, lead) {
       meetingLink: meetingEnabled ? expandRow.querySelector("[data-meeting-link-input]").value.trim() || undefined : undefined,
       website: websiteEnabled || undefined,
       websiteLink: websiteEnabled ? expandRow.querySelector("[data-website-link-input]").value.trim() || undefined : undefined,
+      whatsapp: whatsappEnabled || undefined,
+      whatsappLink: whatsappEnabled ? expandRow.querySelector("[data-whatsapp-link-input]").value.trim() || undefined : undefined,
     });
     if (!result.ok) {
       showToast(result.error, "error");
@@ -5822,15 +5941,17 @@ async function wireLeadExpandPanel(expandRow, leadId, lead) {
     stopBtn.style.display = "inline-flex";
     progressTextEl.textContent = "Starting…";
 
-    // Remember whichever meeting/website links were just used as the new
-    // default, so the next lead's panel starts pre-filled with them too.
-    if (meetingEnabled || websiteEnabled) {
+    // Remember whichever meeting/website/whatsapp links were just used as
+    // the new default, so the next lead's panel starts pre-filled with
+    // them too.
+    if (meetingEnabled || websiteEnabled || whatsappEnabled) {
       const meetingLinkVal = expandRow.querySelector("[data-meeting-link-input]").value.trim();
       const websiteLinkVal = expandRow.querySelector("[data-website-link-input]").value.trim();
+      const whatsappLinkVal = expandRow.querySelector("[data-whatsapp-link-input]").value.trim();
       api("/api/settings/content-links", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ meetingLink: meetingLinkVal, websiteLink: websiteLinkVal }),
+        body: JSON.stringify({ meetingLink: meetingLinkVal, websiteLink: websiteLinkVal, whatsappLink: whatsappLinkVal }),
       }).catch(() => {});
     }
 

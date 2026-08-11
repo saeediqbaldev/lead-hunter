@@ -86,6 +86,70 @@ router.get("/emails/:id", (req, res) => {
   }
 });
 
+// GET /api/tracker/emails/:id/thread - the full sequence for this email's
+// lead within its campaign (original + every follow-up + reply status),
+// not just the single touch this specific tracked email represents.
+// Powers the "show the first email, followups and reply" view from both
+// the Alerts dialog and the campaign dashboard.
+router.get("/emails/:id/thread", (req, res) => {
+  const { id } = req.params;
+  const userId = req.session.userId;
+
+  try {
+    const email = db.prepare("SELECT * FROM tracked_emails WHERE id = ? AND user_id = ?").get(id, userId);
+    if (!email) return res.status(404).json({ error: "Not found" });
+
+    const campaignLead = db.prepare("SELECT campaign_id, lead_id FROM email_campaign_leads WHERE tracked_email_id = ?").get(id);
+    if (!campaignLead) {
+      // Not part of a campaign (e.g. sent manually via the extension) -
+      // no follow-up sequence exists, so the "thread" is just this one email.
+      return res.json({
+        thread: [{ touchNumber: 1, status: email.status, subject: email.subject, bodyHtml: email.body_html, sentAt: email.created_at, repliedAt: email.replied_at }],
+        nextFollowUpAt: null,
+      });
+    }
+
+    const campaign = db.prepare("SELECT followup_enabled, followup_max_count, followup_wait_days FROM email_campaigns WHERE id = ?").get(campaignLead.campaign_id);
+    const touches = db
+      .prepare(
+        `SELECT ecl.touch_number, ecl.status, ecl.sent_at, ecl.replied_at, te.subject, te.body_html
+         FROM email_campaign_leads ecl
+         LEFT JOIN tracked_emails te ON te.id = ecl.tracked_email_id
+         WHERE ecl.campaign_id = ? AND ecl.lead_id = ?
+         ORDER BY ecl.touch_number ASC`
+      )
+      .all(campaignLead.campaign_id, campaignLead.lead_id);
+
+    const thread = touches.map((t) => ({
+      touchNumber: t.touch_number,
+      status: t.status,
+      subject: t.subject,
+      bodyHtml: t.body_html,
+      sentAt: t.sent_at,
+      repliedAt: t.replied_at,
+    }));
+
+    // If the latest touch is sent, nothing has replied yet, follow-ups are
+    // enabled, and there's room for another touch, the next one is
+    // expected at sent_at + wait_days - computed for display only, no DB
+    // row exists for it yet (the scheduler only creates one once it's
+    // actually due).
+    let nextFollowUpAt = null;
+    const latest = thread[thread.length - 1];
+    const anyReplied = thread.some((t) => t.repliedAt);
+    if (campaign?.followup_enabled && !anyReplied && latest?.status === "sent" && latest.touchNumber < campaign.followup_max_count + 1) {
+      const sentDate = new Date(latest.sentAt.replace(" ", "T") + "Z");
+      sentDate.setDate(sentDate.getDate() + campaign.followup_wait_days);
+      nextFollowUpAt = sentDate.toISOString();
+    }
+
+    res.json({ thread, nextFollowUpAt });
+  } catch (err) {
+    console.error("Failed to load email thread:", err);
+    res.status(500).json({ error: "Failed to load email thread" });
+  }
+});
+
 // PATCH /api/tracker/emails/:id { notes }
 router.patch("/emails/:id", (req, res) => {
   const { id } = req.params;

@@ -34,7 +34,13 @@ router.get("/", (req, res) => {
   let query = `
     SELECT cl.id, cl.niche_id, cl.name, cl.keyword, cl.location, cl.country, cl.created_at,
            n.name AS niche_name,
-           COUNT(l.id) AS lead_count
+           COUNT(l.id) AS lead_count,
+           EXISTS (
+             SELECT 1 FROM email_campaign_leads ecl
+             JOIN leads l2 ON l2.id = ecl.lead_id
+             JOIN email_campaigns c ON c.id = ecl.campaign_id
+             WHERE l2.catch_log_id = cl.id AND c.niche_id = cl.niche_id AND c.status != 'draft'
+           ) AS used_in_campaign
     FROM catch_logs cl
     JOIN niches n ON n.id = cl.niche_id
     LEFT JOIN leads l ON l.catch_log_id = cl.id

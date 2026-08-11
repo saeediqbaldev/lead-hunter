@@ -6,6 +6,45 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.20
+Threaded conversation view, dual meeting/WhatsApp links, smarter
+follow-ups, and city tracking for campaigns.
+
+- **Threaded conversation view** - opening any tracked email now shows
+  the full sequence for that lead (1st email, every follow-up, reply
+  status, and the next follow-up's scheduled date/time), not just that
+  one message in isolation. Used by both the Alerts dialog and the
+  campaign dashboard's expand row, so a follow-up is always shown
+  clearly grouped under its original campaign rather than looking like
+  a separate, disconnected send. Verified end-to-end with a real 2-touch
+  replied sequence, including the reply badge landing on the correct
+  touch.
+- **A second link (WhatsApp) alongside the meeting link**, usable
+  wherever the first one was: campaign creation/editing and the lead-
+  level Generate Content panel. Both links persist until manually
+  changed - verified directly (editing just the WhatsApp link on a
+  campaign leaves the meeting link untouched).
+- **Built a real safety net against the two links colliding into a
+  broken URL** - found and fixed two bugs in my own first attempts while
+  testing it: a naive "is the link present" check that missed a merged
+  URL entirely (the first link's characters are technically still
+  "there," just glued to the second one), and a boundary check that
+  falsely flagged completely normal trailing punctuation. The final
+  version was tested against 6 scenarios including the exact merge
+  failure, a dropped link, and ordinary punctuation that shouldn't
+  trigger anything.
+- **Follow-ups now escalate urgency by touch number and reference the
+  business's specific pain points** (previously flat and generic
+  regardless of how many times the lead had been nudged), carry through
+  both links (previously carried neither), and support a per-campaign
+  custom-instructions field for genuine control over what every
+  follow-up in that campaign emphasizes.
+- **City tracking**: a campaign now reports how many distinct cities it
+  covers, and a city already used in a non-draft campaign for a niche is
+  excluded (grayed out, labeled) from being picked again when creating a
+  new one - verified a draft doesn't trigger this but a running campaign
+  does, and that unrelated cities stay selectable.
+
 ## What's in this V15.19
 Body-content reply detection, redirect-email suggestions, and a real
 search bar for History and Alerts.

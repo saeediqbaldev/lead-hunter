@@ -22,6 +22,8 @@ router.post("/", (req, res) => {
     cta,
     meeting,
     meetingLink,
+    whatsapp,
+    whatsappLink,
     maxPerDay,
     minGapMinutes,
     maxGapMinutes,
@@ -29,6 +31,7 @@ router.post("/", (req, res) => {
     followupEnabled,
     followupMaxCount,
     followupWaitDays,
+    followupCustomInstructions,
     muteOpenedAlerts,
     muteClickedAlerts,
   } = req.body || {};
@@ -89,8 +92,8 @@ router.post("/", (req, res) => {
 
   const info = db
     .prepare(
-      `INSERT INTO email_campaigns (user_id, name, niche_id, catch_log_id, catch_log_ids, require_inspection, tone, length, language, cta, meeting, meeting_link, ai_provider, max_per_day, min_gap_minutes, max_gap_minutes, followup_enabled, followup_max_count, followup_wait_days, mute_opened_alerts, mute_clicked_alerts)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO email_campaigns (user_id, name, niche_id, catch_log_id, catch_log_ids, require_inspection, tone, length, language, cta, meeting, meeting_link, whatsapp, whatsapp_link, ai_provider, max_per_day, min_gap_minutes, max_gap_minutes, followup_enabled, followup_max_count, followup_wait_days, followup_custom_instructions, mute_opened_alerts, mute_clicked_alerts)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       userId,
@@ -105,6 +108,8 @@ router.post("/", (req, res) => {
       cta ? 1 : 0,
       meeting ? 1 : 0,
       meetingLink || null,
+      whatsapp ? 1 : 0,
+      whatsappLink || null,
       aiProvider || "",
       maxPerDay || 100,
       minGapMinutes || 5,
@@ -112,6 +117,7 @@ router.post("/", (req, res) => {
       followupEnabled ? 1 : 0,
       Math.min(Math.max(parseInt(followupMaxCount, 10) || 2, 0), 10),
       Math.max(parseInt(followupWaitDays, 10) || 3, 1),
+      followupCustomInstructions || null,
       muteOpenedAlerts ? 1 : 0,
       muteClickedAlerts ? 1 : 0
     );
@@ -168,14 +174,20 @@ router.get("/:id", (req, res) => {
   campaign.pending_work_count = db
     .prepare("SELECT COUNT(*) AS c FROM email_campaign_leads WHERE campaign_id = ? AND status NOT IN ('sent', 'failed', 'skipped')")
     .get(campaign.id).c;
+  campaign.city_count = db
+    .prepare(
+      `SELECT COUNT(DISTINCT l.catch_log_id) AS c FROM email_campaign_leads ecl JOIN leads l ON l.id = ecl.lead_id WHERE ecl.campaign_id = ?`
+    )
+    .get(campaign.id).c;
 
   const leads = db
     .prepare(
       `SELECT ecl.id, ecl.status, ecl.error, ecl.sent_at, ecl.tracked_email_id, ecl.created_at, ecl.touch_number, ecl.replied_at,
-              l.id AS lead_id, l.name AS lead_name, l.socials, l.address, l.phone, l.website,
+              l.id AS lead_id, l.name AS lead_name, l.socials, l.address, l.phone, l.website, cl.name AS city_name,
               te.subject AS sent_subject, te.status AS tracked_status, te.open_count, te.click_count, te.first_opened_at
        FROM email_campaign_leads ecl
        JOIN leads l ON l.id = ecl.lead_id
+       JOIN catch_logs cl ON cl.id = l.catch_log_id
        LEFT JOIN tracked_emails te ON te.id = ecl.tracked_email_id
        WHERE ecl.campaign_id = ? ORDER BY ecl.id ASC`
     )
@@ -307,6 +319,8 @@ router.put("/:id", requireOwnedCampaign, (req, res) => {
     cta,
     meeting,
     meetingLink,
+    whatsapp,
+    whatsappLink,
     aiProvider,
     maxPerDay,
     minGapMinutes,
@@ -314,6 +328,7 @@ router.put("/:id", requireOwnedCampaign, (req, res) => {
     followupEnabled,
     followupMaxCount,
     followupWaitDays,
+    followupCustomInstructions,
     muteOpenedAlerts,
     muteClickedAlerts,
   } = req.body || {};
@@ -329,6 +344,8 @@ router.put("/:id", requireOwnedCampaign, (req, res) => {
       cta = COALESCE(?, cta),
       meeting = COALESCE(?, meeting),
       meeting_link = ?,
+      whatsapp = COALESCE(?, whatsapp),
+      whatsapp_link = ?,
       ai_provider = COALESCE(?, ai_provider),
       max_per_day = COALESCE(?, max_per_day),
       min_gap_minutes = COALESCE(?, min_gap_minutes),
@@ -336,6 +353,7 @@ router.put("/:id", requireOwnedCampaign, (req, res) => {
       followup_enabled = COALESCE(?, followup_enabled),
       followup_max_count = COALESCE(?, followup_max_count),
       followup_wait_days = COALESCE(?, followup_wait_days),
+      followup_custom_instructions = ?,
       mute_opened_alerts = COALESCE(?, mute_opened_alerts),
       mute_clicked_alerts = COALESCE(?, mute_clicked_alerts)
      WHERE id = ?`
@@ -348,6 +366,8 @@ router.put("/:id", requireOwnedCampaign, (req, res) => {
     cta !== undefined ? (cta ? 1 : 0) : null,
     meeting !== undefined ? (meeting ? 1 : 0) : null,
     meetingLink !== undefined ? meetingLink || null : req.campaign.meeting_link,
+    whatsapp !== undefined ? (whatsapp ? 1 : 0) : null,
+    whatsappLink !== undefined ? whatsappLink || null : req.campaign.whatsapp_link,
     aiProvider !== undefined ? aiProvider : null,
     maxPerDay !== undefined ? maxPerDay : null,
     minGapMinutes ?? null,
@@ -355,6 +375,7 @@ router.put("/:id", requireOwnedCampaign, (req, res) => {
     followupEnabled !== undefined ? (followupEnabled ? 1 : 0) : null,
     followupMaxCount !== undefined ? Math.min(Math.max(parseInt(followupMaxCount, 10) || 0, 0), 10) : null,
     followupWaitDays !== undefined ? Math.max(parseInt(followupWaitDays, 10) || 1, 1) : null,
+    followupCustomInstructions !== undefined ? followupCustomInstructions || null : req.campaign.followup_custom_instructions,
     muteOpenedAlerts !== undefined ? (muteOpenedAlerts ? 1 : 0) : null,
     muteClickedAlerts !== undefined ? (muteClickedAlerts ? 1 : 0) : null,
     req.campaign.id

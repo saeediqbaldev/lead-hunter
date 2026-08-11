@@ -201,6 +201,12 @@ async function processCampaignLead(campaign, campaignLeadRow) {
       touchNumber: campaignLeadRow.touch_number,
       signature: userRow?.signature,
       aiProvider: contentProvider,
+      analysis: analysisJobs.getAnalysis(lead.id),
+      meeting: !!campaign.meeting,
+      meetingLink: campaign.meeting_link,
+      whatsapp: !!campaign.whatsapp,
+      whatsappLink: campaign.whatsapp_link,
+      customInstructions: campaign.followup_custom_instructions,
     });
   } else {
     // Step 1: inspect first, if requested and not already done
@@ -226,6 +232,8 @@ async function processCampaignLead(campaign, campaignLeadRow) {
       cta: !!campaign.cta,
       meeting: !!campaign.meeting,
       meetingLink: campaign.meeting_link,
+      whatsapp: !!campaign.whatsapp,
+      whatsappLink: campaign.whatsapp_link,
       aiProvider: contentProvider,
     });
   }

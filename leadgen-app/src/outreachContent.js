@@ -72,7 +72,7 @@ function computeBusinessShortName(fullName) {
   return result || fullName;
 }
 
-function buildContentPrompt({ lead, platform, tone, length, analysis, language, cta, meeting, meetingLink, website, websiteLink }) {
+function buildContentPrompt({ lead, platform, tone, length, analysis, language, cta, meeting, meetingLink, website, websiteLink, whatsapp, whatsappLink }) {
   const platformGuidance = PLATFORM_GUIDANCE[platform] || PLATFORM_GUIDANCE.email;
   const lengthGuidance = LENGTH_GUIDANCE[length] || "";
   const languageInstruction =
@@ -123,7 +123,23 @@ function buildContentPrompt({ lead, platform, tone, length, analysis, language, 
         : "Organically mention that a demo or reference website example is available to show the kind of quality/style to expect, without inventing a specific URL since none was given."
     );
   }
+  if (whatsapp && whatsappLink) {
+    extraInstructions.push(
+      `Also offer WhatsApp as a quick, informal way to reach out, and include this link naturally: ${whatsappLink} - phrase it as a separate, distinct option from any meeting link (e.g. "or if it's easier, message me on WhatsApp: ${whatsappLink}"), never placed directly next to another link with no separating words, since that breaks both links.`
+    );
+  }
   const extraSection = extraInstructions.length ? `\n\nAlso work these in naturally, without making the message feel like a checklist:\n${extraInstructions.map((s) => `- ${s}`).join("\n")}` : "";
+  // Both links get their own dedicated instruction above, but this is
+  // the one rule that actually matters for correctness, independent of
+  // anything else the AI does with the surrounding prose: two raw URLs
+  // placed back-to-back with no separating text or punctuation between
+  // them will merge into a single broken link when the click-tracking
+  // rewriter's URL regex runs on it later, since the regex has no way to
+  // know where one link ends and the next begins without whitespace.
+  const linkSeparationRule =
+    meeting && meetingLink && whatsapp && whatsappLink
+      ? "\n\nCRITICAL: never place the meeting link and the WhatsApp link directly adjacent to each other with no words or punctuation in between - always separate them with at least a few words of normal sentence text, ideally in different sentences entirely."
+      : "";
 
   return `You are writing outreach copy on behalf of a marketing agency (Xeven Pixels), reaching out to a local business to offer to help them grow.
 
@@ -131,7 +147,7 @@ ${context}
 
 Tone/approach to use: "${tone}"
 ${platformGuidance}
-${lengthGuidance ? `Length: ${lengthGuidance}` : ""}${languageInstruction}${extraSection}
+${lengthGuidance ? `Length: ${lengthGuidance}` : ""}${languageInstruction}${extraSection}${linkSeparationRule}
 
 Write the message now. Requirements:
 - Open by addressing them as instructed above - warm and human, not a form-letter salutation
@@ -160,13 +176,48 @@ Requirements:
 - Output ONLY the subject line itself, nothing else`;
 }
 
-async function generateOutreachContent(userId, { lead, platform, tone, length, analysis, signature, language, aiProvider, cta, meeting, meetingLink, website, websiteLink }) {
-  const prompt = buildContentPrompt({ lead, platform, tone, length, analysis, language, cta, meeting, meetingLink, website, websiteLink });
+function escapeRegExp(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// The prompt instructions above reduce the risk of the AI mangling or
+// dropping a link, but can't guarantee it - this is what actually
+// guarantees it: checks whether each expected link appears intact in the
+// generated text (not just present as a substring - a merged URL like
+// "...15minhttps://wa.me/..." still technically contains the first link's
+// characters, so a boundary check is required, not a plain substring
+// match), and if the AI dropped it or merged it into another URL,
+// appends it cleanly on its own line instead of trusting whatever the AI
+// produced.
+function ensureLinksPresent(bodyText, links) {
+  let result = bodyText;
+  for (const { label, url } of links) {
+    if (!url) continue;
+    // Same boundary character class the click-tracking rewriter's own
+    // URL regex uses downstream (src/campaignEmailBuilder.js), plus the
+    // common trailing punctuation it separately strips off afterward
+    // (a period ending a sentence right after a URL is completely
+    // normal and handled correctly there) - the link only counts as
+    // "not intact" if it's immediately followed by something that would
+    // actually merge with it, like another URL's characters.
+    const intactPattern = new RegExp(`${escapeRegExp(url)}(?![^\\s<>")\\.,;:!?\\]])`);
+    if (intactPattern.test(result)) continue;
+    result += `\n\n${label}: ${url}`;
+  }
+  return result;
+}
+
+async function generateOutreachContent(userId, { lead, platform, tone, length, analysis, signature, language, aiProvider, cta, meeting, meetingLink, website, websiteLink, whatsapp, whatsappLink }) {
+  const prompt = buildContentPrompt({ lead, platform, tone, length, analysis, language, cta, meeting, meetingLink, website, websiteLink, whatsapp, whatsappLink });
   const result = await generateWithFallback(userId, prompt, { onlyProvider: aiProvider || undefined });
   if (!result.ok) return result;
 
   const signatureHtml = signature != null && signature !== "" ? signature : DEFAULT_SIGNATURE;
-  const bodyText = result.text.trim();
+  const bodyText = ensureLinksPresent(result.text.trim(), [
+    { label: "Book a time", url: meeting ? meetingLink : null },
+    { label: "WhatsApp", url: whatsapp ? whatsappLink : null },
+    { label: "See an example", url: website ? websiteLink : null },
+  ]);
 
   if (platform === "email") {
     const subjectResult = await generateWithFallback(userId, buildSubjectPrompt({ lead, tone, language, body: bodyText }), {
@@ -190,17 +241,46 @@ async function generateSubjectOnly(userId, { lead, tone, language, body, aiProvi
 // it, and doesn't re-explain the business's problem from scratch (the
 // prospect already read that once). Kept as its own prompt/function
 // rather than adding more branches to the main pitch generator above.
-function buildFollowUpPrompt({ lead, tone, language, previousBody, touchNumber }) {
+function buildFollowUpPrompt({ lead, tone, language, previousBody, touchNumber, analysis, meeting, meetingLink, whatsapp, whatsappLink, customInstructions }) {
   const languageInstruction =
     language && language !== "English" ? `\nWrite the ENTIRE message in ${language} - not English, ${language}.` : "";
   const salutationName = lead.owner_name?.trim() || computeBusinessShortName(lead.name);
   const ordinal = touchNumber === 2 ? "first" : "previous";
+
+  // Escalates by touch rather than staying flat - a 2nd-touch bump reads
+  // very differently from a 4th-touch one in any real outreach sequence,
+  // and treating them the same misses what the person actually asked for
+  // ("the followups should show urgency").
+  const urgencyGuidance =
+    touchNumber <= 2
+      ? "Light, low-pressure nudge - no urgency language yet, just a gentle bump."
+      : touchNumber === 3
+      ? "A bit more direct - it's been a couple of tries with no response, so add mild urgency (e.g. referencing that the offer/availability won't be open-ended) without sounding pushy or desperate."
+      : "This is a later follow-up - be direct about it being one of the last check-ins, with real (but not exaggerated or false) urgency, while staying respectful and leaving the door open.";
+
+  const painPointLine =
+    analysis?.status === "done" && analysis.weaknesses?.length
+      ? `\n\nThe specific problem(s) worth pointing back at: ${analysis.weaknesses.filter((w) => !/\bssl\b|\bhttps?\b/i.test(w)).join("; ") || analysis.weaknesses.join("; ")}`
+      : "";
+
+  const linkInstructions = [];
+  if (meeting && meetingLink) linkInstructions.push(`If it fits naturally, include this link for booking a quick call: ${meetingLink}`);
+  if (whatsapp && whatsappLink) linkInstructions.push(`If it fits naturally, offer WhatsApp as a faster way to reach out: ${whatsappLink}`);
+  const linkSection = linkInstructions.length ? `\n\n${linkInstructions.join("\n")}` : "";
+  const linkSeparationRule =
+    meeting && meetingLink && whatsapp && whatsappLink
+      ? "\n\nCRITICAL: never place the meeting link and the WhatsApp link directly adjacent to each other with no words or punctuation in between."
+      : "";
+
+  const customSection = customInstructions?.trim() ? `\n\nAdditional instructions from the sender for this follow-up specifically:\n${customInstructions.trim()}` : "";
 
   return `Write a short, natural follow-up email to a business that hasn't replied to a ${ordinal} outreach email.
 
 Business: ${lead.name}
 Address them as: ${salutationName}
 Tone: ${tone || "Friendly, casual"}
+This is touch ${touchNumber} of the sequence (touch 1 was the original email).
+Urgency level for this touch: ${urgencyGuidance}${painPointLine}
 
 The ${ordinal} email said (for your context only - don't repeat it, just build on it naturally):
 """
@@ -210,9 +290,10 @@ ${previousBody}
 Rules:
 - Keep it SHORT - 2-4 sentences max. This is a bump, not a re-pitch.
 - Don't restate the original problem/pitch in detail - reference it in passing at most ("following up on my note about...").
+- If a specific problem/pain point was identified above, point back at it directly rather than staying generic - that's what makes this feel like a real follow-up and not a template nudge.
 - Sound like a real person nudging a conversation forward, not a template.
 - No guilt-tripping, no "just checking in" filler with nothing else said - add one small new angle, question, or reason to reply if possible.
-- Do not include a greeting salutation line like "Hi [name]," as the literal first line if it would feel redundant with a real email thread - a brief natural opening is fine.${languageInstruction}
+- Do not include a greeting salutation line like "Hi [name]," as the literal first line if it would feel redundant with a real email thread - a brief natural opening is fine.${languageInstruction}${linkSection}${linkSeparationRule}${customSection}
 
 Return ONLY the follow-up email body text (no subject line, no signature).`;
 }
@@ -221,12 +302,16 @@ Return ONLY the follow-up email body text (no subject line, no signature).`;
 // send (touchNumber counts from 1 = the original email, so touchNumber 2
 // is the first follow-up). Reuses the same signature the original email
 // used - the recipient already saw it once, no need to regenerate it.
-async function generateFollowUpContent(userId, { lead, tone, language, previousBody, touchNumber, signature, aiProvider }) {
-  const prompt = buildFollowUpPrompt({ lead, tone, language, previousBody, touchNumber });
+async function generateFollowUpContent(userId, { lead, tone, language, previousBody, touchNumber, signature, aiProvider, analysis, meeting, meetingLink, whatsapp, whatsappLink, customInstructions }) {
+  const prompt = buildFollowUpPrompt({ lead, tone, language, previousBody, touchNumber, analysis, meeting, meetingLink, whatsapp, whatsappLink, customInstructions });
   const result = await generateWithFallback(userId, prompt, { onlyProvider: aiProvider || undefined });
   if (!result.ok) return result;
   const signatureHtml = signature != null && signature !== "" ? signature : DEFAULT_SIGNATURE;
-  return { ok: true, content: result.text.trim(), signatureHtml, provider: result.provider };
+  const bodyText = ensureLinksPresent(result.text.trim(), [
+    { label: "Book a time", url: meeting ? meetingLink : null },
+    { label: "WhatsApp", url: whatsapp ? whatsappLink : null },
+  ]);
+  return { ok: true, content: bodyText, signatureHtml, provider: result.provider };
 }
 
 const LENGTHS = ["Detailed", "Medium", "Short", "Concise"];

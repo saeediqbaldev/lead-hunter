@@ -92,17 +92,22 @@ router.put("/page-size", (req, res) => {
   res.json({ pageSize: value });
 });
 
-// GET /api/settings/content-links -> this user's saved default meeting/website links
+// GET /api/settings/content-links -> this user's saved default meeting/whatsapp/website links
 router.get("/content-links", (req, res) => {
-  const row = db.prepare("SELECT meeting_link, website_link FROM users WHERE id = ?").get(req.session.userId);
-  res.json({ meetingLink: row.meeting_link || "", websiteLink: row.website_link || "" });
+  const row = db.prepare("SELECT meeting_link, website_link, whatsapp_link FROM users WHERE id = ?").get(req.session.userId);
+  res.json({ meetingLink: row.meeting_link || "", websiteLink: row.website_link || "", whatsappLink: row.whatsapp_link || "" });
 });
 
-// PUT /api/settings/content-links { meetingLink?, websiteLink? }
+// PUT /api/settings/content-links { meetingLink?, websiteLink?, whatsappLink? }
 router.put("/content-links", (req, res) => {
-  const { meetingLink, websiteLink } = req.body || {};
-  db.prepare("UPDATE users SET meeting_link = ?, website_link = ? WHERE id = ?").run(meetingLink || null, websiteLink || null, req.session.userId);
-  res.json({ meetingLink: meetingLink || "", websiteLink: websiteLink || "" });
+  const { meetingLink, websiteLink, whatsappLink } = req.body || {};
+  db.prepare("UPDATE users SET meeting_link = ?, website_link = ?, whatsapp_link = ? WHERE id = ?").run(
+    meetingLink || null,
+    websiteLink || null,
+    whatsappLink || null,
+    req.session.userId
+  );
+  res.json({ meetingLink: meetingLink || "", websiteLink: websiteLink || "", whatsappLink: whatsappLink || "" });
 });
 
 const { DEFAULT_SIGNATURE } = require("../outreachContent");

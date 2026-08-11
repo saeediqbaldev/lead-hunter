@@ -312,6 +312,7 @@ if (!leadsTableExists) {
   }
   if (!userCols.includes("meeting_link")) db.exec("ALTER TABLE users ADD COLUMN meeting_link TEXT");
   if (!userCols.includes("website_link")) db.exec("ALTER TABLE users ADD COLUMN website_link TEXT");
+  if (!userCols.includes("whatsapp_link")) db.exec("ALTER TABLE users ADD COLUMN whatsapp_link TEXT");
   if (!userCols.includes("preferred_content_provider")) db.exec("ALTER TABLE users ADD COLUMN preferred_content_provider TEXT DEFAULT ''");
   if (!userCols.includes("preferred_inspection_provider")) db.exec("ALTER TABLE users ADD COLUMN preferred_inspection_provider TEXT DEFAULT ''");
 }
@@ -649,6 +650,9 @@ CREATE TABLE IF NOT EXISTS email_campaigns (
   cta INTEGER DEFAULT 0,
   meeting INTEGER DEFAULT 0,
   meeting_link TEXT,
+  whatsapp INTEGER DEFAULT 0,
+  whatsapp_link TEXT,
+  followup_custom_instructions TEXT,
   ai_provider TEXT DEFAULT '',
   max_per_day INTEGER NOT NULL DEFAULT 100,
   min_gap_minutes INTEGER NOT NULL DEFAULT 5,
@@ -749,6 +753,11 @@ CREATE INDEX IF NOT EXISTS idx_app_notifications_read ON app_notifications(is_re
   if (!campaignCols.includes("mute_opened_alerts")) {
     db.exec("ALTER TABLE email_campaigns ADD COLUMN mute_opened_alerts INTEGER NOT NULL DEFAULT 0");
     db.exec("ALTER TABLE email_campaigns ADD COLUMN mute_clicked_alerts INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!campaignCols.includes("whatsapp_link")) {
+    db.exec("ALTER TABLE email_campaigns ADD COLUMN whatsapp INTEGER DEFAULT 0");
+    db.exec("ALTER TABLE email_campaigns ADD COLUMN whatsapp_link TEXT");
+    db.exec("ALTER TABLE email_campaigns ADD COLUMN followup_custom_instructions TEXT");
   }
   const campaignLeadCols = db.prepare("PRAGMA table_info(email_campaign_leads)").all().map((c) => c.name);
   if (!campaignLeadCols.includes("touch_number")) {
