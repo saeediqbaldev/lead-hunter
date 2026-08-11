@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.11-15.22";
+const APP_VERSION = "2026.08.11-15.23";
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -4507,8 +4507,20 @@ function exportMenuHtml(kind, id) {
     </div>`;
 }
 
-function actionsMenuHtml(kind, id) {
-  // kind: "niche" -> csv/xlsx/pdf export options ; "log" -> csv/pdf
+function actionsMenuHtml(kind, id, nicheId) {
+  // kind: "niche" -> csv/xlsx/pdf export options ; "log" -> csv/pdf ; "country" -> no exports, just the 3 requested actions
+  if (kind === "country") {
+    const countryAttr = escapeHtmlAttr(id);
+    return `
+    <div class="export-menu actions-menu" data-export-menu>
+      <button class="icon-btn" data-action="toggle-export" title="Actions"><i class="bi bi-three-dots-vertical"></i></button>
+      <div class="export-list actions-list">
+        <button type="button" data-action="rename-country" data-country="${countryAttr}" data-niche-id="${nicheId}"><i class="bi bi-pencil"></i> Rename</button>
+        <button type="button" data-action="scrape-all-country" data-country="${countryAttr}" data-niche-id="${nicheId}"><i class="bi bi-cloud-download"></i> Scrape All</button>
+        <button type="button" data-action="delete-country" data-country="${countryAttr}" data-niche-id="${nicheId}" class="danger-item"><i class="bi bi-trash"></i> Delete</button>
+      </div>
+    </div>`;
+  }
   const base = kind === "niche" ? `/api/niches/${id}/export` : `/api/catch-logs/${id}/export`;
   const exportLinks =
     kind === "niche"
@@ -4527,6 +4539,50 @@ function actionsMenuHtml(kind, id) {
         <button type="button" data-action="${deleteAction}" data-id="${id}" class="danger-item"><i class="bi bi-trash"></i> Delete</button>
       </div>
     </div>`;
+}
+
+// Tracks which (nicheId, country) is currently being polled for
+// country-wide scrape progress, so a page refresh or re-render doesn't
+// spin up duplicate polling loops for the same job.
+const activeCountryScrapePolls = new Set();
+
+function startCountryScrapeProgressPolling(nicheId, country) {
+  const key = `${nicheId}:${country}`;
+  if (activeCountryScrapePolls.has(key)) return; // already polling this one
+  activeCountryScrapePolls.add(key);
+
+  const poll = async () => {
+    if (!activeCountryScrapePolls.has(key)) return; // stopped externally
+    try {
+      const res = await api(`/api/catch-logs/scrape-country-status?nicheId=${nicheId}&country=${encodeURIComponent(country)}`);
+      const data = await res.json();
+      // Only the quote character itself needs escaping inside an
+      // already-quoted attribute selector value - CSS.escape() is for
+      // unquoted CSS identifier contexts (where it correctly escapes
+      // things like ':'), and using it here would over-escape the colon
+      // into a literal backslash the actual DOM attribute never has.
+      const selectorValue = `${nicheId}:${country}`.replace(/"/g, '\\"');
+      const el = document.querySelector(`[data-country-scrape-progress="${selectorValue}"]`);
+
+      if (!data.active) {
+        activeCountryScrapePolls.delete(key);
+        if (el) el.style.display = "none";
+        await loadNichesAndLogs(); // refresh lead counts/socials now that merging is done
+        showToast(`Finished scraping all cities in ${country}`, "success");
+        return;
+      }
+
+      if (el) {
+        el.style.display = "inline-flex";
+        el.innerHTML = `<i class="bi bi-arrow-repeat spin"></i> ${data.currentCityIndex + 1}/${data.totalCities}: ${data.currentCityName || "…"}`;
+      }
+      setTimeout(poll, 4000);
+    } catch (err) {
+      console.error("[country-scrape] Progress poll failed:", err.message);
+      setTimeout(poll, 4000); // transient network hiccup - keep trying rather than abandoning the indicator
+    }
+  };
+  poll();
 }
 
 function renderNichesTree() {
@@ -4570,6 +4626,8 @@ function renderNichesTree() {
               <span class="niche-caret small">▶</span>
               <span class="country-name"><i class="bi bi-flag"></i> ${country}</span>
               <span class="niche-count">${countryLogs.length}C | ${countryLeadCount}R</span>
+              <span class="country-scrape-progress" data-country-scrape-progress="${escapeHtmlAttr(niche.id + ":" + country)}" style="display:none;"></span>
+              ${actionsMenuHtml("country", country, niche.id)}
             </div>
             <div class="catchlog-list">${logsHtml}</div>
           </div>`;
@@ -4654,6 +4712,64 @@ nichesTree.addEventListener("click", async (e) => {
     if (state.openCountryKeys.has(countryKey)) state.openCountryKeys.delete(countryKey);
     else state.openCountryKeys.add(countryKey);
     renderNichesTree();
+    return;
+  }
+
+  if (action === "rename-country") {
+    const country = target.dataset.country;
+    const nicheId = target.dataset.nicheId;
+    const newName = await openModal({ title: "Rename country", inputLabel: "Country name", inputValue: country, confirmText: "Save" });
+    if (newName && newName.trim() && newName.trim() !== country) {
+      await api("/api/catch-logs/rename-country", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nicheId, oldCountry: country, newCountry: newName.trim() }),
+      });
+      showToast(`Renamed to "${newName.trim()}"`, "success");
+      await loadNichesAndLogs();
+    }
+    return;
+  }
+
+  if (action === "delete-country") {
+    const country = target.dataset.country;
+    const nicheId = target.dataset.nicheId;
+    const confirmed = await openModal({
+      title: `Delete "${country}"?`,
+      message: `This permanently deletes every city under "${country}" in this niche, and every lead inside them. This cannot be undone.`,
+      confirmText: "Delete everything",
+      danger: true,
+    });
+    if (confirmed) {
+      const res = await api("/api/catch-logs/delete-country", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nicheId, country }),
+      });
+      const result = await res.json();
+      showToast(`Deleted ${result.deletedCatchLogs} cit${result.deletedCatchLogs === 1 ? "y" : "ies"} and ${result.deletedLeads} lead${result.deletedLeads === 1 ? "" : "s"}`, "success");
+      await loadNichesAndLogs();
+      await loadLeads();
+    }
+    return;
+  }
+
+  if (action === "scrape-all-country") {
+    const country = target.dataset.country;
+    const nicheId = target.dataset.nicheId;
+    try {
+      const res = await api("/api/catch-logs/scrape-country", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nicheId, country }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Could not start");
+      showToast(`Scraping all cities in ${country}…`, "success");
+      startCountryScrapeProgressPolling(nicheId, country);
+    } catch (err) {
+      showToast(err.message, "error");
+    }
     return;
   }
 
@@ -7291,6 +7407,13 @@ async function loadReports() {
   } catch (err) {
     console.error("Failed to load niches/catch logs:", err);
     failures.push("niches");
+  }
+
+  try {
+    const activeJobs = await api("/api/catch-logs/active-scrape-jobs").then((r) => r.json());
+    activeJobs.jobs.forEach((j) => startCountryScrapeProgressPolling(j.niche_id, j.country));
+  } catch (err) {
+    console.error("Failed to check for in-progress country scrapes:", err); // non-critical - doesn't block startup or add to the failure banner
   }
 
   updateScopeLine();

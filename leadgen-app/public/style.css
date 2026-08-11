@@ -371,6 +371,13 @@ body {
 .country-block.active-parent > .country-row .country-name { color: var(--text); }
 .country-name i { font-size: 10px; opacity: 0.7; }
 
+.country-scrape-progress {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; color: var(--accent);
+  white-space: nowrap; flex-shrink: 0;
+}
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.spin { display: inline-block; animation: spin 1s linear infinite; }
+
 .catchlog-row {
   display: flex;
   align-items: center;

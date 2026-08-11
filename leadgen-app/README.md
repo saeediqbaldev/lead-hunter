@@ -6,6 +6,44 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.23
+A 3-dot menu on every country in Hunt - Rename, Delete, and Scrape All.
+
+- **Rename** - updates every city under that country in this niche
+  together. Caught and fixed a real route-ordering bug while building
+  this: an existing wildcard route would have silently swallowed the
+  new endpoint entirely if left in the wrong order - verified the fix
+  directly, and separately verified renaming only touches the intended
+  niche's cities, nothing else.
+- **Delete** - permanently removes every city under that country and
+  every lead inside them, exactly the scope confirmed before building
+  it. A strong, explicit confirmation dialog states this plainly before
+  anything happens. Verified deleting one country leaves a different
+  country's cities and leads completely untouched.
+- **Scrape All** - runs the contact scraper across every city in a
+  country, one at a time (the scraper only supports one active job at
+  once, so this queues them). Built as a small background job system of
+  its own, similar to how campaign sending already works, so the scrape
+  keeps running even if the browser tab is closed and correctly resumes
+  showing progress after a page refresh. Progress shows directly in the
+  country's own row in Hunt ("2/5: Augsburg"), which was the specific
+  ask.
+- Verified end-to-end through the real UI, not just the API: clicking
+  Scrape All, waiting on the actual background timer (not simulated),
+  and confirming every city's results landed on the right leads while
+  a different country stayed untouched throughout. Also caught and
+  fixed a real bug in the resume-after-refresh logic during testing - a
+  CSS-escaping mismatch meant the progress indicator was silently never
+  finding its target element, even though the underlying job and API
+  were both working correctly the whole time.
+- One more thing worth being upfront about: while iterating on the
+  mocked tests used to verify this without a real scraper service to
+  test against, an in-progress backup step briefly meant a later
+  "restore the real file" command would have restored a test mock
+  instead. Caught before packaging by checking the restored file's
+  actual size and contents, not just trusting the copy succeeded - the
+  file shipped in this build has been directly confirmed clean.
+
 ## What's in this V15.22
 A new "Follow-ups" tab inside each campaign - full control over every
 upcoming follow-up without waiting for it to just happen on its own.

@@ -21,6 +21,7 @@ const campaignsRoute = require("./src/routes/campaigns");
 const notificationsRoute = require("./src/routes/notifications");
 const campaignScheduler = require("./src/campaignScheduler");
 const replyChecker = require("./src/replyChecker");
+const countryScrapeOrchestrator = require("./src/countryScrapeOrchestrator");
 const trackerPublicRoute = require("./src/routes/trackerPublic");
 
 const app = express();
@@ -125,6 +126,9 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log(`Lead-gen app running on port ${PORT}`);
   campaignScheduler.startScheduler();
   console.log("[campaign-scheduler] Started - checking every 60s for campaigns due to send.");
+
+  countryScrapeOrchestrator.startOrchestrator();
+  console.log("[country-scrape] Started - checking every 10s for country-wide scrape jobs in progress.");
 
   const REPLY_CHECK_INTERVAL_MS = 15 * 60 * 1000; // every 15 minutes - a live IMAP connection per user, doesn't need second-level freshness
   setInterval(() => {

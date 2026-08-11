@@ -706,6 +706,21 @@ CREATE TABLE IF NOT EXISTS app_notifications (
 );
 CREATE INDEX IF NOT EXISTS idx_app_notifications_user ON app_notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_app_notifications_read ON app_notifications(is_read);
+
+CREATE TABLE IF NOT EXISTS country_scrape_jobs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  niche_id INTEGER NOT NULL,
+  country TEXT NOT NULL,
+  catch_log_ids TEXT NOT NULL,
+  current_index INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'running',
+  total_merged INTEGER NOT NULL DEFAULT 0,
+  error TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  completed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_country_scrape_jobs_status ON country_scrape_jobs(status);
 `);
 
 {

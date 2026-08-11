@@ -2,6 +2,7 @@ const express = require("express");
 const db = require("../db");
 const { buildCatchLogCsv, buildCatchLogPdf, sanitizeFilename, buildExportFilename } = require("../export");
 const scraperService = require("../scraperService");
+const countryScrapeOrchestrator = require("../countryScrapeOrchestrator");
 const { capitalizeWords } = require("../textUtils");
 const { buildLeadsQuery } = require("../leadsQuery");
 
@@ -81,6 +82,123 @@ router.post("/", (req, res) => {
     country: (country && country.trim()) || "Unnamed",
     lead_count: 0,
   });
+});
+
+// PATCH /api/catch-logs/rename-country { nicheId, oldCountry, newCountry }
+// Renames the country label across every catch log in this niche that
+// currently has it - the country is a plain text field on each catch
+// log, not its own table, so "renaming a country" means updating all of
+// them together in one pass. Declared before PATCH /:id below since
+// Express matches routes in declaration order - if this came after,
+// PATCH /:id would incorrectly capture it with id="rename-country".
+router.patch("/rename-country", (req, res) => {
+  const { nicheId, oldCountry, newCountry } = req.body || {};
+  if (!nicheId || !oldCountry || !newCountry || !newCountry.trim()) {
+    return res.status(400).json({ error: "nicheId, oldCountry, and newCountry are required" });
+  }
+  const niche = db.prepare("SELECT id FROM niches WHERE id = ? AND user_id = ?").get(nicheId, req.session.userId);
+  if (!niche) return res.status(404).json({ error: "Niche not found" });
+
+  const info = db.prepare("UPDATE catch_logs SET country = ? WHERE niche_id = ? AND country = ?").run(newCountry.trim(), nicheId, oldCountry);
+  res.json({ renamed: info.changes });
+});
+
+// POST /api/catch-logs/delete-country { nicheId, country } - removes
+// every catch log under this country/niche and every lead inside them,
+// permanently. Same manual-cascade pattern as the single catch-log
+// delete below, just scoped to every matching catch log instead of one.
+router.post("/delete-country", (req, res) => {
+  const { nicheId, country } = req.body || {};
+  if (!nicheId || !country) return res.status(400).json({ error: "nicheId and country are required" });
+  const niche = db.prepare("SELECT id FROM niches WHERE id = ? AND user_id = ?").get(nicheId, req.session.userId);
+  if (!niche) return res.status(404).json({ error: "Niche not found" });
+
+  const catchLogIds = db.prepare("SELECT id FROM catch_logs WHERE niche_id = ? AND country = ?").all(nicheId, country).map((r) => r.id);
+  if (!catchLogIds.length) return res.json({ deletedCatchLogs: 0, deletedLeads: 0 });
+
+  const placeholders = catchLogIds.map(() => "?").join(",");
+  const del = db.transaction(() => {
+    const leadsInfo = db.prepare(`DELETE FROM leads WHERE catch_log_id IN (${placeholders})`).run(...catchLogIds);
+    db.prepare(`DELETE FROM catch_logs WHERE id IN (${placeholders})`).run(...catchLogIds);
+    return leadsInfo.changes;
+  });
+  const deletedLeads = del();
+
+  res.json({ deletedCatchLogs: catchLogIds.length, deletedLeads });
+});
+
+// GET /api/catch-logs/active-scrape-jobs - this user's currently-running
+// country-wide scrape jobs, so the frontend can resume progress polling
+// after a page refresh (the scrape itself keeps running server-side
+// regardless of whether anyone's watching, driven by the background
+// orchestrator tick - this is purely for restoring the UI indicator).
+router.get("/active-scrape-jobs", (req, res) => {
+  const jobs = db
+    .prepare("SELECT niche_id, country FROM country_scrape_jobs WHERE user_id = ? AND status = 'running'")
+    .all(req.session.userId);
+  res.json({ jobs });
+});
+
+// POST /api/catch-logs/scrape-country { nicheId, country } - kicks off a
+// sequential scrape across every city in this country/niche. Only one
+// scrape (single-city or country-wide) can run at a time app-wide, since
+// the underlying scraper microservice only supports one active job.
+router.post("/scrape-country", async (req, res) => {
+  const { nicheId, country } = req.body || {};
+  if (!nicheId || !country) return res.status(400).json({ error: "nicheId and country are required" });
+  const niche = db.prepare("SELECT id FROM niches WHERE id = ? AND user_id = ?").get(nicheId, req.session.userId);
+  if (!niche) return res.status(404).json({ error: "Niche not found" });
+
+  try {
+    const job = await countryScrapeOrchestrator.startCountryScrape(req.session.userId, Number(nicheId), country);
+    res.json({ started: true, jobId: job.id, status: job.status });
+  } catch (err) {
+    res.status(409).json({ error: err.message });
+  }
+});
+
+// GET /api/catch-logs/scrape-country-status?nicheId=&country= - the
+// aggregate progress for the country's job, if one is running, plus the
+// current city's own live scrape numbers for a more granular view.
+router.get("/scrape-country-status", async (req, res) => {
+  const { nicheId, country } = req.query;
+  if (!nicheId || !country) return res.status(400).json({ error: "nicheId and country are required" });
+
+  const job = countryScrapeOrchestrator.getActiveJobForNiche(req.session.userId, Number(nicheId), country);
+  if (!job) return res.json({ active: false });
+
+  const catchLogIds = JSON.parse(job.catch_log_ids);
+  const currentCatchLogId = catchLogIds[job.current_index];
+  const currentLog = db.prepare("SELECT name FROM catch_logs WHERE id = ?").get(currentCatchLogId);
+
+  let currentCityStatus = null;
+  const lock = scraperService.getLock();
+  if (lock && lock.userId === req.session.userId && lock.catchLogId === currentCatchLogId) {
+    try {
+      currentCityStatus = await scraperService.getStatus();
+    } catch {
+      currentCityStatus = null; // best-effort - the aggregate progress below still works without this
+    }
+  }
+
+  res.json({
+    active: true,
+    jobId: job.id,
+    totalCities: catchLogIds.length,
+    currentCityIndex: job.current_index,
+    currentCityName: currentLog?.name || null,
+    totalMerged: job.total_merged,
+    lastError: job.error,
+    currentCityStatus,
+  });
+});
+
+// POST /api/catch-logs/scrape-country-stop { jobId }
+router.post("/scrape-country-stop", async (req, res) => {
+  const { jobId } = req.body || {};
+  if (!jobId) return res.status(400).json({ error: "jobId is required" });
+  const result = await countryScrapeOrchestrator.stopCountryScrape(req.session.userId, jobId);
+  res.json(result);
 });
 
 // PATCH /api/catch-logs/:id { name?, country? } - at least one required.
