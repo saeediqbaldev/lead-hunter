@@ -6,6 +6,37 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.30
+The Campaigns tree stuck-loading bug from your screenshot, a website
+icon everywhere in Campaigns, and clean domain-only website URLs going
+forward.
+
+- **Found and fixed the actual bug behind the stuck "Loading…" tree.**
+  Expanding a campaign was fetching its *entire* lead list (with a
+  3-way join and per-row parsing) just to display 4 summary numbers,
+  and any failure along the way left the tree stuck permanently with no
+  recovery - the exact behavior in your screenshot. Fixed with a real,
+  lightweight summary endpoint (verified 87% smaller payload, no joins
+  at all) plus a proper error state with a working retry button, so a
+  failure now always shows something actionable instead of hanging
+  forever. Verified end-to-end with a simulated real failure and
+  confirmed retry correctly recovers.
+- **A clickable website icon in every campaign lead list** - opens the
+  lead's website in a new tab. Shown dimmed when a lead has no website
+  on file. Caught and fixed a mistake of my own while verifying this:
+  I'd used an icon class name that doesn't exist in this app's icon set
+  and wouldn't have rendered at all - fixed to match the same class the
+  app already uses successfully elsewhere.
+- **Scraped websites are now always the clean main domain** - stripped
+  of any subpage path and query string (including utm_* tracking
+  params) at the one place every Google Places result gets processed
+  before being stored, so this applies automatically regardless of
+  which specific page or campaign link Google happened to have on file.
+  Verified against a realistic messy URL (subpage + multiple UTM
+  params) through the actual scraping flow, and confirmed the existing
+  duplicate-branch detection logic - which does its own domain matching
+  - is completely unaffected.
+
 ## What's in this V15.29
 Bluehost/Titan is now a real, complete section - same feature set as
 Hostinger - and Gmail campaigns actually work end-to-end, finishing off

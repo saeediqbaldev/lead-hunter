@@ -58,13 +58,39 @@ function normalizeForDedup(place) {
   return `${name}|${host}`;
 }
 
+// Google's websiteUri often points at a specific subpage (a landing
+// page, a "book now" page) or carries UTM/tracking query params picked
+// up from whatever ad or listing the business used when they set it -
+// none of that belongs in what gets stored as "the business's website."
+// This keeps only the clean main domain: protocol + hostname, nothing
+// else, regardless of which specific page or campaign link Google
+// happened to have on file.
+function normalizeWebsiteUrl(url) {
+  if (!url) return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = new URL(trimmed);
+    return `${parsed.protocol}//${parsed.hostname}`;
+  } catch {
+    // Missing protocol (e.g. "example.com" instead of "https://example.com")
+    // - retry with one assumed rather than discarding a usable domain.
+    try {
+      const parsed = new URL(`https://${trimmed}`);
+      return `${parsed.protocol}//${parsed.hostname}`;
+    } catch {
+      return trimmed; // genuinely not a parseable URL/domain - leave as-is rather than losing the data
+    }
+  }
+}
+
 function mapPlace(p) {
   return {
     place_id: p.id,
     name: p.displayName ? p.displayName.text : "(no name)",
     address: p.formattedAddress || null,
     phone: p.nationalPhoneNumber || p.internationalPhoneNumber || null,
-    website: p.websiteUri || null,
+    website: normalizeWebsiteUrl(p.websiteUri),
     rating: typeof p.rating === "number" ? p.rating : null,
     review_count: typeof p.userRatingCount === "number" ? p.userRatingCount : null,
     business_status: p.businessStatus || null,

@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.13-15.29";
+const APP_VERSION = "2026.08.13-15.30";
 
 // Every email provider section (Hostinger, Gmail, Bluehost/Titan) shares
 // the same Tracking/History/Alerts/Reports/Campaigns/Setup views, keyed
@@ -1652,10 +1652,18 @@ function campaignProgressBarHtml(c) {
 // tree, the same lazy-load pattern used elsewhere (e.g. a lead's
 // Inspection/Content panels).
 const campaignsTreeDataCache = new Map();
+// Tracks which campaign IDs failed their most recent summary fetch, so
+// the tree can show a clear "couldn't load, click to retry" state
+// instead of leaving the placeholder reading "Loading…" forever with no
+// way to recover - the actual bug behind a tree that appears permanently
+// stuck.
+const campaignsTreeLoadErrors = new Set();
 
 async function getCampaignTreeData(campaignId) {
   if (campaignsTreeDataCache.has(campaignId)) return campaignsTreeDataCache.get(campaignId);
-  const data = await api(`/api/campaigns/${campaignId}`).then((r) => r.json());
+  const res = await api(`/api/campaigns/${campaignId}/summary`);
+  if (!res.ok) throw new Error(`Could not load campaign ${campaignId} (${res.status})`);
+  const data = await res.json();
   campaignsTreeDataCache.set(campaignId, data);
   return data;
 }
@@ -1692,6 +1700,9 @@ async function loadContactedCampaigns() {
   // The 5 sub-nodes under a campaign (Followups gets its own recursive
   // renderer below, since it isn't a leaf).
   const campaignSubNodesHtml = (c, treeData) => {
+    if (campaignsTreeLoadErrors.has(c.id)) {
+      return `<p class="hint" style="padding:4px 0 4px 20px; color:var(--danger);">Couldn't load - <a href="#" data-action="retry-campaign-tree" data-campaign-id="${c.id}" style="color:var(--danger); text-decoration:underline;">click to retry</a></p>`;
+    }
     if (!treeData) return `<p class="hint" style="padding:4px 0 4px 20px;">Loading…</p>`;
     const { leads } = treeData;
     const sentCount = leads.filter((l) => l.status === "sent").length;
@@ -1833,9 +1844,30 @@ async function loadContactedCampaigns() {
         loadContactedCampaigns();
       } else {
         state.campaignsOpenCampaignIds.add(id);
-        await getCampaignTreeData(id); // populate the cache before re-rendering, so counts show immediately instead of "Loading…" then a second re-render
-        loadContactedCampaigns();
+        try {
+          await getCampaignTreeData(id); // populate the cache before re-rendering, so counts show immediately instead of "Loading…" then a second re-render
+          campaignsTreeLoadErrors.delete(id);
+        } catch (err) {
+          console.error(`Failed to load tree summary for campaign ${id}:`, err);
+          campaignsTreeLoadErrors.add(id);
+        }
+        loadContactedCampaigns(); // always re-renders, success or failure - this is what prevents "Loading…" from getting stuck forever
       }
+    });
+  });
+  list.querySelectorAll('[data-action="retry-campaign-tree"]').forEach((el) => {
+    el.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const id = Number(el.dataset.campaignId);
+      campaignsTreeLoadErrors.delete(id);
+      try {
+        await getCampaignTreeData(id);
+      } catch (err) {
+        console.error(`Retry failed for campaign ${id}:`, err);
+        campaignsTreeLoadErrors.add(id);
+      }
+      loadContactedCampaigns();
     });
   });
   list.querySelectorAll('[data-action="toggle-campaign-followups"]').forEach((el) => {
@@ -2383,8 +2415,28 @@ let campaignDetailCache = null; // { campaign, leads } for the currently-viewed 
 async function loadCampaignDetail(campaignId, view = "emails", touchNumber = null) {
   stopCampaignDetailPolling();
   setContentView("contacted-campaign-detail");
-  const res = await api(`/api/campaigns/${campaignId}`);
-  const data = await res.json();
+  document.getElementById("campaignDetailTitle").textContent = "Loading…";
+  document.getElementById("campaignDetailScope").textContent = "";
+  document.getElementById("campaignDetailActions").innerHTML = "";
+  document.getElementById("campaignDetailTabs").style.display = "none";
+  const bodyEl0 = document.getElementById("campaignDetailBody");
+  bodyEl0.innerHTML = `<p class="hint" style="padding:20px 0;">Loading…</p>`;
+
+  let data;
+  try {
+    const res = await api(`/api/campaigns/${campaignId}`);
+    if (!res.ok) throw new Error(`Server returned ${res.status}`);
+    data = await res.json();
+  } catch (err) {
+    console.error(`Failed to load campaign ${campaignId}:`, err);
+    document.getElementById("campaignDetailTitle").textContent = "Couldn't load this campaign";
+    bodyEl0.innerHTML = `<p class="hint" style="padding:20px 0; color:var(--danger);">${err.message} - <a href="#" data-action="retry-campaign-detail" style="color:var(--danger); text-decoration:underline;">click to retry</a></p>`;
+    bodyEl0.querySelector('[data-action="retry-campaign-detail"]').addEventListener("click", (e) => {
+      e.preventDefault();
+      loadCampaignDetail(campaignId, view, touchNumber);
+    });
+    return;
+  }
   campaignDetailCache = data;
   campaignsTreeDataCache.set(Number(campaignId), data); // keep the tree's own cache in sync, so counts shown there reflect anything just changed here
   const { campaign, leads } = data;
@@ -2515,7 +2567,7 @@ function renderCampaignLeadsTable(bodyEl, campaign, leads, { selectable = false,
     return;
   }
 
-  const colCount = selectable ? 7 : 6;
+  const colCount = selectable ? 8 : 7;
   const selectHeader = selectable ? `<th style="width:24px;"><input type="checkbox" data-campaign-select-all></th>` : "";
   const bulkBar = selectable
     ? `<div class="campaign-bulk-actions" data-campaign-bulk-bar style="display:none;">
@@ -2527,7 +2579,7 @@ function renderCampaignLeadsTable(bodyEl, campaign, leads, { selectable = false,
   bodyEl.innerHTML = `
     ${bulkBar}
     <table class="contacted-table campaign-detail-table">
-      <thead><tr>${selectHeader}<th style="width:36px;">S/N</th><th style="width:20px;"></th><th>Lead</th><th>Recipient</th><th>Status</th><th>Sent</th></tr></thead>
+      <thead><tr>${selectHeader}<th style="width:36px;">S/N</th><th style="width:20px;"></th><th>Lead</th><th style="width:28px;"></th><th>Recipient</th><th>Status</th><th>Sent</th></tr></thead>
       <tbody>
         ${leads
           .map((l, i) => {
@@ -2545,6 +2597,11 @@ function renderCampaignLeadsTable(bodyEl, campaign, leads, { selectable = false,
             <td class="hint">${i + 1}</td>
             <td><i class="bi bi-chevron-right campaign-row-chevron" data-chevron="${l.id}"></i></td>
             <td>${l.lead_name}</td>
+            <td>${
+              l.website
+                ? `<a href="${escapeHtmlAttr(l.website)}" target="_blank" rel="noopener" title="Open website" class="campaign-website-link" onclick="event.stopPropagation()"><i class="bi bi-globe"></i></a>`
+                : `<i class="bi bi-globe" style="opacity:0.25;" title="No website on file"></i>`
+            }</td>
             <td>${l.recipient_email || "—"}</td>
             <td><span class="contacted-status-pill campaign-lead-${l.status}" data-role="status"><i class="bi ${CAMPAIGN_LEAD_STATUS_ICON[l.status] || "bi-circle"}"></i> ${l.status}</span>${touchBadge}${repliedBadge}</td>
             <td data-role="sent">${formatContactedTimestamp(l.sent_at)}</td>
@@ -6134,7 +6191,7 @@ function buildExpandPanelHtml(lead) {
         <button type="button" class="gen-extra-toggle" data-extra="cta" title="Weave in a clear call-to-action"><i class="bi bi-megaphone-fill"></i> CTA</button>
         <button type="button" class="gen-extra-toggle" data-extra="meeting" title="Invite them to a short meeting/call"><i class="bi bi-calendar-event-fill"></i> Meeting</button>
         <button type="button" class="gen-extra-toggle" data-extra="whatsapp" title="Offer WhatsApp as a way to reach out"><i class="bi bi-whatsapp"></i> WhatsApp</button>
-        <button type="button" class="gen-extra-toggle" data-extra="website" title="Reference a demo/reference website"><i class="bi bi-globe2"></i> Website</button>
+        <button type="button" class="gen-extra-toggle" data-extra="website" title="Reference a demo/reference website"><i class="bi bi-globe"></i> Website</button>
         <span class="gen-row-divider"></span>
         <span class="gen-provider-row-label">AI provider:</span>
         ${AI_PROVIDER_OPTIONS.map(

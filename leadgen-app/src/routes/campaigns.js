@@ -175,6 +175,23 @@ router.get("/", (req, res) => {
 });
 
 // GET /api/campaigns/:id -> detail with the full per-lead queue
+// GET /api/campaigns/:id/summary - a lightweight version of the full
+// detail route below, returning only what the sidebar tree needs to
+// compute its counts (status/touch_number/replied_at per lead) via a
+// single-table query with no joins. The full route further down does a
+// 3-way join (leads, catch_logs, tracked_emails) plus per-row JSON
+// parsing, which is fine for actually viewing a campaign's lead list but
+// was serious overkill just to show 4 numbers on the tree - for a
+// campaign with hundreds/thousands of leads, this was slow enough to be
+// the actual root cause of the tree appearing to hang on "Loading...".
+router.get("/:id/summary", (req, res) => {
+  const campaign = db.prepare("SELECT id FROM email_campaigns WHERE id = ? AND user_id = ?").get(req.params.id, req.session.userId);
+  if (!campaign) return res.status(404).json({ error: "Not found" });
+
+  const leads = db.prepare("SELECT status, touch_number, replied_at FROM email_campaign_leads WHERE campaign_id = ?").all(campaign.id);
+  res.json({ campaign, leads });
+});
+
 router.get("/:id", (req, res) => {
   const campaign = db.prepare("SELECT * FROM email_campaigns WHERE id = ? AND user_id = ?").get(req.params.id, req.session.userId);
   if (!campaign) return res.status(404).json({ error: "Not found" });

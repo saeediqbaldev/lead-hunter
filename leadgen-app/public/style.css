@@ -1770,6 +1770,9 @@ a.site-generate-btn { color: #1a1310; }
 .campaign-followup-block.open > .country-row .niche-caret { transform: rotate(90deg); }
 .campaign-followup-block.open > .country-row .country-name { color: var(--accent); }
 
+.campaign-website-link { color: var(--text-muted); font-size: 14px; display: inline-flex; }
+.campaign-website-link:hover { color: var(--accent); }
+
 .campaign-leaf-node {
   display: flex; align-items: center; gap: 4px; padding: 5px 8px 5px 4px;
   font-size: 12.5px; color: var(--text-muted); cursor: pointer; border-radius: 4px;
