@@ -1,7 +1,7 @@
 const express = require("express");
 const db = require("../db");
 const { isValidEmailAddress } = require("../emailValidation");
-const { hasSmtpConfigured, checkForReply } = require("../campaignSender");
+const { hasSmtpConfigured, checkForReply, PROVIDERS } = require("../campaignSender");
 
 const router = express.Router();
 
@@ -34,12 +34,15 @@ router.post("/", (req, res) => {
     followupCustomInstructions,
     muteOpenedAlerts,
     muteClickedAlerts,
+    sendProvider,
   } = req.body || {};
 
+  const provider = sendProvider || "hostinger";
   if (!name || !name.trim()) return res.status(400).json({ error: "Campaign name is required" });
   if (!tone) return res.status(400).json({ error: "Tone is required" });
-  if (!hasSmtpConfigured(userId)) {
-    return res.status(400).json({ error: "Set up SMTP on the Hostinger Setup page first - a campaign can't send without it." });
+  if (!hasSmtpConfigured(userId, provider)) {
+    const label = PROVIDERS[provider]?.label || provider;
+    return res.status(400).json({ error: `Set up SMTP on the ${label} Setup page first - a campaign can't send without it.` });
   }
 
   // Resolve the target lead list - either the explicit list given, or
@@ -92,8 +95,8 @@ router.post("/", (req, res) => {
 
   const info = db
     .prepare(
-      `INSERT INTO email_campaigns (user_id, name, niche_id, catch_log_id, catch_log_ids, require_inspection, tone, length, language, cta, meeting, meeting_link, whatsapp, whatsapp_link, ai_provider, max_per_day, min_gap_minutes, max_gap_minutes, followup_enabled, followup_max_count, followup_wait_days, followup_custom_instructions, mute_opened_alerts, mute_clicked_alerts)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO email_campaigns (user_id, name, niche_id, catch_log_id, catch_log_ids, require_inspection, tone, length, language, cta, meeting, meeting_link, whatsapp, whatsapp_link, ai_provider, max_per_day, min_gap_minutes, max_gap_minutes, followup_enabled, followup_max_count, followup_wait_days, followup_custom_instructions, mute_opened_alerts, mute_clicked_alerts, send_provider)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       userId,
@@ -119,7 +122,8 @@ router.post("/", (req, res) => {
       Math.max(parseInt(followupWaitDays, 10) || 3, 1),
       followupCustomInstructions || null,
       muteOpenedAlerts ? 1 : 0,
-      muteClickedAlerts ? 1 : 0
+      muteClickedAlerts ? 1 : 0,
+      provider
     );
   const campaignId = info.lastInsertRowid;
 
@@ -134,6 +138,9 @@ router.post("/", (req, res) => {
 
 // GET /api/campaigns -> list with progress counts
 router.get("/", (req, res) => {
+  const { provider } = req.query;
+  const providerClause = provider ? "AND c.send_provider = ?" : "";
+  const params = provider ? [req.session.userId, provider] : [req.session.userId];
   const rows = db
     .prepare(
       `SELECT c.*,
@@ -144,9 +151,9 @@ router.get("/", (req, res) => {
         (SELECT COUNT(*) FROM email_campaign_leads WHERE campaign_id = c.id AND status NOT IN ('sent', 'failed', 'skipped')) AS pending_work_count,
         (SELECT l.catch_log_id FROM email_campaign_leads ecl2 JOIN leads l ON l.id = ecl2.lead_id
            WHERE ecl2.campaign_id = c.id GROUP BY l.catch_log_id ORDER BY COUNT(*) DESC LIMIT 1) AS dominant_catch_log_id
-       FROM email_campaigns c WHERE c.user_id = ? ORDER BY c.created_at DESC`
+       FROM email_campaigns c WHERE c.user_id = ? ${providerClause} ORDER BY c.created_at DESC`
     )
-    .all(req.session.userId);
+    .all(...params);
 
   // Resolve each campaign's dominant city/country in one batch query
   // rather than one lookup per campaign row.
@@ -431,7 +438,7 @@ router.post("/:id/leads/:leadRowId/send-followup-now", requireOwnedCampaign, asy
 
   try {
     const sentAtMs = new Date(leadRow.sent_at.replace(" ", "T") + "Z").getTime();
-    const replied = await checkForReply(req.campaign.user_id, socials.email, new Date(sentAtMs));
+    const replied = await checkForReply(req.campaign.user_id, socials.email, new Date(sentAtMs), req.campaign.send_provider);
     if (replied) {
       db.prepare("UPDATE email_campaign_leads SET replied_at = datetime('now') WHERE id = ?").run(leadRow.id);
       return res.status(409).json({ error: "This lead has actually replied - marked as replied instead of sending a follow-up on top of it." });

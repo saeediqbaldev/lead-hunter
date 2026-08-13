@@ -635,6 +635,13 @@ CREATE INDEX IF NOT EXISTS idx_tracked_notif_read ON tracked_notifications(is_re
     tracker_smtp_from: "TEXT",
     gmail_smtp_user: "TEXT",
     gmail_smtp_app_password: "TEXT",
+    bluehost_smtp_host: "TEXT",
+    bluehost_smtp_port: "INTEGER",
+    bluehost_smtp_user: "TEXT",
+    bluehost_smtp_pass: "TEXT",
+    bluehost_smtp_from: "TEXT",
+    bluehost_imap_host: "TEXT",
+    bluehost_imap_port: "INTEGER",
   };
   for (const [col, type] of Object.entries(trackerCols)) {
     if (!userCols.includes(col)) db.exec(`ALTER TABLE users ADD COLUMN ${col} ${type}`);
@@ -678,6 +685,7 @@ CREATE TABLE IF NOT EXISTS email_campaigns (
   followup_wait_days INTEGER NOT NULL DEFAULT 3,
   mute_opened_alerts INTEGER NOT NULL DEFAULT 0,
   mute_clicked_alerts INTEGER NOT NULL DEFAULT 0,
+  send_provider TEXT NOT NULL DEFAULT 'hostinger',
   pause_reason TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   started_at TEXT,
@@ -701,6 +709,14 @@ CREATE TABLE IF NOT EXISTS email_campaign_leads (
 );
 CREATE INDEX IF NOT EXISTS idx_campaign_leads_campaign ON email_campaign_leads(campaign_id);
 CREATE INDEX IF NOT EXISTS idx_campaign_leads_status ON email_campaign_leads(status);
+CREATE INDEX IF NOT EXISTS idx_campaign_leads_lead ON email_campaign_leads(campaign_id, lead_id);
+CREATE INDEX IF NOT EXISTS idx_campaign_leads_tracked_email ON email_campaign_leads(tracked_email_id);
+CREATE INDEX IF NOT EXISTS idx_leads_catch_log ON leads(catch_log_id);
+CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status);
+CREATE INDEX IF NOT EXISTS idx_leads_pinned ON leads(pinned);
+CREATE INDEX IF NOT EXISTS idx_catch_logs_niche ON catch_logs(niche_id);
+CREATE INDEX IF NOT EXISTS idx_catch_logs_country ON catch_logs(country);
+CREATE INDEX IF NOT EXISTS idx_tracked_notif_email ON tracked_notifications(email_id);
 `);
 
 // General-purpose notifications - campaign pause/complete/fail events and
@@ -760,6 +776,7 @@ CREATE TABLE IF NOT EXISTS country_scrape_jobs (
   completed_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_country_scrape_jobs_status ON country_scrape_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_country_scrape_jobs_user ON country_scrape_jobs(user_id);
 `);
 
 {
@@ -814,6 +831,9 @@ CREATE INDEX IF NOT EXISTS idx_country_scrape_jobs_status ON country_scrape_jobs
     db.exec("ALTER TABLE email_campaigns ADD COLUMN whatsapp_link TEXT");
     db.exec("ALTER TABLE email_campaigns ADD COLUMN followup_custom_instructions TEXT");
   }
+  if (!campaignCols.includes("send_provider")) {
+    db.exec("ALTER TABLE email_campaigns ADD COLUMN send_provider TEXT NOT NULL DEFAULT 'hostinger'");
+  }
   const campaignLeadCols = db.prepare("PRAGMA table_info(email_campaign_leads)").all().map((c) => c.name);
   if (!campaignLeadCols.includes("touch_number")) {
     db.exec("ALTER TABLE email_campaign_leads ADD COLUMN touch_number INTEGER NOT NULL DEFAULT 1");
@@ -828,6 +848,8 @@ CREATE INDEX IF NOT EXISTS idx_country_scrape_jobs_status ON country_scrape_jobs
 
   const userCols = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
   if (!userCols.includes("last_reply_check_at")) db.exec("ALTER TABLE users ADD COLUMN last_reply_check_at TEXT");
+  if (!userCols.includes("gmail_last_reply_check_at")) db.exec("ALTER TABLE users ADD COLUMN gmail_last_reply_check_at TEXT");
+  if (!userCols.includes("bluehost_last_reply_check_at")) db.exec("ALTER TABLE users ADD COLUMN bluehost_last_reply_check_at TEXT");
 }
 
 // One-time fix: the auto-refresh interval used to default to 15 (inherited

@@ -477,6 +477,69 @@ router.put("/gmail-settings", (req, res) => {
   res.json({ gmailUser: row.gmail_smtp_user || "", appPasswordSet: !!row.gmail_smtp_app_password });
 });
 
+// GET/PUT /api/tracker/bluehost-settings - Bluehost/Titan's own SMTP+IMAP
+// setup, entirely separate storage from Hostinger's /settings route -
+// both providers need full SMTP+IMAP host/port/user/pass, but sharing
+// Hostinger's own columns would mean setting up Bluehost/Titan silently
+// overwrites real Hostinger credentials for anyone with both configured.
+router.get("/bluehost-settings", (req, res) => {
+  const row = db
+    .prepare(
+      `SELECT bluehost_smtp_host AS smtp_host, bluehost_smtp_port AS smtp_port, bluehost_smtp_user AS smtp_user,
+              bluehost_smtp_pass AS smtp_pass, bluehost_smtp_from AS smtp_from,
+              bluehost_imap_host AS imap_host, bluehost_imap_port AS imap_port
+       FROM users WHERE id = ?`
+    )
+    .get(req.session.userId);
+  const { smtp_pass, ...rest } = row || {};
+  res.json({ settings: { ...rest, smtp_pass_set: !!smtp_pass } });
+});
+
+router.put("/bluehost-settings", (req, res) => {
+  const { smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from, imap_host, imap_port } = req.body || {};
+  const userId = req.session.userId;
+
+  if (smtp_port !== undefined && smtp_port !== null && (!Number.isInteger(smtp_port) || smtp_port < 1 || smtp_port > 65535)) {
+    return res.status(400).json({ error: "smtp_port must be a valid port number" });
+  }
+  if (imap_port !== undefined && imap_port !== null && (!Number.isInteger(imap_port) || imap_port < 1 || imap_port > 65535)) {
+    return res.status(400).json({ error: "imap_port must be a valid port number" });
+  }
+
+  const current = db.prepare("SELECT bluehost_smtp_pass FROM users WHERE id = ?").get(userId);
+  db.prepare(
+    `UPDATE users SET
+      bluehost_smtp_host = COALESCE(?, bluehost_smtp_host),
+      bluehost_smtp_port = COALESCE(?, bluehost_smtp_port),
+      bluehost_smtp_user = COALESCE(?, bluehost_smtp_user),
+      bluehost_smtp_pass = ?,
+      bluehost_smtp_from = COALESCE(?, bluehost_smtp_from),
+      bluehost_imap_host = COALESCE(?, bluehost_imap_host),
+      bluehost_imap_port = COALESCE(?, bluehost_imap_port)
+     WHERE id = ?`
+  ).run(
+    smtp_host ?? null,
+    smtp_port ?? null,
+    smtp_user ?? null,
+    smtp_pass ? smtp_pass : current?.bluehost_smtp_pass,
+    smtp_from ?? null,
+    imap_host ?? null,
+    imap_port ?? null,
+    userId
+  );
+
+  const row = db
+    .prepare(
+      `SELECT bluehost_smtp_host AS smtp_host, bluehost_smtp_port AS smtp_port, bluehost_smtp_user AS smtp_user,
+              bluehost_smtp_pass AS smtp_pass, bluehost_smtp_from AS smtp_from,
+              bluehost_imap_host AS imap_host, bluehost_imap_port AS imap_port
+       FROM users WHERE id = ?`
+    )
+    .get(userId);
+  const { smtp_pass: pw, ...rest } = row;
+  res.json({ settings: { ...rest, smtp_pass_set: !!pw } });
+});
+
 // ==================== Analytics ====================
 // range -> { sqliteModifier: fed to datetime('now', modifier), bucketFmt: strftime format for the timeseries bucket }
 const RANGE_TO_SQL = {

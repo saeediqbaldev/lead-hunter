@@ -6,6 +6,101 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.29
+Bluehost/Titan is now a real, complete section - same feature set as
+Hostinger - and Gmail campaigns actually work end-to-end, finishing off
+the multi-provider work from last version's backend foundation.
+
+- **Bluehost/Titan** gets its own sidebar section with all 6 views
+  (Tracking, History, Alerts, Reports, Campaigns, Setup) and its own
+  dedicated settings storage - deliberately separate from Hostinger's,
+  since sharing storage would mean setting up Bluehost/Titan could
+  silently overwrite real Hostinger credentials for anyone with both
+  configured. Verified this directly: saved Bluehost/Titan settings in
+  a real browser and confirmed Hostinger's own settings came back
+  completely untouched afterward.
+- **Gmail's missing "Campaigns" link is added** - it had Tracking,
+  History, Alerts, Reports, and Setup already, but no way to reach
+  Campaigns at all until now.
+- **Campaigns are now scoped to whichever provider section you're in**
+  - a campaign sent via Hostinger shows up under Hostinger's Campaigns
+  and nowhere else, and creating a new campaign from within a specific
+  provider's section automatically sends it through that provider.
+  Verified directly: a Hostinger campaign correctly stayed invisible
+  under Gmail's Campaigns view.
+- Found and fixed a real mislabeling bug while building this - a couple
+  of places checked "is this Gmail? then Gmail, otherwise Hostinger,"
+  which would have shown "Hostinger" for Bluehost/Titan too. Replaced
+  with a single shared lookup so adding a future provider can't
+  silently reintroduce the same mistake.
+
+## What's in this V15.28
+Backend foundation for Gmail and Bluehost/Titan campaign sending - the
+frontend (provider picker, Bluehost/Titan's own sidebar section) is
+still ahead, covered in the next version.
+
+- **Found that Gmail credentials already existed in the database but
+  were completely unused everywhere** - the Setup page let you save an
+  App Password, but nothing in campaign sending or reply checking ever
+  read it. Every part of sending is now built around a real provider
+  registry (Hostinger, Gmail, Bluehost/Titan) instead of being
+  hardcoded to Hostinger throughout, and along the way found and fixed
+  two actual bugs from that hardcoding: a sent email's provider was
+  always recorded as "hostinger" in the tracking table regardless of
+  which account actually sent it, and the SMTP lookup itself ignored
+  which provider a campaign was configured to use.
+- **Gmail uses its well-known, stable hosts** (smtp.gmail.com,
+  imap.gmail.com) with just your address and App Password needed.
+  **Bluehost/Titan gets fully configurable SMTP+IMAP**, same as
+  Hostinger already has, since assuming a specific hostname for it
+  risked being wrong for a real account.
+- **Reply/bounce checking now runs per-provider independently** - each
+  one gets its own IMAP connection and its own "last checked" timestamp,
+  so checking Hostinger can never cause Gmail (or vice versa) to
+  incorrectly skip past replies it's never actually looked at. A user
+  with only one provider configured is unaffected; the others are
+  simply skipped rather than attempted.
+- Verified extensively with mocked SMTP/IMAP: a full Gmail send
+  end-to-end (correct host, correct Sent-folder detection for Gmail's
+  own "[Gmail]/Sent Mail" naming, correct provider recorded), the
+  reply-checker correctly checking only configured providers and
+  leaving others untouched, and - importantly - a full regression
+  confirming an existing Hostinger campaign created with no explicit
+  provider still behaves exactly as it always has.
+- Also caught and fixed a real migration robustness gap while testing
+  this: two related database columns were being added together gated
+  on a single existence check, which could leave the schema
+  inconsistent if they ever got out of sync. Fixed to check each
+  independently.
+
+## What's in this V15.27
+Database indexes and a Go to Top button - the first part of a larger
+performance/feature request, with the Gmail and Bluehost/Titan work
+still ahead.
+
+- **9 missing database indexes added** on columns queried constantly
+  throughout the app but never indexed: leads by catch log, status, and
+  pinned state; catch logs by niche and country; and - likely the
+  biggest single win - email_campaign_leads by (campaign, lead), which
+  the "latest touch per lead" lookup used throughout campaigns and
+  follow-ups runs once per candidate row every time it's called.
+  Indexes only ever speed up queries, they never change what a query
+  returns, so this genuinely can't break any existing feature or
+  behavior. Verified a full fresh-schema creation succeeds cleanly with
+  all 22 indexes (13 original + 9 new) actually present, and separately
+  verified a second load against an already-existing database is
+  equally clean.
+- **A "Go to Top" button**, fixed at the bottom right, appearing once
+  any panel is scrolled down and smoothly scrolling back to the top on
+  click. Built to specifically avoid adding overhead to the frequent
+  scroll event itself (using the element that actually scrolled
+  directly, rather than searching the DOM on every scroll tick) given
+  the whole point of this round is speed, not adding to the problem.
+  Verified end-to-end: hidden by default, appears after scrolling the
+  actual content area (which for Board specifically isn't the outer
+  panel but a nested scroll container, found and handled correctly),
+  and correctly returns to the top on click.
+
 ## What's in this V15.26
 Campaigns rebuilt as a real tree, matching Reach Out's own structure and
 the confirmed shape: Niche > Country > Campaign Name > Email List / Sent

@@ -93,7 +93,7 @@ async function scheduleFollowUps(campaign) {
 
     let replied = false;
     try {
-      replied = await checkForReply(campaign.user_id, socials.email, new Date(sentAtMs));
+      replied = await checkForReply(campaign.user_id, socials.email, new Date(sentAtMs), campaign.send_provider);
     } catch (err) {
       // Can't confirm it's safe to follow up - skip this tick and try
       // again next time rather than risk sending on top of a reply we
@@ -277,11 +277,11 @@ async function processCampaignLead(campaign, campaignLeadRow) {
   // Step 3: create the tracked_email record (same table/mechanism the
   // extension's create-email call uses, just invoked directly in-process
   // instead of over HTTP with an API key)
-  const smtpCfg = resolveSmtpConfig(campaign.user_id);
+  const smtpCfg = resolveSmtpConfig(campaign.user_id, campaign.send_provider);
   const trackedId = crypto.randomUUID();
   db.prepare(
-    `INSERT INTO tracked_emails (id, user_id, subject, recipients, sender, provider, status) VALUES (?, ?, ?, ?, ?, 'hostinger', 'sent')`
-  ).run(trackedId, campaign.user_id, subject, JSON.stringify([socials.email]), smtpCfg?.from || null);
+    `INSERT INTO tracked_emails (id, user_id, subject, recipients, sender, provider, status) VALUES (?, ?, ?, ?, ?, ?, 'sent')`
+  ).run(trackedId, campaign.user_id, subject, JSON.stringify([socials.email]), smtpCfg?.from || null, campaign.send_provider);
 
   // Step 4: build the tracked HTML and send
   const baseUrl = getSetting("app_base_url") || "http://localhost:3000";
@@ -294,7 +294,7 @@ async function processCampaignLead(campaign, campaignLeadRow) {
   });
 
   db.prepare("UPDATE email_campaign_leads SET status = 'sending' WHERE id = ?").run(campaignLeadRow.id);
-  const sendResult = await sendCampaignEmail(campaign.user_id, { to: socials.email, subject, html });
+  const sendResult = await sendCampaignEmail(campaign.user_id, { to: socials.email, subject, html }, campaign.send_provider);
   if (!sendResult.ok) {
     db.prepare("DELETE FROM tracked_emails WHERE id = ?").run(trackedId); // never sent - don't leave a phantom tracked row
     throw new Error(sendResult.error);

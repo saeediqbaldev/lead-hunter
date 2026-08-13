@@ -1,7 +1,7 @@
 const { ImapFlow } = require("imapflow");
 const { simpleParser } = require("mailparser");
 const db = require("./db");
-const { resolveSmtpConfig, HOSTINGER_IMAP_HOST, HOSTINGER_IMAP_PORT } = require("./campaignSender");
+const { resolveSmtpConfig, resolveImapConfig } = require("./campaignSender");
 
 // Catches the class of reply that passes every subject/header check above
 // (a normal-looking subject, no Auto-Submitted header - many support
@@ -157,18 +157,22 @@ function extractEmailAddressesFromText(text) {
 // arrived for. This is the ground-truth signal opens/clicks can't
 // provide, since both of those can be triggered by mail-client
 // prefetching or corporate security scanners with no human involved.
-async function checkRepliesForUser(userId) {
-  const cfg = resolveSmtpConfig(userId);
-  if (!cfg) return { ok: false, error: "IMAP isn't configured for this account" };
+const LAST_CHECK_COLUMN = { hostinger: "last_reply_check_at", gmail: "gmail_last_reply_check_at", bluehost_titan: "bluehost_last_reply_check_at" };
 
-  const user = db.prepare("SELECT last_reply_check_at FROM users WHERE id = ?").get(userId);
-  const sinceDate = user?.last_reply_check_at
-    ? new Date(user.last_reply_check_at.replace(" ", "T") + "Z")
+async function checkRepliesForUserProvider(userId, provider) {
+  const cfg = resolveSmtpConfig(userId, provider);
+  const imapCfg = resolveImapConfig(userId, provider);
+  if (!cfg || !imapCfg) return { ok: false, error: `IMAP isn't configured for ${provider}` };
+
+  const lastCheckCol = LAST_CHECK_COLUMN[provider];
+  const user = db.prepare(`SELECT ${lastCheckCol} AS lastCheck FROM users WHERE id = ?`).get(userId);
+  const sinceDate = user?.lastCheck
+    ? new Date(user.lastCheck.replace(" ", "T") + "Z")
     : new Date(Date.now() - FIRST_CHECK_LOOKBACK_DAYS * 86400000);
 
   const client = new ImapFlow({
-    host: HOSTINGER_IMAP_HOST,
-    port: HOSTINGER_IMAP_PORT,
+    host: imapCfg.host,
+    port: imapCfg.port,
     secure: true,
     auth: { user: cfg.user, pass: cfg.pass },
     logger: false,
@@ -316,7 +320,7 @@ async function checkRepliesForUser(userId) {
   }
 
   if (genuineReplies.size === 0) {
-    db.prepare("UPDATE users SET last_reply_check_at = datetime('now') WHERE id = ?").run(userId);
+    db.prepare(`UPDATE users SET ${lastCheckCol} = datetime('now') WHERE id = ?`).run(userId);
     return { ok: true, newReplies: 0 };
   }
 
@@ -388,8 +392,29 @@ async function checkRepliesForUser(userId) {
     }
   }
 
-  db.prepare("UPDATE users SET last_reply_check_at = datetime('now') WHERE id = ?").run(userId);
+  db.prepare(`UPDATE users SET ${lastCheckCol} = datetime('now') WHERE id = ?`).run(userId);
   return { ok: true, newReplies };
+}
+
+// Runs the check for every provider a user has configured (Hostinger,
+// Gmail, Bluehost/Titan) - each is entirely independent (its own IMAP
+// connection, its own "since" timestamp, its own bounce/reply matching),
+// so one provider being unreachable or unconfigured doesn't prevent the
+// others from being checked.
+async function checkRepliesForUser(userId) {
+  const results = {};
+  for (const provider of Object.keys(LAST_CHECK_COLUMN)) {
+    if (!resolveSmtpConfig(userId, provider) || !resolveImapConfig(userId, provider)) continue; // not configured for this provider - nothing to check
+    try {
+      results[provider] = await checkRepliesForUserProvider(userId, provider);
+    } catch (err) {
+      results[provider] = { ok: false, error: err.message };
+    }
+  }
+  if (Object.keys(results).length === 0) return { ok: false, error: "No email provider is configured for this account" };
+  const anyOk = Object.values(results).some((r) => r.ok);
+  const totalNewReplies = Object.values(results).reduce((sum, r) => sum + (r.newReplies || 0), 0);
+  return { ok: anyOk, newReplies: totalNewReplies, byProvider: results };
 }
 
 // Runs the check for every user who has IMAP/SMTP configured - called
@@ -397,7 +422,12 @@ async function checkRepliesForUser(userId) {
 // running, since manually-sent emails deserve the same reply visibility.
 async function checkRepliesForAllUsers() {
   const users = db
-    .prepare("SELECT id FROM users WHERE tracker_smtp_host IS NOT NULL AND tracker_smtp_user IS NOT NULL AND tracker_smtp_pass IS NOT NULL")
+    .prepare(
+      `SELECT id FROM users WHERE
+         (tracker_smtp_host IS NOT NULL AND tracker_smtp_user IS NOT NULL AND tracker_smtp_pass IS NOT NULL)
+         OR (gmail_smtp_user IS NOT NULL AND gmail_smtp_app_password IS NOT NULL)
+         OR (bluehost_smtp_host IS NOT NULL AND bluehost_smtp_user IS NOT NULL AND bluehost_smtp_pass IS NOT NULL)`
+    )
     .all();
   for (const user of users) {
     try {

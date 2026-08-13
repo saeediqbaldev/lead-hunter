@@ -1,6 +1,14 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.13-15.26";
+const APP_VERSION = "2026.08.13-15.29";
+
+// Every email provider section (Hostinger, Gmail, Bluehost/Titan) shares
+// the same Tracking/History/Alerts/Reports/Campaigns/Setup views, keyed
+// by this display label - a single source of truth instead of scattering
+// per-call ternaries that would need updating every time a provider is
+// added (which is exactly how an earlier version ended up mislabeling
+// anything that wasn't Gmail as "Hostinger").
+const PROVIDER_LABELS = { hostinger: "Hostinger", gmail: "Gmail", bluehost_titan: "Bluehost/Titan" };
 
 // ---------- Diagnostics: surface failures instead of failing silently ----------
 function showBanner(message) {
@@ -761,6 +769,12 @@ const PLATFORM_SETUP_COPY = {
     stepTitle: "Open Gmail and compose",
     stepBody: `A <b>Track</b> toggle appears near the send button in the compose window - turn it on before sending and this dashboard will show opens and clicks automatically.`,
   },
+  bluehost_titan: {
+    title: "Bluehost/Titan Setup",
+    scopeLine: "Track opens and clicks on emails you send from Bluehost/Titan Webmail - no manual config needed",
+    stepTitle: "Open Bluehost/Titan Webmail and compose",
+    stepBody: `A <b>Track</b> toggle appears near the send button - turn it on before sending and this dashboard will show opens and clicks automatically.`,
+  },
 };
 
 // Attaches every Setup-page click handler exactly once, regardless of
@@ -796,6 +810,34 @@ function attachSetupListenersOnce(body) {
       body.querySelector("[data-tracker-smtp-host]").value = "smtp.hostinger.com";
       body.querySelector("[data-tracker-smtp-port]").value = "465";
       showToast("Filled in Hostinger's standard SMTP host and port - username/password are still your own", "success");
+      return;
+    }
+    if (action === "save-bluehost-settings") {
+      const resultEl = document.getElementById("contactedSettingsResult");
+      const smtpPort = body.querySelector("[data-bh-smtp-port]").value;
+      const imapPort = body.querySelector("[data-bh-imap-port]").value;
+      const payload = {
+        smtp_host: body.querySelector("[data-bh-smtp-host]").value.trim(),
+        smtp_port: smtpPort ? parseInt(smtpPort, 10) : null,
+        smtp_user: body.querySelector("[data-bh-smtp-user]").value.trim(),
+        smtp_from: body.querySelector("[data-bh-smtp-from]").value.trim(),
+        imap_host: body.querySelector("[data-bh-imap-host]").value.trim(),
+        imap_port: imapPort ? parseInt(imapPort, 10) : null,
+      };
+      const pass = body.querySelector("[data-bh-smtp-pass]").value;
+      if (pass) payload.smtp_pass = pass;
+      const r = await api("/api/tracker/bluehost-settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const d = await r.json();
+      resultEl.style.display = "block";
+      if (!r.ok) {
+        resultEl.className = "settings-result bad";
+        resultEl.textContent = d.error || "Could not save settings";
+      } else {
+        resultEl.className = "settings-result ok";
+        resultEl.textContent = "Settings saved.";
+        body.querySelector("[data-bh-smtp-pass-hint]").textContent = d.settings.smtp_pass_set ? "(a password is already saved)" : "(not set)";
+        body.querySelector("[data-bh-smtp-pass]").value = "";
+      }
       return;
     }
     if (action === "copy-tracker-key") {
@@ -940,6 +982,32 @@ async function loadContactedSetup() {
     <button type="button" class="small-btn" data-action="save-gmail-settings">Save Gmail settings</button>
     <div class="settings-result" id="contactedSettingsResult" style="display:none;"></div>
     `
+        : platform === "bluehost_titan"
+        ? `
+    <h3 class="settings-subheading">Bluehost/Titan sending</h3>
+    <p class="hint">Enter the SMTP and IMAP details from your Bluehost/Titan email account (usually found under Webmail settings or your hosting control panel).</p>
+    <div class="smtp-card">
+      <div class="smtp-card-head"><span>SMTP connection</span></div>
+      <div class="smtp-field-row">
+        <label class="site-field-label">SMTP host<input type="text" data-bh-smtp-host placeholder="smtp.titan.email"></label>
+        <label class="site-field-label smtp-field-narrow">SMTP port<input type="number" data-bh-smtp-port placeholder="465"></label>
+      </div>
+      <div class="smtp-field-row">
+        <label class="site-field-label">SMTP username<input type="text" data-bh-smtp-user placeholder="you@yourdomain.com"></label>
+        <label class="site-field-label">SMTP password <small class="optional" data-bh-smtp-pass-hint></small><input type="password" data-bh-smtp-pass placeholder="Leave blank to keep current"></label>
+      </div>
+      <label class="site-field-label">SMTP "from" address <small class="optional">(optional, defaults to the username)</small><input type="text" data-bh-smtp-from placeholder="you@yourdomain.com"></label>
+    </div>
+    <div class="smtp-card">
+      <div class="smtp-card-head"><span>IMAP connection (needed for reply detection and follow-ups)</span></div>
+      <div class="smtp-field-row">
+        <label class="site-field-label">IMAP host<input type="text" data-bh-imap-host placeholder="imap.titan.email"></label>
+        <label class="site-field-label smtp-field-narrow">IMAP port<input type="number" data-bh-imap-port placeholder="993"></label>
+      </div>
+    </div>
+    <button type="button" class="small-btn" data-action="save-bluehost-settings">Save Bluehost/Titan settings</button>
+    <div class="settings-result" id="contactedSettingsResult" style="display:none;"></div>
+    `
         : `
     <h3 class="settings-subheading">Email notifications</h3>
     <p class="hint">Get an email the moment someone opens or clicks - sent through your own SMTP account.</p>
@@ -976,6 +1044,21 @@ async function loadContactedSetup() {
     const gmailData = await gmailRes.json();
     body.querySelector("[data-gmail-user]").value = gmailData.gmailUser || "";
     body.querySelector("[data-gmail-pass-hint]").textContent = gmailData.appPasswordSet ? "(a password is already saved)" : "(not set)";
+    attachSetupListenersOnce(body);
+    return;
+  }
+
+  if (platform === "bluehost_titan") {
+    const bhRes = await api("/api/tracker/bluehost-settings");
+    const bhData = await bhRes.json();
+    const s = bhData.settings || {};
+    body.querySelector("[data-bh-smtp-host]").value = s.smtp_host || "";
+    body.querySelector("[data-bh-smtp-port]").value = s.smtp_port || "";
+    body.querySelector("[data-bh-smtp-user]").value = s.smtp_user || "";
+    body.querySelector("[data-bh-smtp-from]").value = s.smtp_from || "";
+    body.querySelector("[data-bh-imap-host]").value = s.imap_host || "";
+    body.querySelector("[data-bh-imap-port]").value = s.imap_port || "";
+    body.querySelector("[data-bh-smtp-pass-hint]").textContent = s.smtp_pass_set ? "(a password is already saved)" : "(not set)";
     attachSetupListenersOnce(body);
     return;
   }
@@ -1346,7 +1429,7 @@ document.getElementById("contactedHistoryNextPageBtn").addEventListener("click",
 document.getElementById("contactedHistoryClearBtn").addEventListener("click", async () => {
   const confirmed = await openModal({
     title: "Clear all history?",
-    message: `This permanently deletes every open/click event for ${state.contactedPlatform === "gmail" ? "Gmail" : "Hostinger"}. This cannot be undone.`,
+    message: `This permanently deletes every open/click event for ${PROVIDER_LABELS[state.contactedPlatform] || state.contactedPlatform}. This cannot be undone.`,
     confirmText: "Clear history",
     danger: true,
   });
@@ -1521,7 +1604,7 @@ document.getElementById("contactedMarkAllReadBtn").addEventListener("click", asy
 document.getElementById("contactedAlertsClearBtn").addEventListener("click", async () => {
   const confirmed = await openModal({
     title: "Clear all alerts?",
-    message: `This permanently deletes every open/click alert for ${state.contactedPlatform === "gmail" ? "Gmail" : "Hostinger"}. This cannot be undone.`,
+    message: `This permanently deletes every open/click alert for ${PROVIDER_LABELS[state.contactedPlatform] || state.contactedPlatform}. This cannot be undone.`,
     confirmText: "Clear alerts",
     danger: true,
   });
@@ -1578,7 +1661,7 @@ async function getCampaignTreeData(campaignId) {
 }
 
 async function loadContactedCampaigns() {
-  const res = await api("/api/campaigns");
+  const res = await api(`/api/campaigns?provider=${state.contactedPlatform}`);
   const data = await res.json();
   const list = document.getElementById("contactedCampaignsList");
 
@@ -1860,7 +1943,7 @@ document.getElementById("contactedNewCampaignBtn").addEventListener("click", sho
 async function showCampaignCreationForm() {
   setContentView("contacted-campaign-detail");
   document.getElementById("campaignDetailTitle").textContent = "New Campaign";
-  document.getElementById("campaignDetailScope").textContent = "Set up an automated sending run";
+  document.getElementById("campaignDetailScope").textContent = `Set up an automated sending run - will send via ${PROVIDER_LABELS[state.contactedPlatform] || state.contactedPlatform}`;
   document.getElementById("campaignDetailActions").innerHTML = "";
   document.getElementById("campaignDetailTabs").style.display = "none";
 
@@ -2067,6 +2150,7 @@ async function showCampaignCreationForm() {
         followupCustomInstructions: body.querySelector("[data-campaign-followup-instructions]").value.trim() || undefined,
         muteOpenedAlerts: body.querySelector("[data-campaign-mute-opened]").checked,
         muteClickedAlerts: body.querySelector("[data-campaign-mute-clicked]").checked,
+        sendProvider: state.contactedPlatform,
       };
       if (!payload.name) {
         resultEl.style.display = "block";
@@ -7560,6 +7644,46 @@ async function loadReports() {
 }
 
 // ---------- Init ----------
+// A single capture-phase listener catches scroll events from any of the
+// app's many independently-scrollable panels (Board, Campaigns, Reports,
+// etc. each scroll on their own) - scroll doesn't bubble, but a
+// capture-phase listener on document still observes it regardless of
+// which specific element scrolled, so this works correctly no matter
+// which view is currently active without needing a listener per panel.
+const goToTopBtn = document.getElementById("goToTopBtn");
+function currentVisiblePanel() {
+  const panel = document.querySelector(".panel:not(.view-hidden)");
+  if (!panel) return null;
+  // The panel itself might be the scroll container, or a nested element
+  // might be (Board's .records-wrap, for example) - walk its descendants
+  // to find whichever element is actually scrollable right now, rather
+  // than assuming the outer .panel always is. Only used on click (rare),
+  // never on the scroll listener itself (frequent) - see below.
+  if (panel.scrollHeight > panel.clientHeight) return panel;
+  const candidates = panel.querySelectorAll("*");
+  for (const el of candidates) {
+    const style = getComputedStyle(el);
+    if ((style.overflowY === "auto" || style.overflowY === "scroll") && el.scrollHeight > el.clientHeight) return el;
+  }
+  return panel;
+}
+document.addEventListener(
+  "scroll",
+  (e) => {
+    // e.target is exactly the element that scrolled - no DOM searching
+    // needed here, which matters since this fires on every scroll tick,
+    // not just once like the click handler below.
+    const scrollTop = e.target === document ? document.documentElement.scrollTop : e.target.scrollTop || 0;
+    goToTopBtn.classList.toggle("visible", scrollTop > 300);
+  },
+  true
+);
+goToTopBtn.addEventListener("click", () => {
+  const panel = currentVisiblePanel();
+  if (panel) panel.scrollTo({ top: 0, behavior: "smooth" });
+  window.scrollTo({ top: 0, behavior: "smooth" });
+});
+
 (async function init() {
   hideBanner();
   console.log("Xeven Leads app.js loaded — build " + APP_VERSION);
