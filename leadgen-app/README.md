@@ -6,6 +6,39 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.26
+Campaigns rebuilt as a real tree, matching Reach Out's own structure and
+the confirmed shape: Niche > Country > Campaign Name > Email List / Sent
+/ Replied / Report / Followups, with Followups expanding into
+independently-editable Followup 1, Followup 2...
+
+- The old flat "niche heading + grid of cards, click into a tab bar"
+  layout is gone - a campaign is now a genuine expandable tree node.
+  Expanding it reveals the 5 sub-items as clickable rows with live
+  counts, the same visual language as Reach Out's own pipeline stages.
+  Clicking any of them navigates straight to that specific, filtered
+  view - the old tab bar is fully retired in favor of the tree.
+- Expanding "Followups" reveals every follow-up level up to the
+  campaign's max count as its own row (even one no lead has reached
+  yet, since the point is being able to configure it ahead of time),
+  each with its own 4 sub-items and its own 3-dot menu: Edit opens that
+  one follow-up's independent settings panel (built on last version's
+  backend work), Pause/Resume stops or resumes just that level.
+- **Found and fixed a real bug while building this** - the exact same
+  class of CSS issue caught once before in an earlier version (an
+  ancestor's "expanded" state cascading through a *closed* level nested
+  inside it, since the underlying selector matches at any depth, not
+  just direct children). This time it meant expanding one specific
+  Followup was incorrectly revealing every other Followup's content too.
+  Fixed the same way as before - a dedicated, isolated class instead of
+  reusing a broader one - and verified directly: expanding only Followup
+  1 now shows only Followup 1's own 4 rows, with Followup 2 correctly
+  staying collapsed.
+- Verified the complete path end-to-end in a real browser: expanding
+  the tree down to a specific follow-up, editing its tone and adding
+  custom instructions, saving, and confirming those exact values came
+  back from the server afterward.
+
 ## What's in this V15.25
 Backend foundation for treating each follow-up as its own independently
 configurable sub-campaign - the tree/UI restructuring itself is still
