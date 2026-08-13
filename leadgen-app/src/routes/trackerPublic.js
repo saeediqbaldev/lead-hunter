@@ -159,9 +159,14 @@ router.get("/api/tracker/stats", requireSessionOrApiKey, (req, res) => {
   }
 });
 
-// How long after sending to ignore pixel hits - covers the sender's own
-// mail client auto-loading images when it renders the Sent-folder copy.
-const OPEN_GRACE_MS = 8000;
+// How long after sending to ignore pixel/click hits - covers the
+// sender's own mail client auto-loading images or previewing links when
+// it renders the Sent-folder copy, and the broader window (2 minutes,
+// not just a few seconds) also covers automated link-scanning security
+// gateways many mail providers run before a message even reaches the
+// inbox, which happens far faster than a real recipient could open or
+// click something.
+const TRACKING_GRACE_MS = 120000;
 
 // ---- Tracking pixel ----
 router.get("/t/:id/pixel.png", (req, res) => {
@@ -186,7 +191,7 @@ router.get("/t/:id/pixel.png", (req, res) => {
         const userAgent = req.header("user-agent") || "";
 
         const isSelf = email.sender_ip && requestIp && email.sender_ip === requestIp;
-        const withinGrace = Date.now() - new Date(email.created_at.replace(" ", "T") + "Z").getTime() < OPEN_GRACE_MS;
+        const withinGrace = Date.now() - new Date(email.created_at.replace(" ", "T") + "Z").getTime() < TRACKING_GRACE_MS;
         const isBot = isLikelyBotOrScanner(userAgent);
         const isFirstOpen = !email.first_opened_at;
 
@@ -278,45 +283,60 @@ router.get("/t/:id/click", (req, res) => {
     }
 
     try {
+      const email = db.prepare("SELECT sender_ip, created_at, subject, recipients, user_id FROM tracked_emails WHERE id = ?").get(id);
       const clickerIp = clientIp(req);
-      const { browser, os, device } = parseUserAgent(userAgent);
-      const insertResult = db
-        .prepare("INSERT INTO tracked_clicks (email_id, url, ip, user_agent, browser, os, device) VALUES (?, ?, ?, ?, ?, ?, ?)")
-        .run(id, decoded, clickerIp, userAgent || null, browser, os, device);
-      db.prepare("UPDATE tracked_emails SET status = 'clicked', click_count = click_count + 1 WHERE id = ?").run(id);
-      autoPinLeadForEmail(id, "Email Link Clicked");
+      const isSelf = email?.sender_ip && clickerIp && email.sender_ip === clickerIp;
+      const withinGrace = email && Date.now() - new Date(email.created_at.replace(" ", "T") + "Z").getTime() < TRACKING_GRACE_MS;
 
-      const clickRowId = insertResult.lastInsertRowid;
-      lookupGeoIp(clickerIp)
-        .then((geo) => {
-          if (geo) db.prepare("UPDATE tracked_clicks SET city = ?, country = ? WHERE id = ?").run(geo.city, geo.country, clickRowId);
-        })
-        .catch(() => {});
+      console.log(
+        `[tracker-click] hit for ${id}: clickerIp=${clickerIp} senderIp=${email?.sender_ip} isSelf=${isSelf} withinGrace=${withinGrace} userAgent="${userAgent}" -> ${
+          email && !isSelf && !withinGrace ? "RECORDING click" : "SUPPRESSED"
+        }`
+      );
 
-      const email = db.prepare("SELECT subject, recipients, user_id FROM tracked_emails WHERE id = ?").get(id);
-      if (email && !isAlertMuted(id, "click")) {
-        const recipients = JSON.parse(email.recipients || "[]");
-        const who = recipients.join(", ") || "unknown recipient";
-        const subj = email.subject || "(no subject)";
-        const message = `${who} clicked a link in "${subj}"`;
+      if (email && !isSelf && !withinGrace) {
+        const { browser, os, device } = parseUserAgent(userAgent);
+        const insertResult = db
+          .prepare("INSERT INTO tracked_clicks (email_id, url, ip, user_agent, browser, os, device) VALUES (?, ?, ?, ?, ?, ?, ?)")
+          .run(id, decoded, clickerIp, userAgent || null, browser, os, device);
+        db.prepare("UPDATE tracked_emails SET status = 'clicked', click_count = click_count + 1 WHERE id = ?").run(id);
+        autoPinLeadForEmail(id, "Email Link Clicked");
 
-        db.prepare("INSERT INTO tracked_notifications (email_id, user_id, type, url, message) VALUES (?, ?, 'click', ?, ?)").run(
-          id,
-          email.user_id,
-          decoded,
-          message
-        );
+        const clickRowId = insertResult.lastInsertRowid;
+        lookupGeoIp(clickerIp)
+          .then((geo) => {
+            if (geo) db.prepare("UPDATE tracked_clicks SET city = ?, country = ? WHERE id = ?").run(geo.city, geo.country, clickRowId);
+          })
+          .catch(() => {});
 
-        sendEmailNotification(email.user_id, {
-          subject: `Link clicked: ${subj}`,
-          text: `${message}\n\nURL: ${decoded}\nClicked at: ${new Date().toISOString()}`,
-        }).catch((err) => console.error("[tracker-notify] click email failed:", err.message));
+        if (!isAlertMuted(id, "click")) {
+          const recipients = JSON.parse(email.recipients || "[]");
+          const who = recipients.join(", ") || "unknown recipient";
+          const subj = email.subject || "(no subject)";
+          const message = `${who} clicked a link in "${subj}"`;
+
+          db.prepare("INSERT INTO tracked_notifications (email_id, user_id, type, url, message) VALUES (?, ?, 'click', ?, ?)").run(
+            id,
+            email.user_id,
+            decoded,
+            message
+          );
+
+          sendEmailNotification(email.user_id, {
+            subject: `Link clicked: ${subj}`,
+            text: `${message}\n\nURL: ${decoded}\nClicked at: ${new Date().toISOString()}`,
+          }).catch((err) => console.error("[tracker-notify] click email failed:", err.message));
+        }
       }
     } catch (err) {
       console.error("Click logging failed:", err.message);
     }
   }
 
+  // Always redirects regardless of whether tracking above was suppressed
+  // - this is a real link the person clicked, and they must always reach
+  // it. Suppression only ever skips the counting/notification, never the
+  // actual navigation.
   res.redirect(302, decoded);
 });
 

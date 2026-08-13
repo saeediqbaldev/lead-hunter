@@ -396,6 +396,21 @@ CREATE TABLE IF NOT EXISTS api_key_daily_usage (
     db.exec("ALTER TABLE leads ADD COLUMN suggested_contact_reason TEXT");
     db.exec("ALTER TABLE leads ADD COLUMN suggested_contact_detected_at TEXT");
   }
+
+  // One-time cleanup: unpin every currently-pinned lead except ones with
+  // real pipeline progress (Engaged/Won/Converted) - a lot of leads
+  // ended up pinned from the now-removed "email opened" auto-pin logic,
+  // and this clears that backlog in one pass. Gated by a flag so it only
+  // ever runs once; future manual pins (of any status) are completely
+  // unaffected by this, since it only touches existing data at the
+  // moment this version first runs, not the pinning logic itself.
+  if (!db.prepare("SELECT value FROM settings WHERE key = 'unpin_cleanup_2026_08_done'").get()) {
+    const result = db
+      .prepare("UPDATE leads SET pinned = 0, pin_reason = NULL WHERE pinned = 1 AND status NOT IN ('engaged', 'won', 'converted')")
+      .run();
+    if (result.changes) console.log(`[migration] Unpinned ${result.changes} lead(s) that weren't Engaged/Won/Converted.`);
+    db.prepare("INSERT INTO settings (key, value) VALUES ('unpin_cleanup_2026_08_done', '1') ON CONFLICT(key) DO NOTHING").run();
+  }
 }
 
 // ---------- Business deep-analysis (Reach Out "Inspect" feature) ----------
@@ -706,6 +721,30 @@ CREATE TABLE IF NOT EXISTS app_notifications (
 );
 CREATE INDEX IF NOT EXISTS idx_app_notifications_user ON app_notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_app_notifications_read ON app_notifications(is_read);
+
+-- One row per (campaign, touch_number) that has been given independent
+-- settings, distinct from the main campaign's defaults or any other
+-- follow-up's own settings. A touch number with no row here just falls
+-- back to the main campaign's own tone/length/language/etc, so a
+-- campaign's follow-ups all behave exactly as before until someone
+-- explicitly customizes a specific one.
+CREATE TABLE IF NOT EXISTS campaign_followup_configs (
+  campaign_id INTEGER NOT NULL,
+  touch_number INTEGER NOT NULL,
+  tone TEXT,
+  length TEXT,
+  language TEXT,
+  cta INTEGER,
+  meeting INTEGER,
+  meeting_link TEXT,
+  whatsapp INTEGER,
+  whatsapp_link TEXT,
+  custom_instructions TEXT,
+  ai_provider TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
+  updated_at TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (campaign_id, touch_number)
+);
 
 CREATE TABLE IF NOT EXISTS country_scrape_jobs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -278,6 +278,87 @@ router.post("/:id/leads/:leadRowId/retry", requireOwnedCampaign, (req, res) => {
 // lead" query the scheduler itself uses (see scheduleFollowUps in
 // campaignScheduler.js) so this list can never drift out of sync with
 // what will actually happen.
+// GET /api/campaigns/:id/followups/:touchNumber - this specific follow-up
+// level's settings, falling back to the main campaign's own values for
+// any field that hasn't been given an independent override yet. This is
+// what lets the edit form always show something sensible (either the
+// override or what would actually be used by default) rather than a
+// blank form for a follow-up nobody has customized.
+router.get("/:id/followups/:touchNumber", requireOwnedCampaign, (req, res) => {
+  const touchNumber = Number(req.params.touchNumber);
+  if (!Number.isInteger(touchNumber) || touchNumber < 2) return res.status(400).json({ error: "touchNumber must be an integer >= 2 (touch 1 is the original email)" });
+
+  const override = db.prepare("SELECT * FROM campaign_followup_configs WHERE campaign_id = ? AND touch_number = ?").get(req.campaign.id, touchNumber);
+  const c = req.campaign;
+  res.json({
+    touchNumber,
+    isCustomized: !!override,
+    tone: override?.tone ?? c.tone,
+    length: override?.length ?? c.length,
+    language: override?.language ?? c.language,
+    cta: override ? !!override.cta : !!c.cta,
+    meeting: override ? !!override.meeting : !!c.meeting,
+    meetingLink: override?.meeting_link ?? c.meeting_link,
+    whatsapp: override ? !!override.whatsapp : !!c.whatsapp,
+    whatsappLink: override?.whatsapp_link ?? c.whatsapp_link,
+    customInstructions: override?.custom_instructions ?? c.followup_custom_instructions,
+    aiProvider: override?.ai_provider ?? c.ai_provider,
+    status: override?.status || "active",
+  });
+});
+
+// PUT /api/campaigns/:id/followups/:touchNumber - creates or updates the
+// independent override for this specific follow-up level. Every field is
+// required together (not a partial PATCH) since the frontend edit form
+// always submits the full set it just displayed.
+router.put("/:id/followups/:touchNumber", requireOwnedCampaign, (req, res) => {
+  const touchNumber = Number(req.params.touchNumber);
+  if (!Number.isInteger(touchNumber) || touchNumber < 2) return res.status(400).json({ error: "touchNumber must be an integer >= 2" });
+
+  const { tone, length, language, cta, meeting, meetingLink, whatsapp, whatsappLink, customInstructions, aiProvider } = req.body || {};
+  db.prepare(
+    `INSERT INTO campaign_followup_configs (campaign_id, touch_number, tone, length, language, cta, meeting, meeting_link, whatsapp, whatsapp_link, custom_instructions, ai_provider, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+     ON CONFLICT(campaign_id, touch_number) DO UPDATE SET
+       tone = excluded.tone, length = excluded.length, language = excluded.language, cta = excluded.cta,
+       meeting = excluded.meeting, meeting_link = excluded.meeting_link, whatsapp = excluded.whatsapp, whatsapp_link = excluded.whatsapp_link,
+       custom_instructions = excluded.custom_instructions, ai_provider = excluded.ai_provider, updated_at = excluded.updated_at`
+  ).run(
+    req.campaign.id,
+    touchNumber,
+    tone || null,
+    length || null,
+    language || null,
+    cta ? 1 : 0,
+    meeting ? 1 : 0,
+    meetingLink || null,
+    whatsapp ? 1 : 0,
+    whatsappLink || null,
+    customInstructions || null,
+    aiProvider || null
+  );
+  res.json({ ok: true });
+});
+
+// POST /api/campaigns/:id/followups/:touchNumber/pause|resume - stops or
+// resumes every lead from advancing to this specific touch number,
+// without affecting any other touch level. Implemented as a status flag
+// on the config row (creating one with just this field set, if none
+// existed yet) rather than touching every individual lead's own row -
+// scheduleFollowUps checks this before creating a new pending row for
+// the touch.
+router.post("/:id/followups/:touchNumber/:action(pause|resume)", requireOwnedCampaign, (req, res) => {
+  const touchNumber = Number(req.params.touchNumber);
+  if (!Number.isInteger(touchNumber) || touchNumber < 2) return res.status(400).json({ error: "touchNumber must be an integer >= 2" });
+  const newStatus = req.params.action === "pause" ? "paused" : "active";
+
+  db.prepare(
+    `INSERT INTO campaign_followup_configs (campaign_id, touch_number, status, updated_at) VALUES (?, ?, ?, datetime('now'))
+     ON CONFLICT(campaign_id, touch_number) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at`
+  ).run(req.campaign.id, touchNumber, newStatus);
+  res.json({ ok: true, status: newStatus });
+});
+
 router.get("/:id/upcoming-followups", requireOwnedCampaign, (req, res) => {
   if (!req.campaign.followup_enabled) return res.json({ upcoming: [] });
 
@@ -335,6 +416,9 @@ router.post("/:id/leads/:leadRowId/send-followup-now", requireOwnedCampaign, asy
     .prepare("SELECT MAX(id) AS maxId FROM email_campaign_leads WHERE campaign_id = ? AND lead_id = ?")
     .get(req.campaign.id, leadRow.lead_id);
   if (latest.maxId !== leadRow.id) return res.status(400).json({ error: "This isn't the most recent touch for this lead" });
+
+  const touchConfig = db.prepare("SELECT status FROM campaign_followup_configs WHERE campaign_id = ? AND touch_number = ?").get(req.campaign.id, leadRow.touch_number + 1);
+  if (touchConfig?.status === "paused") return res.status(409).json({ error: `Follow-up ${leadRow.touch_number} is paused - resume it first.` });
 
   const lead = db.prepare("SELECT * FROM leads WHERE id = ?").get(leadRow.lead_id);
   let socials = {};

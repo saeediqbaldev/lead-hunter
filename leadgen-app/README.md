@@ -6,6 +6,63 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.25
+Backend foundation for treating each follow-up as its own independently
+configurable sub-campaign - the tree/UI restructuring itself is still
+ahead, covered in the next version.
+
+- **Each follow-up level (Followup 1, Followup 2...) can now have fully
+  independent settings** - tone, length, language, links, custom
+  instructions - distinct from the main campaign and from each other.
+  A follow-up with no override still behaves exactly as it always has,
+  falling back to the main campaign's own settings, so nothing about
+  existing campaigns changes unless a follow-up is explicitly
+  customized. Verified the fallback and override behavior directly, and
+  confirmed a different, never-touched follow-up level stays completely
+  unaffected by customizing a different one.
+- **Each follow-up level can be paused or resumed independently**,
+  stopping every lead from advancing to that specific touch without
+  affecting any other touch. Verified this blocks even the manual
+  "Send Now" override, not just the automatic schedule - a paused level
+  now genuinely means nothing sends at that level, regardless of how
+  it's triggered.
+- **Found and fixed a real gap while building this**: undeliverable
+  addresses from the original send were never being excluded from
+  follow-ups at all - the scheduler had no check for a bounced original
+  email. Fixed and verified directly: a lead whose original send bounced
+  correctly stays excluded from every future touch, while a different,
+  genuinely-delivered lead in the same campaign correctly proceeds.
+
+## What's in this V15.24
+Pin cleanup, a proper 2-minute tracking grace window, and confirmation
+that campaign content already saves to the lead itself.
+
+- **One-time pin cleanup**: every currently-pinned lead gets unpinned,
+  except ones with real pipeline progress (Engaged/Won/Converted) - this
+  clears the backlog left over from the now-removed "email opened"
+  auto-pin logic. Runs exactly once (gated by a flag), so manually
+  pinning a lead afterward - of any status - is completely unaffected
+  and survives future restarts. Verified directly: a lead manually
+  re-pinned right after the cleanup stayed pinned through a second
+  simulated restart.
+- **Extended the open/click grace window from 8 seconds to 2 minutes**,
+  and applied the same rule to clicks for the first time (previously
+  only opens had any grace period at all). An open or click in the
+  first 2 minutes after sending is far more likely to be a mail client's
+  own image-preload, a security scanner, or the sender's own review than
+  a real recipient action - anything past 2 minutes counts normally.
+  Verified the exact boundary: a click sent immediately was correctly
+  suppressed while still redirecting the person to the real link, and
+  the same click sent again 3 minutes later was correctly counted -
+  confirming a suppressed click never leaves anyone stuck instead of
+  reaching what they clicked.
+- **Investigated and confirmed** that campaign-generated content
+  already saves to the lead's own record and loads automatically when
+  the lead is expanded - this was built in earlier work I hadn't
+  re-verified until now. Confirmed directly in a real browser: content
+  generated and sent by a campaign shows up in the lead's own "Generate
+  Content" panel without needing to regenerate anything.
+
 ## What's in this V15.23
 A 3-dot menu on every country in Hunt - Rename, Delete, and Scrape All.
 

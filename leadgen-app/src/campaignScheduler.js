@@ -48,14 +48,21 @@ async function scheduleFollowUps(campaign) {
   if (!campaign.followup_enabled) return;
 
   // Only the most recent touch per lead - a lead already on touch 2
-  // shouldn't also get a follow-up scheduled off its touch 1 row.
+  // shouldn't also get a follow-up scheduled off its touch 1 row. Also
+  // excludes any lead whose most recent send actually bounced - an
+  // undeliverable/non-existent address from an earlier touch should
+  // never get another attempt, both because it's pointless (the address
+  // doesn't work) and because repeatedly emailing a bouncing address
+  // hurts sender reputation for every other send too.
   const candidates = db
     .prepare(
       `SELECT ecl.* FROM email_campaign_leads ecl
+       LEFT JOIN tracked_emails te ON te.id = ecl.tracked_email_id
        WHERE ecl.campaign_id = ?
          AND ecl.status = 'sent'
          AND ecl.touch_number < ?
          AND ecl.replied_at IS NULL
+         AND te.delivery_failed_at IS NULL
          AND ecl.id = (SELECT MAX(id) FROM email_campaign_leads WHERE campaign_id = ecl.campaign_id AND lead_id = ecl.lead_id)
        ORDER BY ecl.sent_at ASC`
     )
@@ -65,6 +72,14 @@ async function scheduleFollowUps(campaign) {
     const sentAtMs = new Date(row.sent_at.replace(" ", "T") + "Z").getTime();
     const dueAtMs = sentAtMs + campaign.followup_wait_days * 86400000;
     if (Date.now() < dueAtMs) continue;
+
+    // This specific next touch level might have been paused independently
+    // of the rest of the sequence (see the per-followup pause/resume
+    // routes) - a different lead due for a different touch number should
+    // still be processed this tick, so this only skips this one candidate.
+    const nextTouchNumber = row.touch_number + 1;
+    const touchConfig = db.prepare("SELECT status FROM campaign_followup_configs WHERE campaign_id = ? AND touch_number = ?").get(campaign.id, nextTouchNumber);
+    if (touchConfig?.status === "paused") continue;
 
     const lead = db.prepare("SELECT * FROM leads WHERE id = ?").get(row.lead_id);
     if (!lead) continue;
@@ -95,7 +110,7 @@ async function scheduleFollowUps(campaign) {
     db.prepare("INSERT INTO email_campaign_leads (campaign_id, lead_id, status, touch_number) VALUES (?, ?, 'pending', ?)").run(
       campaign.id,
       row.lead_id,
-      row.touch_number + 1
+      nextTouchNumber
     );
     return; // one per tick - the next candidate gets picked up on a later tick
   }
@@ -193,20 +208,23 @@ async function processCampaignLead(campaign, campaignLeadRow) {
 
     db.prepare("UPDATE email_campaign_leads SET status = 'generating' WHERE id = ?").run(campaignLeadRow.id);
     const userRow = db.prepare("SELECT signature FROM users WHERE id = ?").get(campaign.user_id);
+    const followupConfig = db
+      .prepare("SELECT * FROM campaign_followup_configs WHERE campaign_id = ? AND touch_number = ?")
+      .get(campaign.id, campaignLeadRow.touch_number);
     genResult = await generateFollowUpContent(campaign.user_id, {
       lead,
-      tone: campaign.tone,
-      language: campaign.language || "English",
+      tone: followupConfig?.tone ?? campaign.tone,
+      language: followupConfig?.language ?? campaign.language ?? "English",
       previousBody: stripHtmlForContext(previousEmail.body_html),
       touchNumber: campaignLeadRow.touch_number,
       signature: userRow?.signature,
-      aiProvider: contentProvider,
+      aiProvider: followupConfig?.ai_provider || contentProvider,
       analysis: analysisJobs.getAnalysis(lead.id),
-      meeting: !!campaign.meeting,
-      meetingLink: campaign.meeting_link,
-      whatsapp: !!campaign.whatsapp,
-      whatsappLink: campaign.whatsapp_link,
-      customInstructions: campaign.followup_custom_instructions,
+      meeting: followupConfig ? !!followupConfig.meeting : !!campaign.meeting,
+      meetingLink: followupConfig?.meeting_link ?? campaign.meeting_link,
+      whatsapp: followupConfig ? !!followupConfig.whatsapp : !!campaign.whatsapp,
+      whatsappLink: followupConfig?.whatsapp_link ?? campaign.whatsapp_link,
+      customInstructions: followupConfig?.custom_instructions ?? campaign.followup_custom_instructions,
     });
   } else {
     // Step 1: inspect first, if requested and not already done
@@ -377,4 +395,4 @@ function startScheduler() {
   }, TICK_INTERVAL_MS);
 }
 
-module.exports = { startScheduler, tick };
+module.exports = { startScheduler, tick, scheduleFollowUps };
