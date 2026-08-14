@@ -6,6 +6,36 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.37
+A genuinely more polished email closing, and hints for the fit-grade
+and email-provider systems in the info modal. The campaign-creation
+warning and bulk backfill from the fit-score plan are still ahead.
+
+- **The signature's closing line is warmer and more substantive** -
+  "Thank you for taking the time to read this - we'd love the
+  opportunity to help your business grow online," not just a generic
+  line. Also fixed a real polish issue while in there: "Ceo" was
+  missing its proper capitalization. Applied carefully, same as last
+  time - a brand new account gets it immediately, an account still on
+  either previous version gets upgraded automatically, and a genuinely
+  customized signature is left completely untouched. Verified all
+  three cases directly again.
+- **The call-to-action instruction now has real teeth** - not just
+  "include a CTA," but concrete examples of what confident, credible
+  closing lines actually sound like versus the uncertain, forgettable
+  ones AI often defaults to ("let me know your thoughts," "hope to
+  hear from you"). Applied to both the main content generator and
+  follow-ups, since the follow-up version was noticeably weaker before.
+- **Hints for the fit-grade and email-provider systems**, added to the
+  existing info modal (the "i" icon next to the board) - what each
+  grade means, why a missing website often scores *higher* not lower,
+  and how the three email providers (Hostinger/Gmail/Bluehost-Titan)
+  relate to each other. Caught and fixed a real layout bug of my own
+  while building this - a line mixing several bold terms was breaking
+  onto its own narrow column due to a flex-layout quirk shared with
+  every other item in that modal; verified the fix renders correctly
+  before shipping it.
+
 ## What's in this V15.36
 Filter and sort the board by fit grade - the campaign-creation warning
 for low-graded leads and a bulk backfill for existing leads are still

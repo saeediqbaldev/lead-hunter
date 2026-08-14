@@ -306,7 +306,7 @@ if (!leadsTableExists) {
     db.exec("ALTER TABLE users ADD COLUMN page_size INTEGER DEFAULT 50");
   }
   if (!userCols.includes("signature")) {
-    const defaultSignature = `Thank you for your time and consideration.<br><br>Kind Regards,<br>&nbsp;&nbsp;&nbsp;<b>Saeed Iqbal</b><br>&nbsp;&nbsp;&nbsp;Ceo | Xeven Pixels<br>&nbsp;&nbsp;&nbsp;<a href="https://xevenpixels.com">https://xevenpixels.com</a><br>&nbsp;&nbsp;&nbsp;contact@xevenpixels.com`;
+    const defaultSignature = `Thank you for taking the time to read this - we'd love the opportunity to help your business grow online.<br><br>Kind Regards,<br>&nbsp;&nbsp;&nbsp;<b>Saeed Iqbal</b><br>&nbsp;&nbsp;&nbsp;CEO, Xeven Pixels<br>&nbsp;&nbsp;&nbsp;<a href="https://xevenpixels.com">xevenpixels.com</a><br>&nbsp;&nbsp;&nbsp;contact@xevenpixels.com`;
     db.prepare("ALTER TABLE users ADD COLUMN signature TEXT").run();
     db.prepare("UPDATE users SET signature = ? WHERE signature IS NULL").run(defaultSignature);
   }
@@ -321,6 +321,18 @@ if (!leadsTableExists) {
     const result = db.prepare("UPDATE users SET signature = ? WHERE signature = ?").run(newDefault, oldDefault);
     if (result.changes) console.log(`[migration] Upgraded ${result.changes} unmodified default signature(s) to include a thank-you line.`);
     db.prepare("INSERT INTO settings (key, value) VALUES ('signature_thankyou_upgrade_2026_08_done', '1') ON CONFLICT(key) DO NOTHING").run();
+  }
+  // Second one-time upgrade: anyone who was on the previous (thank-you,
+  // but not yet polished - still had the "Ceo" capitalization slip)
+  // default moves to the more warmly-worded, correctly-capitalized
+  // version. Same non-destructive rule as above - only an exact,
+  // unmodified match gets replaced.
+  if (!db.prepare("SELECT value FROM settings WHERE key = 'signature_polish_upgrade_2026_08_done'").get()) {
+    const previousDefault = `Thank you for your time and consideration.<br><br>Kind Regards,<br>&nbsp;&nbsp;&nbsp;<b>Saeed Iqbal</b><br>&nbsp;&nbsp;&nbsp;Ceo | Xeven Pixels<br>&nbsp;&nbsp;&nbsp;<a href="https://xevenpixels.com">https://xevenpixels.com</a><br>&nbsp;&nbsp;&nbsp;contact@xevenpixels.com`;
+    const polishedDefault = `Thank you for taking the time to read this - we'd love the opportunity to help your business grow online.<br><br>Kind Regards,<br>&nbsp;&nbsp;&nbsp;<b>Saeed Iqbal</b><br>&nbsp;&nbsp;&nbsp;CEO, Xeven Pixels<br>&nbsp;&nbsp;&nbsp;<a href="https://xevenpixels.com">xevenpixels.com</a><br>&nbsp;&nbsp;&nbsp;contact@xevenpixels.com`;
+    const result = db.prepare("UPDATE users SET signature = ? WHERE signature = ?").run(polishedDefault, previousDefault);
+    if (result.changes) console.log(`[migration] Upgraded ${result.changes} unmodified default signature(s) to the polished version.`);
+    db.prepare("INSERT INTO settings (key, value) VALUES ('signature_polish_upgrade_2026_08_done', '1') ON CONFLICT(key) DO NOTHING").run();
   }
   if (!userCols.includes("signature_font_family")) db.exec("ALTER TABLE users ADD COLUMN signature_font_family TEXT");
   if (!userCols.includes("signature_font_size")) db.exec("ALTER TABLE users ADD COLUMN signature_font_size INTEGER");

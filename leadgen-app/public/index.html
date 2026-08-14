@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="Xeven Leads" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=1536" />
+<link rel="stylesheet" href="style.css?v=1537" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -1055,6 +1055,22 @@
         <div class="legend-modal-item"><strong>RNP</strong>&nbsp;— Rating Not Pulled (ratings cost extra API quota, only fetched when "Include ratings" is checked on a hunt)</div>
         <div class="legend-modal-item"><i class="bi bi-check-circle-fill" style="color:var(--good);"></i>&nbsp;Next to the trash icon — this business has been inspected and/or had outreach content generated</div>
       </div>
+      <div class="legend-modal-group">
+        <div class="legend-modal-group-title">Fit grade</div>
+        <div class="legend-modal-item"><span class="fit-grade-badge" style="background:#5fb87a22; color:#5fb87a; border-color:#5fb87a66;">A</span>&nbsp;Great prospect - established business with a clear, obvious gap this agency's services fix</div>
+        <div class="legend-modal-item"><span class="fit-grade-badge" style="background:#8fc76622; color:#8fc766; border-color:#8fc76666;">B</span>&nbsp;Good prospect - solid signals, worth prioritizing</div>
+        <div class="legend-modal-item"><span class="fit-grade-badge" style="background:#e0b35522; color:#e0b355; border-color:#e0b35566;">C</span>&nbsp;Okay prospect - mixed signals, fine to include but not a priority</div>
+        <div class="legend-modal-item"><span class="fit-grade-badge" style="background:#e08a4d22; color:#e08a4d; border-color:#e08a4d66;">D</span>&nbsp;Weak prospect - unclear budget, unclear gap, or hard to reach</div>
+        <div class="legend-modal-item"><span class="fit-grade-badge" style="background:#d95d5d22; color:#d95d5d; border-color:#d95d5d66;">F</span>&nbsp;Poor prospect - closed business, or nothing worth pitching found</div>
+        <div class="legend-modal-item" style="color:var(--text-muted); font-size:11.5px;">A grade appears the moment a lead is scraped (instant, from rating/reviews/website/contact info alone) and gets refined once "Inspect" runs, using the actual page content plus your agency profile - hover any badge to see the score and whether it's the instant or AI-refined version. Grade is often the *opposite* of a great-looking website: a business with no site at all is usually a better prospect, not a worse one, since that's the clearest opportunity to pitch.</div>
+        <div class="legend-modal-item" style="color:var(--text-muted); font-size:11.5px;">Filter or sort the board by grade from the funnel icon - useful for focusing outreach on your best-fit leads first.</div>
+      </div>
+      <div class="legend-modal-group">
+        <div class="legend-modal-group-title">Email providers</div>
+        <div class="legend-modal-item"><span>Campaigns can send through <strong>Hostinger</strong>, <strong>Gmail</strong>, or <strong>Bluehost/Titan</strong> - each with its own SMTP/IMAP setup, tracking, history, and reply detection, kept fully separate under Contacted in the sidebar.</span></div>
+        <div class="legend-modal-item" style="color:var(--text-muted); font-size:11.5px;">Set up credentials for a provider under its own "Setup" page before creating a campaign with it - a campaign always sends through whichever provider you were viewing when you created it.</div>
+        <div class="legend-modal-item" style="color:var(--text-muted); font-size:11.5px;">Every sent email's signature can have its own font family and size (up to 10 options, 6-36px) - set it once in Account Settings and it applies everywhere, including follow-ups.</div>
+      </div>
       <div class="modal-actions">
         <button id="legendCloseBtn" class="small-btn">Close</button>
       </div>
@@ -1078,7 +1094,7 @@
 
 
 
-  <script src="app.js?v=1536"></script>
+  <script src="app.js?v=1537"></script>
   <script src="pwa-install.js"></script>
 </body>
 </html>

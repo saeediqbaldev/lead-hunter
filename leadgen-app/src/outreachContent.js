@@ -23,7 +23,7 @@ Write like a real person sent this in a couple of minutes, not like an AI wrote 
 // not hardcoded - this default only applies if a user somehow has no
 // signature saved at all (shouldn't normally happen, since the DB column
 // has a default value applied via migration).
-const DEFAULT_SIGNATURE = `Thank you for your time and consideration.<br><br>Kind Regards,<br>&nbsp;&nbsp;&nbsp;<b>Saeed Iqbal</b><br>&nbsp;&nbsp;&nbsp;Ceo | Xeven Pixels<br>&nbsp;&nbsp;&nbsp;<a href="https://xevenpixels.com">https://xevenpixels.com</a><br>&nbsp;&nbsp;&nbsp;contact@xevenpixels.com`;
+const DEFAULT_SIGNATURE = `Thank you for taking the time to read this - we'd love the opportunity to help your business grow online.<br><br>Kind Regards,<br>&nbsp;&nbsp;&nbsp;<b>Saeed Iqbal</b><br>&nbsp;&nbsp;&nbsp;CEO, Xeven Pixels<br>&nbsp;&nbsp;&nbsp;<a href="https://xevenpixels.com">xevenpixels.com</a><br>&nbsp;&nbsp;&nbsp;contact@xevenpixels.com`;
 
 const TONES = [
   "Personalized Observation",
@@ -168,7 +168,7 @@ Write the message now. Requirements:
 - Lead with THEIR problem or opportunity, not your pitch - frame it around what it costs them to leave it as-is or what they stand to gain, before mentioning what you'd do about it
 - Where it fits naturally, ground the pitch in a concrete number or figure (a realistic industry benchmark, a plausible percentage, a rough time/cost estimate) rather than vague claims like "more customers" or "better results" - specific numbers read as credible and human, not like padding
 - Reference the specific context above where relevant (don't invent facts not given, and don't fabricate statistics about THIS business specifically - general industry figures are fine, made-up specifics about them are not)
-- End with a clear call-to-action as an actual question or specific ask (e.g. "Worth a quick call this week?" or "Want me to send over a couple of examples?") - not a vague trail-off like "let me know your thoughts."${extraInstructions.length ? " Work in the items listed above too." : ""}
+- End with a confident, specific call-to-action as an actual question or ask - the last line should read like someone who's genuinely good at what they do and is offering, not asking a favor. Good: "Worth a quick call this week?", "Want me to send over a couple of examples?", "Happy to walk you through it - does Tuesday work?" Weak and to avoid: "Let me know your thoughts", "Hope to hear from you", "Just wanted to reach out" - these sound uncertain and forgettable, not like a real expert extending a real offer.${extraInstructions.length ? " Work in the items listed above too." : ""}
 ${HUMANIZE_INSTRUCTION}
 - Never write a sign-off, closing salutation, or the sender's name anywhere in the message (no "Best regards," no "Thanks,", no name at the end) - the real signature is always appended separately after this. The message ends right after its final sentence/question, nothing else.
 - Never use a placeholder in brackets like [Your Name], [Company Name], or similar - if you don't know a specific detail, don't reference it at all rather than leaving a placeholder. A placeholder reaching a real recipient looks broken, not just incomplete.
@@ -368,7 +368,7 @@ Rules:
 - Sound like a real person nudging a conversation forward, not a template.
 - No guilt-tripping, no "just checking in" filler with nothing else said - add one small new angle, question, or reason to reply if possible.
 - Do not open with a greeting salutation naming the person if it would feel redundant with a real email thread (a brief natural opening is fine either way).
-- End with a clear call-to-action as an actual question or specific ask, not a vague trail-off.${languageInstruction}${linkSection}${linkSeparationRule}${customSection}
+- End with a confident, specific ask - not a vague trail-off like "let me know" or "just checking in." A real question or specific next step reads like genuine expertise, not a nervous nudge.${languageInstruction}${linkSection}${linkSeparationRule}${customSection}
 ${HUMANIZE_INSTRUCTION}
 - Never write a sign-off, closing salutation, or the sender's name anywhere in the message - the real signature is always appended separately after this.
 - Never use a placeholder in brackets for a name, company, or any other detail - if you don't know something specific, don't reference it at all rather than leaving a placeholder.

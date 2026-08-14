@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.14-15.36";
+const APP_VERSION = "2026.08.14-15.37";
 
 // Every email provider section (Hostinger, Gmail, Bluehost/Titan) shares
 // the same Tracking/History/Alerts/Reports/Campaigns/Setup views, keyed
@@ -3266,7 +3266,7 @@ document.getElementById("signatureResetBtn").addEventListener("click", async () 
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        signature: `Thank you for your time and consideration.<br><br>Kind Regards,<br>&nbsp;&nbsp;&nbsp;<b>Saeed Iqbal</b><br>&nbsp;&nbsp;&nbsp;Ceo | Xeven Pixels<br>&nbsp;&nbsp;&nbsp;<a href="https://xevenpixels.com">https://xevenpixels.com</a><br>&nbsp;&nbsp;&nbsp;contact@xevenpixels.com`,
+        signature: `Thank you for taking the time to read this - we'd love the opportunity to help your business grow online.<br><br>Kind Regards,<br>&nbsp;&nbsp;&nbsp;<b>Saeed Iqbal</b><br>&nbsp;&nbsp;&nbsp;CEO, Xeven Pixels<br>&nbsp;&nbsp;&nbsp;<a href="https://xevenpixels.com">xevenpixels.com</a><br>&nbsp;&nbsp;&nbsp;contact@xevenpixels.com`,
       }),
     });
     await loadSignature();
