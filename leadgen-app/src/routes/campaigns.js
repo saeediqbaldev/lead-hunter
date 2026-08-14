@@ -35,6 +35,7 @@ router.post("/", (req, res) => {
     muteOpenedAlerts,
     muteClickedAlerts,
     sendProvider,
+    confirmLowGrade,
   } = req.body || {};
 
   const provider = sendProvider || "hostinger";
@@ -89,6 +90,22 @@ router.post("/", (req, res) => {
 
   if (emailable.length === 0) {
     return res.status(400).json({ error: "None of the leads in this scope have an email address on file - nothing to send to." });
+  }
+
+  // Soft warning, not a hard block - the person creating the campaign
+  // knows their market better than a score can, so this asks for a
+  // confirmation rather than refusing outright. Only fires once per
+  // creation attempt: the frontend re-submits with confirmLowGrade=true
+  // after the person has seen and accepted the warning.
+  if (!confirmLowGrade) {
+    const emailableIds = emailable.map((l) => l.id);
+    const placeholders = emailableIds.map(() => "?").join(",");
+    const lowGradeCount = db
+      .prepare(`SELECT COUNT(*) AS c FROM leads WHERE id IN (${placeholders}) AND fit_grade IN ('D', 'F')`)
+      .get(...emailableIds).c;
+    if (lowGradeCount > 0) {
+      return res.json({ requiresConfirmation: true, lowGradeCount, totalCount: emailable.length });
+    }
   }
 
   const resolvedCatchLogIds = Array.isArray(catchLogIds) && catchLogIds.length ? catchLogIds : catchLogId ? [catchLogId] : [];

@@ -1,6 +1,7 @@
 const express = require("express");
 const db = require("../db");
 const asyncHandler = require("../asyncHandler");
+const { computeBaseFitScore } = require("../fitScore");
 const { buildCatchLogCsv, buildCatchLogPdf, buildNicheXlsx, buildExportFilename } = require("../export");
 const apiKeys = require("../apiKeys");
 const { buildLeadsQuery, SORT_COLUMNS } = require("../leadsQuery");
@@ -40,6 +41,32 @@ router.get("/", (req, res) => {
     pageSize,
     totalPages: Math.max(Math.ceil(total / pageSize), 1),
   });
+});
+
+// POST /api/leads/backfill-fit-scores - scores every one of this user's
+// leads that doesn't have a fit score yet (from before this feature
+// existed), using the instant, rule-based base score only - no AI calls,
+// so this stays fast and free even for a large backlog. A lead that
+// already has a score, base or AI-refined, is left completely untouched.
+router.post("/backfill-fit-scores", (req, res) => {
+  const leads = db
+    .prepare(
+      `SELECT l.id, l.rating, l.review_count, l.business_status, l.website, l.phone, l.socials, cl.niche_id
+       FROM leads l JOIN catch_logs cl ON cl.id = l.catch_log_id JOIN niches n ON n.id = cl.niche_id
+       WHERE n.user_id = ? AND l.fit_score IS NULL`
+    )
+    .all(req.session.userId);
+
+  const update = db.prepare("UPDATE leads SET fit_score = ?, fit_grade = ?, fit_source = 'base' WHERE id = ?");
+  const runAll = db.transaction((rows) => {
+    for (const lead of rows) {
+      const fit = computeBaseFitScore(lead);
+      update.run(fit.score, fit.grade, lead.id);
+    }
+  });
+  runAll(leads);
+
+  res.json({ scoredCount: leads.length });
 });
 
 // GET /api/leads/export/:format(csv|xlsx|pdf) - same filters as above, no pagination

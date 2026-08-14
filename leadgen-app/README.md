@@ -6,6 +6,29 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.38
+The last two pieces of the fit-score plan - a campaign-creation warning
+for low-graded leads, and a one-time backfill for leads scraped before
+the feature existed. The fit-score system from the original pitch is
+now fully built end-to-end.
+
+- **A soft warning when creating a campaign** with D/F-graded leads in
+  it - shows exactly how many of the selected leads are low-graded and
+  lets you send anyway or go back and narrow the selection, rather than
+  silently spending sends, follow-ups, and AI generation on leads that
+  were unlikely to convert. Deliberately a warning, not a block - you
+  know your market better than a score does. Verified the complete
+  path end-to-end in a real browser: the warning shows the right
+  counts, confirming actually creates the campaign, and a campaign
+  with only good-graded leads skips the warning entirely.
+- **A one-time "Score existing leads" button** in Account Settings -
+  scores every lead that predates this feature using the instant,
+  free base score (no AI, no cost), while leaving anything already
+  graded completely untouched. Verified against 1,000 leads at once:
+  scored correctly in about 200ms, a lead that already had an
+  AI-refined grade was left exactly as it was, and running it again
+  correctly reports nothing left to do.
+
 ## What's in this V15.37
 A genuinely more polished email closing, and hints for the fit-grade
 and email-provider systems in the info modal. The campaign-creation

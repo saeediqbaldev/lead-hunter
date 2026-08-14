@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.14-15.37";
+const APP_VERSION = "2026.08.14-15.38";
 
 // Every email provider section (Hostinger, Gmail, Bluehost/Titan) shares
 // the same Tracking/History/Alerts/Reports/Campaigns/Setup views, keyed
@@ -2101,6 +2101,27 @@ async function showCampaignCreationForm() {
         resultEl.textContent = data.error;
         return;
       }
+      if (data.requiresConfirmation) {
+        resultEl.style.display = "none";
+        const confirmed = await openModal({
+          title: "Some of these leads are graded low",
+          message: `${data.lowGradeCount} of the ${data.totalCount} leads in this campaign are graded D or F (weak or poor fit). You know your market best - send anyway, or go back and narrow the selection using the Grade filter?`,
+          confirmText: "Send anyway",
+          danger: true,
+        });
+        if (!confirmed) return;
+        const confirmRes = await api("/api/campaigns", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...payload, confirmLowGrade: true }) });
+        const confirmData = await confirmRes.json();
+        resultEl.style.display = "block";
+        if (!confirmRes.ok) {
+          resultEl.className = "settings-result bad";
+          resultEl.textContent = confirmData.error;
+          return;
+        }
+        showToast(`Campaign created - ${confirmData.leadCount} lead(s) queued${confirmData.skippedCount ? `, ${confirmData.skippedCount} skipped (no email on file)` : ""}`, "success");
+        loadCampaignDetail(confirmData.campaignId);
+        return;
+      }
       showToast(`Campaign created - ${data.leadCount} lead(s) queued${data.skippedCount ? `, ${data.skippedCount} skipped (no email on file)` : ""}`, "success");
       loadCampaignDetail(data.campaignId);
     }
@@ -3103,6 +3124,31 @@ document.getElementById("agencyProfileSaveBtn").addEventListener("click", async 
     showToast(`Could not save: ${err.message}`, "error");
   } finally {
     btn.disabled = false;
+  }
+});
+
+document.getElementById("backfillFitScoresBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("backfillFitScoresBtn");
+  const resultEl = document.getElementById("backfillFitScoresResult");
+  btn.disabled = true;
+  const originalText = btn.textContent;
+  btn.textContent = "Scoring…";
+  try {
+    const res = await api("/api/leads/backfill-fit-scores", { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Could not score leads");
+    resultEl.style.display = "block";
+    resultEl.className = "settings-result ok";
+    resultEl.textContent = data.scoredCount > 0 ? `Scored ${data.scoredCount} lead(s) that didn't have a grade yet.` : "Every lead already has a grade - nothing to do.";
+    showToast(data.scoredCount > 0 ? `Scored ${data.scoredCount} lead(s)` : "Nothing to score", "success");
+  } catch (err) {
+    resultEl.style.display = "block";
+    resultEl.className = "settings-result bad";
+    resultEl.textContent = err.message;
+    showToast(`Could not score leads: ${err.message}`, "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
   }
 });
 
