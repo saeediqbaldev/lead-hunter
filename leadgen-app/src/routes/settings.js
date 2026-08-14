@@ -8,6 +8,7 @@ const { testApiKey: testPlacesKey } = require("../placesApi");
 const { testApiKey: testGeminiKey } = require("../gemini");
 const { groqClient, deepseekClient, opencodeClient } = require("../openaiCompatible");
 const apiKeys = require("../apiKeys");
+const { SIGNATURE_FONT_OPTIONS, DEFAULT_SIGNATURE_FONT_FAMILY, DEFAULT_SIGNATURE_FONT_SIZE, SIGNATURE_FONTS, GOOGLE_FONTS_IMPORT_URL } = require("../signatureFonts");
 const db = require("../db");
 
 const router = express.Router();
@@ -123,12 +124,26 @@ router.get("/site-generator-meta", (req, res) => {
 });
 
 // GET /api/settings/signature -> this user's saved outreach signature
-router.get("/signature", (req, res) => {
-  const row = db.prepare("SELECT signature FROM users WHERE id = ?").get(req.session.userId);
-  res.json({ signature: row && row.signature != null ? row.signature : DEFAULT_SIGNATURE });
+// GET /api/settings/signature-fonts - the available font options, for
+// populating the signature editor's font dropdown, plus the combined
+// Google Fonts stylesheet URL to actually load them in the editor.
+router.get("/signature-fonts", (req, res) => {
+  res.json({
+    fonts: SIGNATURE_FONTS.map((f) => ({ value: f.value, label: f.label })),
+    googleFontsImportUrl: GOOGLE_FONTS_IMPORT_URL,
+  });
 });
 
-// PUT /api/settings/signature { signature }
+router.get("/signature", (req, res) => {
+  const row = db.prepare("SELECT signature, signature_font_family, signature_font_size FROM users WHERE id = ?").get(req.session.userId);
+  res.json({
+    signature: row && row.signature != null ? row.signature : DEFAULT_SIGNATURE,
+    fontFamily: row?.signature_font_family || DEFAULT_SIGNATURE_FONT_FAMILY,
+    fontSize: row?.signature_font_size || DEFAULT_SIGNATURE_FONT_SIZE,
+  });
+});
+
+// PUT /api/settings/signature { signature, fontFamily?, fontSize? }
 router.put("/signature", (req, res) => {
   const value = typeof req.body.signature === "string" ? req.body.signature : "";
   // Now that images are stored as short file URLs (see the upload route
@@ -139,8 +154,13 @@ router.put("/signature", (req, res) => {
   if (value.length > 50000) {
     return res.status(400).json({ error: "Signature is too long (max 50,000 characters)." });
   }
-  db.prepare("UPDATE users SET signature = ? WHERE id = ?").run(value, req.session.userId);
-  res.json({ signature: value });
+
+  const fontFamily = SIGNATURE_FONT_OPTIONS.includes(req.body.fontFamily) ? req.body.fontFamily : DEFAULT_SIGNATURE_FONT_FAMILY;
+  const fontSizeNum = parseInt(req.body.fontSize, 10);
+  const fontSize = Number.isInteger(fontSizeNum) && fontSizeNum >= 6 && fontSizeNum <= 36 ? fontSizeNum : DEFAULT_SIGNATURE_FONT_SIZE;
+
+  db.prepare("UPDATE users SET signature = ?, signature_font_family = ?, signature_font_size = ? WHERE id = ?").run(value, fontFamily, fontSize, req.session.userId);
+  res.json({ signature: value, fontFamily, fontSize });
 });
 
 // Persistent storage for uploaded signature images - same directory the

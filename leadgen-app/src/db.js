@@ -306,10 +306,24 @@ if (!leadsTableExists) {
     db.exec("ALTER TABLE users ADD COLUMN page_size INTEGER DEFAULT 50");
   }
   if (!userCols.includes("signature")) {
-    const defaultSignature = `Kind Regards,<br>&nbsp;&nbsp;&nbsp;<b>Saeed Iqbal</b><br>&nbsp;&nbsp;&nbsp;Ceo | Xeven Pixels<br>&nbsp;&nbsp;&nbsp;<a href="https://xevenpixels.com">https://xevenpixels.com</a><br>&nbsp;&nbsp;&nbsp;contact@xevenpixels.com`;
+    const defaultSignature = `Thank you for your time and consideration.<br><br>Kind Regards,<br>&nbsp;&nbsp;&nbsp;<b>Saeed Iqbal</b><br>&nbsp;&nbsp;&nbsp;Ceo | Xeven Pixels<br>&nbsp;&nbsp;&nbsp;<a href="https://xevenpixels.com">https://xevenpixels.com</a><br>&nbsp;&nbsp;&nbsp;contact@xevenpixels.com`;
     db.prepare("ALTER TABLE users ADD COLUMN signature TEXT").run();
     db.prepare("UPDATE users SET signature = ? WHERE signature IS NULL").run(defaultSignature);
   }
+  // One-time upgrade: anyone still sitting on the exact original default
+  // signature (never customized it) gets the newer, more professional
+  // version with a proper thank-you line - a genuinely customized
+  // signature is left completely untouched, this only replaces an
+  // unmodified original.
+  if (!db.prepare("SELECT value FROM settings WHERE key = 'signature_thankyou_upgrade_2026_08_done'").get()) {
+    const oldDefault = `Kind Regards,<br>&nbsp;&nbsp;&nbsp;<b>Saeed Iqbal</b><br>&nbsp;&nbsp;&nbsp;Ceo | Xeven Pixels<br>&nbsp;&nbsp;&nbsp;<a href="https://xevenpixels.com">https://xevenpixels.com</a><br>&nbsp;&nbsp;&nbsp;contact@xevenpixels.com`;
+    const newDefault = `Thank you for your time and consideration.<br><br>Kind Regards,<br>&nbsp;&nbsp;&nbsp;<b>Saeed Iqbal</b><br>&nbsp;&nbsp;&nbsp;Ceo | Xeven Pixels<br>&nbsp;&nbsp;&nbsp;<a href="https://xevenpixels.com">https://xevenpixels.com</a><br>&nbsp;&nbsp;&nbsp;contact@xevenpixels.com`;
+    const result = db.prepare("UPDATE users SET signature = ? WHERE signature = ?").run(newDefault, oldDefault);
+    if (result.changes) console.log(`[migration] Upgraded ${result.changes} unmodified default signature(s) to include a thank-you line.`);
+    db.prepare("INSERT INTO settings (key, value) VALUES ('signature_thankyou_upgrade_2026_08_done', '1') ON CONFLICT(key) DO NOTHING").run();
+  }
+  if (!userCols.includes("signature_font_family")) db.exec("ALTER TABLE users ADD COLUMN signature_font_family TEXT");
+  if (!userCols.includes("signature_font_size")) db.exec("ALTER TABLE users ADD COLUMN signature_font_size INTEGER");
   if (!userCols.includes("meeting_link")) db.exec("ALTER TABLE users ADD COLUMN meeting_link TEXT");
   if (!userCols.includes("website_link")) db.exec("ALTER TABLE users ADD COLUMN website_link TEXT");
   if (!userCols.includes("whatsapp_link")) db.exec("ALTER TABLE users ADD COLUMN whatsapp_link TEXT");

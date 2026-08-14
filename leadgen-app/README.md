@@ -6,6 +6,41 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.31
+A proper, thankful email ending, and full font customization for the
+signature.
+
+- **A professional, thankful closing line** now opens the default
+  signature ("Thank you for your time and consideration.") before the
+  sign-off - traced the architecture first and confirmed this is where
+  an email's actual "ending" lives, since the AI-generated body
+  deliberately never includes its own sign-off. Applied carefully: a
+  brand new account gets the new default, an account that never
+  customized its signature away from the original gets upgraded
+  automatically, and a genuinely customized signature is left completely
+  untouched - verified all three cases directly. Also found and fixed a
+  real bug along the way: the "Reset to default" button had its own
+  separate, stale copy of the old text that would have quietly undone
+  this every time someone clicked it.
+- **Font family and size controls for the signature** - up to 10 fonts
+  (Poppins, Work Sans, Open Sans, Roboto, Lato, Montserrat, Inter,
+  Nunito, Raleway, and Verdana) and a 6-36px size slider, with a live
+  preview while editing. Traced this through every place a signature
+  actually gets used - the main content generator, follow-ups, and the
+  campaign scheduler - since missing any one of them would mean some
+  emails quietly ignored the chosen font. Verified the complete pipeline
+  end-to-end: picking a font and size in a real browser, saving,
+  reloading the page fresh and confirming it comes back correctly, and
+  separately confirmed through the actual generation code that the
+  right font/size lands in the final signature HTML for both a new
+  email and a follow-up.
+- Worth knowing: most email clients (Gmail, Outlook, etc.) strip
+  external fonts from received mail for security reasons, so a
+  recipient may see their own client's default font rather than the
+  exact one chosen - this is a universal constraint of HTML email, not
+  specific to this app, and the editor now says so directly rather than
+  overpromising.
+
 ## What's in this V15.30
 The Campaigns tree stuck-loading bug from your screenshot, a website
 icon everywhere in Campaigns, and clean domain-only website URLs going

@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.13-15.30";
+const APP_VERSION = "2026.08.13-15.31";
 
 // Every email provider section (Hostinger, Gmail, Bluehost/Titan) shares
 // the same Tracking/History/Alerts/Reports/Campaigns/Setup views, keyed
@@ -3039,15 +3039,66 @@ document.getElementById("sigImageRemoveLinkBtn").addEventListener("click", () =>
   showToast("Link removed", "success");
 });
 
+let signatureFontsLoaded = false;
+
+async function ensureSignatureFontsLoaded() {
+  if (signatureFontsLoaded) return;
+  signatureFontsLoaded = true;
+  try {
+    const res = await api("/api/settings/signature-fonts");
+    const data = await res.json();
+
+    // Load the Google Fonts stylesheet once, so the editor can actually
+    // render a live preview of whichever font is selected - a normal
+    // <link>, same as any other web font, works fine for the app's own
+    // UI even though received email typically can't load external fonts.
+    if (data.googleFontsImportUrl && !document.querySelector('link[data-signature-fonts]')) {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = data.googleFontsImportUrl;
+      link.dataset.signatureFonts = "true";
+      document.head.appendChild(link);
+    }
+
+    const select = document.getElementById("sigFontFamilySelect");
+    select.innerHTML = data.fonts.map((f) => `<option value="${escapeHtmlAttr(f.value)}">${f.label}</option>`).join("");
+  } catch (err) {
+    console.error("Failed to load signature font list:", err);
+  }
+}
+
 async function loadSignature() {
   try {
+    await ensureSignatureFontsLoaded();
     const res = await api("/api/settings/signature");
     const data = await res.json();
     setSignatureHtml(data.signature || "");
+    applySignatureFontToControls(data.fontFamily, data.fontSize);
   } catch (err) {
     console.error("Failed to load signature:", err);
   }
 }
+
+function applySignatureFontToControls(fontFamily, fontSize) {
+  const select = document.getElementById("sigFontFamilySelect");
+  const slider = document.getElementById("sigFontSizeSlider");
+  const sizeLabel = document.getElementById("sigFontSizeValue");
+  if (fontFamily) select.value = fontFamily;
+  if (fontSize) {
+    slider.value = fontSize;
+    sizeLabel.textContent = `${fontSize}px`;
+  }
+  signatureEditor.style.fontFamily = select.value;
+  signatureEditor.style.fontSize = `${slider.value}px`;
+}
+
+document.getElementById("sigFontFamilySelect").addEventListener("change", (e) => {
+  signatureEditor.style.fontFamily = e.target.value;
+});
+document.getElementById("sigFontSizeSlider").addEventListener("input", (e) => {
+  document.getElementById("sigFontSizeValue").textContent = `${e.target.value}px`;
+  signatureEditor.style.fontSize = `${e.target.value}px`;
+});
 
 async function loadProviderPreferences() {
   try {
@@ -3142,7 +3193,11 @@ document.getElementById("signatureSaveBtn").addEventListener("click", async () =
     const res = await api("/api/settings/signature", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ signature: getSignatureHtml() }),
+      body: JSON.stringify({
+        signature: getSignatureHtml(),
+        fontFamily: document.getElementById("sigFontFamilySelect").value,
+        fontSize: document.getElementById("sigFontSizeSlider").value,
+      }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Could not save signature");
@@ -3171,7 +3226,7 @@ document.getElementById("signatureResetBtn").addEventListener("click", async () 
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        signature: `Kind Regards,<br>&nbsp;&nbsp;&nbsp;<b>Saeed Iqbal</b><br>&nbsp;&nbsp;&nbsp;Ceo | Xeven Pixels<br>&nbsp;&nbsp;&nbsp;<a href="https://xevenpixels.com">https://xevenpixels.com</a><br>&nbsp;&nbsp;&nbsp;contact@xevenpixels.com`,
+        signature: `Thank you for your time and consideration.<br><br>Kind Regards,<br>&nbsp;&nbsp;&nbsp;<b>Saeed Iqbal</b><br>&nbsp;&nbsp;&nbsp;Ceo | Xeven Pixels<br>&nbsp;&nbsp;&nbsp;<a href="https://xevenpixels.com">https://xevenpixels.com</a><br>&nbsp;&nbsp;&nbsp;contact@xevenpixels.com`,
       }),
     });
     await loadSignature();

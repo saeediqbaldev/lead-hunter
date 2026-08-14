@@ -48,8 +48,10 @@ async function runJob(userId, leadId, lead, platforms, options) {
   const { tone, length, analysis, language, aiProvider, cta, meeting, meetingLink, website, websiteLink } = options;
   const completed = [];
   const failed = {};
-  const userRow = db.prepare("SELECT signature FROM users WHERE id = ?").get(userId);
+  const userRow = db.prepare("SELECT signature, signature_font_family, signature_font_size FROM users WHERE id = ?").get(userId);
   const signature = userRow ? userRow.signature : null;
+  const signatureFontFamily = userRow ? userRow.signature_font_family : null;
+  const signatureFontSize = userRow ? userRow.signature_font_size : null;
 
   try {
     upsertJobRow(leadId, { status: "running", current_step: `Generating ${platforms[0]}…`, completed_platforms: "[]", failed_platforms: "{}" });
@@ -72,6 +74,8 @@ async function runJob(userId, leadId, lead, platforms, options) {
         length,
         analysis,
         signature,
+        signatureFontFamily,
+        signatureFontSize,
         language,
         aiProvider,
         cta,

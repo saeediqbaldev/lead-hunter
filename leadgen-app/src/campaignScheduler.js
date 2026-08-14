@@ -207,7 +207,7 @@ async function processCampaignLead(campaign, campaignLeadRow) {
     previousSubject = previousEmail.subject;
 
     db.prepare("UPDATE email_campaign_leads SET status = 'generating' WHERE id = ?").run(campaignLeadRow.id);
-    const userRow = db.prepare("SELECT signature FROM users WHERE id = ?").get(campaign.user_id);
+    const userRow = db.prepare("SELECT signature, signature_font_family, signature_font_size FROM users WHERE id = ?").get(campaign.user_id);
     const followupConfig = db
       .prepare("SELECT * FROM campaign_followup_configs WHERE campaign_id = ? AND touch_number = ?")
       .get(campaign.id, campaignLeadRow.touch_number);
@@ -218,6 +218,8 @@ async function processCampaignLead(campaign, campaignLeadRow) {
       previousBody: stripHtmlForContext(previousEmail.body_html),
       touchNumber: campaignLeadRow.touch_number,
       signature: userRow?.signature,
+      signatureFontFamily: userRow?.signature_font_family,
+      signatureFontSize: userRow?.signature_font_size,
       aiProvider: followupConfig?.ai_provider || contentProvider,
       analysis: analysisJobs.getAnalysis(lead.id),
       meeting: followupConfig ? !!followupConfig.meeting : !!campaign.meeting,
@@ -238,7 +240,7 @@ async function processCampaignLead(campaign, campaignLeadRow) {
 
     // Step 2: generate the email content
     db.prepare("UPDATE email_campaign_leads SET status = 'generating' WHERE id = ?").run(campaignLeadRow.id);
-    const userRow = db.prepare("SELECT signature FROM users WHERE id = ?").get(campaign.user_id);
+    const userRow = db.prepare("SELECT signature, signature_font_family, signature_font_size FROM users WHERE id = ?").get(campaign.user_id);
     genResult = await generateOutreachContent(campaign.user_id, {
       lead,
       platform: "email",
@@ -246,6 +248,8 @@ async function processCampaignLead(campaign, campaignLeadRow) {
       length: campaign.length,
       analysis,
       signature: userRow?.signature,
+      signatureFontFamily: userRow?.signature_font_family,
+      signatureFontSize: userRow?.signature_font_size,
       language: campaign.language || "English",
       cta: !!campaign.cta,
       meeting: !!campaign.meeting,

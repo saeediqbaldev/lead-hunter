@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="Xeven Leads" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=1530" />
+<link rel="stylesheet" href="style.css?v=1531" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -913,6 +913,12 @@
             <button type="button" data-sig-cmd="italic" title="Italic"><i class="bi bi-type-italic"></i></button>
             <button type="button" data-sig-cmd="underline" title="Underline"><i class="bi bi-type-underline"></i></button>
             <span class="sig-toolbar-divider"></span>
+            <select id="sigFontFamilySelect" class="sig-font-select" title="Font family"></select>
+            <label class="sig-font-size-label" title="Font size (6-36px)">
+              <input type="range" id="sigFontSizeSlider" min="6" max="36" step="1" value="14">
+              <span id="sigFontSizeValue">14px</span>
+            </label>
+            <span class="sig-toolbar-divider"></span>
             <button type="button" data-sig-action="link" title="Insert link"><i class="bi bi-link-45deg"></i></button>
             <button type="button" data-sig-action="image" title="Insert image by URL"><i class="bi bi-image"></i></button>
             <button type="button" data-sig-action="image-upload" title="Upload image from your computer (PNG, JPEG, WEBP, up to 2MB)"><i class="bi bi-upload"></i></button>
@@ -922,6 +928,7 @@
             <button type="button" data-sig-cmd="removeFormat" title="Clear formatting"><i class="bi bi-eraser"></i></button>
             <button type="button" data-sig-action="toggle-source" title="Edit raw HTML" class="sig-toolbar-right"><i class="bi bi-code-slash"></i> HTML</button>
           </div>
+          <p class="hint" style="margin-top:-4px;">Font applies to the whole signature. Most email clients don't load external fonts in received mail, so recipients viewing in a client that blocks that will see their own default font instead - this still controls how it looks to you while editing and to any client that does support it.</p>
           <div id="signatureEditor" class="sig-editor-surface" contenteditable="true"></div>
           <div id="sigImageOptionsBar" class="sig-image-options-bar" style="display:none;">
             <span class="hint">Image selected:</span>
@@ -1054,7 +1061,7 @@
 
 
 
-  <script src="app.js?v=1530"></script>
+  <script src="app.js?v=1531"></script>
   <script src="pwa-install.js"></script>
 </body>
 </html>

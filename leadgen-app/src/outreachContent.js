@@ -5,6 +5,7 @@
 // of calling one provider directly, so a single provider being rate-limited
 // or briefly down doesn't fail the whole request.
 const { generateWithFallback } = require("./aiProviders");
+const { DEFAULT_SIGNATURE_FONT_FAMILY, DEFAULT_SIGNATURE_FONT_SIZE } = require("./signatureFonts");
 
 // Injected into every content-generation prompt below (pitch, subject,
 // follow-up) - the goal is copy that reads like a real person wrote it
@@ -22,7 +23,7 @@ Write like a real person sent this in a couple of minutes, not like an AI wrote 
 // not hardcoded - this default only applies if a user somehow has no
 // signature saved at all (shouldn't normally happen, since the DB column
 // has a default value applied via migration).
-const DEFAULT_SIGNATURE = `Kind Regards,<br>&nbsp;&nbsp;&nbsp;<b>Saeed Iqbal</b><br>&nbsp;&nbsp;&nbsp;Ceo | Xeven Pixels<br>&nbsp;&nbsp;&nbsp;<a href="https://xevenpixels.com">https://xevenpixels.com</a><br>&nbsp;&nbsp;&nbsp;contact@xevenpixels.com`;
+const DEFAULT_SIGNATURE = `Thank you for your time and consideration.<br><br>Kind Regards,<br>&nbsp;&nbsp;&nbsp;<b>Saeed Iqbal</b><br>&nbsp;&nbsp;&nbsp;Ceo | Xeven Pixels<br>&nbsp;&nbsp;&nbsp;<a href="https://xevenpixels.com">https://xevenpixels.com</a><br>&nbsp;&nbsp;&nbsp;contact@xevenpixels.com`;
 
 const TONES = [
   "Personalized Observation",
@@ -235,12 +236,25 @@ function ensureLinksPresent(bodyText, links) {
   return result;
 }
 
-async function generateOutreachContent(userId, { lead, platform, tone, length, analysis, signature, language, aiProvider, cta, meeting, meetingLink, website, websiteLink, whatsapp, whatsappLink }) {
+// Wraps a signature in its font styling at the point of use, rather than
+// baking the styling into what's actually saved - keeps the stored
+// signature HTML itself clean, and avoids the fragility of a wrapping
+// style element that "Edit raw HTML" mode could strip out entirely.
+function wrapSignatureWithFont(signatureHtml, fontFamily, fontSize) {
+  const family = fontFamily || DEFAULT_SIGNATURE_FONT_FAMILY;
+  const size = fontSize || DEFAULT_SIGNATURE_FONT_SIZE;
+  return `<div style="font-family: ${family}; font-size: ${size}px;">${signatureHtml}</div>`;
+}
+
+async function generateOutreachContent(
+  userId,
+  { lead, platform, tone, length, analysis, signature, signatureFontFamily, signatureFontSize, language, aiProvider, cta, meeting, meetingLink, website, websiteLink, whatsapp, whatsappLink }
+) {
   const prompt = buildContentPrompt({ lead, platform, tone, length, analysis, language, cta, meeting, meetingLink, website, websiteLink, whatsapp, whatsappLink });
   const result = await generateWithFallback(userId, prompt, { onlyProvider: aiProvider || undefined });
   if (!result.ok) return result;
 
-  const signatureHtml = signature != null && signature !== "" ? signature : DEFAULT_SIGNATURE;
+  const signatureHtml = wrapSignatureWithFont(signature != null && signature !== "" ? signature : DEFAULT_SIGNATURE, signatureFontFamily, signatureFontSize);
   const bodyText = ensureLinksPresent(stripAiDashes(result.text.trim()), [
     { label: "Book a time", url: meeting ? meetingLink : null },
     { label: "WhatsApp", url: whatsapp ? whatsappLink : null },
@@ -331,11 +345,14 @@ Return ONLY the follow-up email body text (no subject line, no signature).`;
 // send (touchNumber counts from 1 = the original email, so touchNumber 2
 // is the first follow-up). Reuses the same signature the original email
 // used - the recipient already saw it once, no need to regenerate it.
-async function generateFollowUpContent(userId, { lead, tone, language, previousBody, touchNumber, signature, aiProvider, analysis, meeting, meetingLink, whatsapp, whatsappLink, customInstructions }) {
+async function generateFollowUpContent(
+  userId,
+  { lead, tone, language, previousBody, touchNumber, signature, signatureFontFamily, signatureFontSize, aiProvider, analysis, meeting, meetingLink, whatsapp, whatsappLink, customInstructions }
+) {
   const prompt = buildFollowUpPrompt({ lead, tone, language, previousBody, touchNumber, analysis, meeting, meetingLink, whatsapp, whatsappLink, customInstructions });
   const result = await generateWithFallback(userId, prompt, { onlyProvider: aiProvider || undefined });
   if (!result.ok) return result;
-  const signatureHtml = signature != null && signature !== "" ? signature : DEFAULT_SIGNATURE;
+  const signatureHtml = wrapSignatureWithFont(signature != null && signature !== "" ? signature : DEFAULT_SIGNATURE, signatureFontFamily, signatureFontSize);
   const bodyText = ensureLinksPresent(stripAiDashes(result.text.trim()), [
     { label: "Book a time", url: meeting ? meetingLink : null },
     { label: "WhatsApp", url: whatsapp ? whatsappLink : null },
