@@ -6,6 +6,49 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.33
+The fit-score system - backend foundation and the grade badge on the
+board. Settings page, campaign-creation warning, and bulk backfill for
+existing leads are still ahead.
+
+- **An instant, deterministic fit score** on every newly scraped lead -
+  computed the moment it's imported, no AI needed. Weighs how
+  established the business looks (review count *relative to others in
+  the same niche*, not a fixed threshold), rating quality on a
+  deliberately non-linear curve (a 3.3-4.9 range scores best - proven
+  enough to have real reviews, not so flawless there's nothing to
+  pitch), how big the opportunity is (no website at all scores highest,
+  since that's the cleanest full-build opportunity), and whether the
+  lead is actually reachable. A closed business is hard-gated to an F
+  regardless of everything else. Verified against five deliberately
+  different scenarios and every one matched the intended design.
+- **An AI-refined score that rides on the analysis pipeline you already
+  had** (the one that writes strengths/weaknesses for personalization) -
+  no separate AI call, no added cost. Critically, this score is
+  explicitly instructed to often be the *inverse* of "how good is their
+  current site" - a business with a poor or missing website is a better
+  prospect, not a worse one, and the prompt now includes your actual
+  agency profile so the suggested services are ones you actually offer,
+  not generic marketing advice. It also flags when the scraped website
+  doesn't actually look like it belongs to the business (wrong company,
+  franchise HQ page, aggregator listing) - a real failure mode with
+  Google Places data that a fixed formula can't catch. Verified the
+  full loop end-to-end: a lead starts at its instant score and
+  correctly upgrades once analysis completes.
+- **The score updates as you learn more**, not just once - finding an
+  email via the Scrape button now bumps the contactability part of the
+  score, and a lead already upgraded to an AI-refined score is never
+  regressed back down by a later re-scrape or re-import. Verified both
+  directions directly.
+- **A colored grade badge right next to the lead's name** on the board
+  - green through red, with the exact score and whether it's the
+  instant or AI-refined version on hover. Verified in a real browser:
+  correct grades on the leads that have one, and no badge at all
+  (rather than something broken) for a lead that doesn't yet.
+- Also fixed a real typo of my own along the way - a stray escaped-quote
+  artifact in the analysis prompt that would have corrupted the
+  checklist formatting sent to the AI.
+
 ## What's in this V15.32
 Campaigns reverted from the deep tree back to the familiar grid style -
 Niche > Country > City > cards, click a card for the full detail view

@@ -227,11 +227,15 @@ const ANALYSIS_RESPONSE_SCHEMA = {
     strengths: { type: "array", items: { type: "string" }, minItems: 2, maxItems: 4 },
     weaknesses: { type: "array", items: { type: "string" }, minItems: 2, maxItems: 4 },
     suggestedServices: { type: "array", items: { type: "string" }, minItems: 2, maxItems: 3 },
+    fitScore: { type: "integer" },
+    fitReason: { type: "string" },
+    mismatch: { type: "boolean" },
+    mismatchReason: { type: "string" },
   },
-  required: ["strengths", "weaknesses", "suggestedServices"],
+  required: ["strengths", "weaknesses", "suggestedServices", "fitScore", "fitReason", "mismatch"],
 };
 
-function buildAnalysisPrompt(lead, categoryResults) {
+function buildAnalysisPrompt(lead, categoryResults, agencyProfile) {
   const allChecks = [
     ...categoryResults.website.checks,
     ...categoryResults.gmb.checks,
@@ -242,7 +246,11 @@ function buildAnalysisPrompt(lead, categoryResults) {
     .join("\n");
 
   const contentSection = categoryResults.website.contentSnippet
-    ? `\n\nActual visible text extracted from the homepage (for judging genuine content quality - clarity, professionalism, whether it explains what the business does and why to choose them - not just the structural checks above):\n"""\n${categoryResults.website.contentSnippet}\n"""`
+    ? `\n\nActual visible text extracted from the homepage (for judging genuine content quality - clarity, professionalism, whether it explains what the business does and why to choose them - not just the structural checks above; also use this to judge whether the site genuinely belongs to THIS business, see the mismatch instructions below):\n"""\n${categoryResults.website.contentSnippet}\n"""`
+    : "";
+
+  const agencySection = agencyProfile
+    ? `\n\nThis agency's own profile (use this to judge fit specifically for THEM, not generic marketing advice):\n"""\n${agencyProfile}\n"""`
     : "";
 
   return `You are a marketing consultant analyzing a local business's online presence, to help a lead-generation agency pitch relevant services.
@@ -250,20 +258,32 @@ function buildAnalysisPrompt(lead, categoryResults) {
 Business: ${lead.name}
 Category: ${lead.niche_name || "local business"}
 Location: ${lead.city_name || lead.address || "unknown"}
+Google rating: ${lead.rating != null ? `${lead.rating} stars` : "unknown"}, ${lead.review_count != null ? `${lead.review_count} reviews` : "review count unknown"}
 
 Here is a checklist of factors already checked programmatically (PASS/WARN/FAIL):
 ${checklistText}
 
-Category scores: Website Health ${categoryResults.website.score}/100, GMB & Local SEO ${categoryResults.gmb.score}/100, Social Presence ${categoryResults.social.score}/100.${contentSection}
+Category scores: Website Health ${categoryResults.website.score}/100, GMB & Local SEO ${categoryResults.gmb.score}/100, Social Presence ${categoryResults.social.score}/100.${contentSection}${agencySection}
 
 Based on the checklist above and the actual page content if given (don't invent facts not shown here), respond with ONLY a JSON object (no other text, no markdown code fences) in exactly this shape:
 {
   "strengths": ["...", "..."],
   "weaknesses": ["...", "..."],
-  "suggestedServices": ["...", "..."]
+  "suggestedServices": ["...", "..."],
+  "fitScore": 72,
+  "fitReason": "...",
+  "mismatch": false,
+  "mismatchReason": ""
 }
 
-Rules: 2-4 genuine strengths (specific, not generic praise), 2-4 genuine weaknesses (specific, actionable gaps), 2-3 suggested services this agency could pitch (each a short phrase like "Website speed & mobile optimization", directly tied to the weaknesses found). If page content was given above, weigh in on genuine content quality too (is it clear what the business does, does it read professionally, is there a real call to action) alongside the structural checklist - a page can pass every structural check and still read poorly, or vice versa. Keep every point concise (one sentence each) and grounded in what was actually given, not speculation.`;
+Rules:
+- 2-4 genuine strengths (specific, not generic praise), 2-4 genuine weaknesses (specific, actionable gaps).
+- 2-3 suggestedServices this agency could pitch, each a short phrase (e.g. "Local SEO optimization") - these MUST be services this agency actually offers per its profile above, not generic marketing services it may not provide. If no agency profile was given, keep suggestions generic and clearly service-oriented.
+- If page content was given above, weigh in on genuine content quality too (is it clear what the business does, does it read professionally, is there a real call to action) alongside the structural checklist - a page can pass every structural check and still read poorly, or vice versa.
+- fitScore (0-100) is NOT the same thing as the website/GMB/social health scores above, and is very often the *inverse* of them - it measures how good a PROSPECT this business is for cold outreach from THIS specific agency, not how good their current online presence already is. A business with a poor or missing website is often a BETTER prospect (an obvious, provable gap this agency's own services fix), not a worse one. Weigh: (a) does this business look established enough to plausibly afford these services (reviews, rating, being open) - a very new or clearly struggling business may not have budget yet; (b) is there a real, specific, provable gap here that maps to a service this agency actually offers; (c) would pitching this specific agency's services to this specific business make obvious sense. Score low if the business is not operational, has no real weaknesses to pitch, or the gaps found don't map to anything this agency offers.
+- fitReason: one concise sentence explaining the fitScore - specific enough to be useful at a glance (e.g. "140 reviews and 4.1 stars but no online booking or mobile-friendly site" not "decent business, could use help").
+- mismatch: true only if the actual page content clearly does NOT belong to this specific business (e.g. it's a different company entirely, a franchise corporate homepage instead of the local branch, a generic directory/aggregator listing, or content unrelated to "${lead.name}") - leave false if the site plausibly belongs to this business even if you can't be fully certain. If true, mismatchReason must briefly explain why (e.g. "Page content describes a different company - a national franchise HQ site, not this local branch").
+- Keep every point concise (one sentence each) and grounded in what was actually given, not speculation.`;
 }
 
 // Uses the AI provider fallback chain (Groq -> Gemini -> DeepSeek) instead
@@ -272,9 +292,10 @@ Rules: 2-4 genuine strengths (specific, not generic praise), 2-4 genuine weaknes
 // not just Gemini's stricter schema-constrained mode (geminiSchema is
 // still passed through so Gemini gets its stronger guarantee specifically
 // when it's the one that ends up being used).
-async function analyzeWithAI(userId, lead, categoryResults, aiProvider) {
+async function analyzeWithAI(userId, lead, categoryResults, aiProvider, agencyProfile) {
   const { generateWithFallback } = require("./aiProviders");
-  const prompt = buildAnalysisPrompt(lead, categoryResults);
+  const { gradeFromScore } = require("./fitScore");
+  const prompt = buildAnalysisPrompt(lead, categoryResults, agencyProfile);
   const result = await generateWithFallback(userId, prompt, { jsonMode: true, geminiSchema: ANALYSIS_RESPONSE_SCHEMA, onlyProvider: aiProvider || undefined });
 
   if (!result.ok) return { ok: false, error: result.error };
@@ -287,7 +308,25 @@ async function analyzeWithAI(userId, lead, categoryResults, aiProvider) {
     if (!Array.isArray(parsed.strengths) || !Array.isArray(parsed.weaknesses) || !Array.isArray(parsed.suggestedServices)) {
       return { ok: false, error: `${result.provider}'s response was missing expected fields.` };
     }
-    return { ok: true, ...parsed, provider: result.provider };
+
+    // Clamp/validate the fit fields rather than trusting the model's
+    // output blindly - a malformed or out-of-range value here shouldn't
+    // corrupt what gets stored and shown as this lead's grade.
+    const rawScore = Number(parsed.fitScore);
+    const fitScore = Number.isFinite(rawScore) ? Math.max(0, Math.min(100, Math.round(rawScore))) : null;
+    const fitGrade = fitScore != null ? gradeFromScore(fitScore) : null;
+    const mismatch = parsed.mismatch === true;
+
+    return {
+      ok: true,
+      ...parsed,
+      fitScore,
+      fitGrade,
+      fitReason: typeof parsed.fitReason === "string" ? parsed.fitReason.trim() : null,
+      mismatch,
+      mismatchReason: mismatch && typeof parsed.mismatchReason === "string" ? parsed.mismatchReason.trim() : null,
+      provider: result.provider,
+    };
   } catch (err) {
     return { ok: false, error: `Could not parse ${result.provider}'s response as JSON: ${err.message}` };
   }

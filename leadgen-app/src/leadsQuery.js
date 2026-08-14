@@ -3,6 +3,7 @@ const SORT_COLUMNS = {
   name: "l.name COLLATE NOCASE",
   rating: "l.rating",
   needs_count: "json_array_length(l.needs)",
+  fit_score: "l.fit_score",
 };
 
 // Shared WHERE-clause builder so the paginated list, the "export current
@@ -15,7 +16,7 @@ function buildLeadsQuery(userId, query) {
 
   const sortBy = SORT_COLUMNS[query.sortBy] ? query.sortBy : "created_at";
   const sortDir = query.sortDir === "asc" ? "ASC" : query.sortDir === "desc" ? "DESC" : null;
-  const defaultDir = { created_at: "DESC", rating: "DESC", name: "ASC", needs_count: "DESC" };
+  const defaultDir = { created_at: "DESC", rating: "DESC", name: "ASC", needs_count: "DESC", fit_score: "DESC" };
   const direction = sortDir || defaultDir[sortBy];
 
   let baseQuery = `
@@ -51,6 +52,16 @@ function buildLeadsQuery(userId, query) {
   }
   if (inspected) {
     baseQuery += " AND EXISTS(SELECT 1 FROM business_analysis ba WHERE ba.lead_id = l.id AND ba.status = 'done')";
+  }
+  if (query.fitGrade) {
+    // Accepts either one grade ("A") or a comma-separated set ("A,B") -
+    // the board's filter dropdown can offer both a single grade and a
+    // broader "A or B" style option without needing separate params.
+    const grades = query.fitGrade.split(",").map((g) => g.trim().toUpperCase()).filter(Boolean);
+    if (grades.length) {
+      baseQuery += ` AND l.fit_grade IN (${grades.map(() => "?").join(",")})`;
+      params.push(...grades);
+    }
   }
 
   return { baseQuery, params, sortBy, direction };

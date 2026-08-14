@@ -325,6 +325,11 @@ if (!leadsTableExists) {
   if (!userCols.includes("signature_font_family")) db.exec("ALTER TABLE users ADD COLUMN signature_font_family TEXT");
   if (!userCols.includes("signature_font_size")) db.exec("ALTER TABLE users ADD COLUMN signature_font_size INTEGER");
   if (!userCols.includes("meeting_link")) db.exec("ALTER TABLE users ADD COLUMN meeting_link TEXT");
+  if (!userCols.includes("agency_profile")) {
+    const defaultAgencyProfile = `We are a digital agency offering website design, SEO, and content writing services, with 5+ years of experience and 300+ businesses served worldwide. Services: modern website design & redesign, On-Page SEO, Off-Page SEO, Local SEO, Branding (logo, social media), website security and maintenance. Platforms/expertise: WordPress, Shopify, Wix, Framer, and MERN stack (custom development). Niche experience: WooCommerce/e-commerce, Real Estate, Education, Portfolio sites, general Businesses, Blogs, Fashion, Services, IT.`;
+    db.exec("ALTER TABLE users ADD COLUMN agency_profile TEXT");
+    db.prepare("UPDATE users SET agency_profile = ? WHERE agency_profile IS NULL").run(defaultAgencyProfile);
+  }
   if (!userCols.includes("website_link")) db.exec("ALTER TABLE users ADD COLUMN website_link TEXT");
   if (!userCols.includes("whatsapp_link")) db.exec("ALTER TABLE users ADD COLUMN whatsapp_link TEXT");
   if (!userCols.includes("preferred_content_provider")) db.exec("ALTER TABLE users ADD COLUMN preferred_content_provider TEXT DEFAULT ''");
@@ -410,6 +415,12 @@ CREATE TABLE IF NOT EXISTS api_key_daily_usage (
     db.exec("ALTER TABLE leads ADD COLUMN suggested_contact_reason TEXT");
     db.exec("ALTER TABLE leads ADD COLUMN suggested_contact_detected_at TEXT");
   }
+  if (!leadCols.includes("fit_score")) {
+    db.exec("ALTER TABLE leads ADD COLUMN fit_score INTEGER");
+    db.exec("ALTER TABLE leads ADD COLUMN fit_grade TEXT");
+    db.exec("ALTER TABLE leads ADD COLUMN fit_source TEXT"); // 'base' (instant, rule-based) or 'ai' (refined by the analysis pipeline)
+    db.exec("CREATE INDEX IF NOT EXISTS idx_leads_fit_grade ON leads(fit_grade)");
+  }
 
   // One-time cleanup: unpin every currently-pinned lead except ones with
   // real pipeline progress (Engaged/Won/Converted) - a lot of leads
@@ -451,6 +462,13 @@ CREATE TABLE IF NOT EXISTS business_analysis (
 {
   const businessAnalysisCols = db.prepare("PRAGMA table_info(business_analysis)").all().map((c) => c.name);
   if (!businessAnalysisCols.includes("provider")) db.exec("ALTER TABLE business_analysis ADD COLUMN provider TEXT");
+  if (!businessAnalysisCols.includes("fit_score")) {
+    db.exec("ALTER TABLE business_analysis ADD COLUMN fit_score INTEGER");
+    db.exec("ALTER TABLE business_analysis ADD COLUMN fit_grade TEXT");
+    db.exec("ALTER TABLE business_analysis ADD COLUMN fit_reason TEXT");
+    db.exec("ALTER TABLE business_analysis ADD COLUMN fit_mismatch INTEGER DEFAULT 0");
+    db.exec("ALTER TABLE business_analysis ADD COLUMN fit_mismatch_reason TEXT");
+  }
 }
 
 // ---------- Generated outreach content, per lead per platform ----------

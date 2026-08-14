@@ -1037,6 +1037,11 @@ button#huntBtn:disabled, .primary-btn:disabled { background: var(--border); colo
 }
 
 .lead-name-row { display: flex; align-items: flex-start; gap: 7px; min-width: 0; }
+.fit-grade-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 50%; border: 1px solid;
+  font-size: 10.5px; font-weight: 700; flex-shrink: 0; cursor: default;
+}
 .lead-name {
   font-weight: 400;
   font-size: 12px;

@@ -1,6 +1,7 @@
 const fetch = require("node-fetch");
 const FormData = require("form-data");
 const db = require("./db");
+const { computeBaseFitScore } = require("./fitScore");
 
 const SCRAPER_BASE_URL = process.env.SCRAPER_SERVICE_URL || "http://scraper:8000";
 const SCRAPER_SECRET = process.env.SCRAPER_API_SECRET || "";
@@ -110,6 +111,7 @@ async function getScrapedBusinesses() {
 // specifically means "we independently confirmed a click-to-call link on
 // their site," not just "Google Places had a number for them."
 function mergeScrapedResultsIntoLeads(catchLogId, scrapedBusinesses) {
+  const catchLog = db.prepare("SELECT niche_id FROM catch_logs WHERE id = ?").get(catchLogId);
   const leads = db.prepare("SELECT * FROM leads WHERE catch_log_id = ?").all(catchLogId);
   const byKey = new Map();
   for (const lead of leads) {
@@ -134,6 +136,16 @@ function mergeScrapedResultsIntoLeads(catchLogId, scrapedBusinesses) {
     if (biz.phone_scraped) newSocials.phone = biz.phone_scraped;
 
     update.run(JSON.stringify(newSocials), lead.id);
+
+    // Finding an email is new contactability information the base score
+    // accounts for - recompute it, but only if this lead hasn't already
+    // been upgraded to an AI-refined score, matching the same
+    // non-regression rule used when leads are first imported.
+    if (lead.fit_source !== "ai") {
+      const fit = computeBaseFitScore({ ...lead, niche_id: catchLog?.niche_id, socials: JSON.stringify(newSocials) });
+      db.prepare("UPDATE leads SET fit_score = ?, fit_grade = ?, fit_source = 'base' WHERE id = ?").run(fit.score, fit.grade, lead.id);
+    }
+
     mergedCount++;
   }
 

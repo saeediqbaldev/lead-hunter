@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.14-15.32";
+const APP_VERSION = "2026.08.14-15.33";
 
 // Every email provider section (Hostinger, Gmail, Bluehost/Titan) shares
 // the same Tracking/History/Alerts/Reports/Campaigns/Setup views, keyed
@@ -4141,6 +4141,25 @@ const STATUS_COLORS = [
   { value: "rejected", label: "Rejected", color: "#d95d5d" },
 ];
 
+// A clear green-to-red scale so a grade reads at a glance without
+// needing to read the label - matches the letter-grade intuition most
+// people already have from school.
+const FIT_GRADE_COLORS = {
+  A: "#5fb87a",
+  B: "#8fc766",
+  C: "#e0b355",
+  D: "#e08a4d",
+  F: "#d95d5d",
+};
+
+function fitGradeBadgeHtml(lead) {
+  if (!lead.fit_grade) return "";
+  const color = FIT_GRADE_COLORS[lead.fit_grade] || "#948d80";
+  const sourceLabel = lead.fit_source === "ai" ? "AI-refined fit score" : "Instant fit score (based on scraped data only)";
+  const title = `${sourceLabel}: ${lead.fit_score}/100`;
+  return `<span class="fit-grade-badge" style="background:${color}22; color:${color}; border-color:${color}66;" title="${escapeHtmlAttr(title)}">${lead.fit_grade}</span>`;
+}
+
 const NEED_COLORS = [
   { value: "", label: "All needs", color: "#948d80" },
   { value: "Website Design", label: "Website Design", color: "#d95d5d" },
@@ -6982,6 +7001,7 @@ function renderLeads(leads) {
       <div>
         <div class="lead-name-row">
           <span class="lead-name" title="${lead.name}">${lead.name}</span>
+          ${fitGradeBadgeHtml(lead)}
         </div>
       </div>
       <div class="city-cell" title="${lead.city_name || ""}">${lead.city_name || "—"}</div>

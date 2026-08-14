@@ -52,6 +52,11 @@ function getAnalysis(leadId) {
     provider: row.provider,
     error: row.error,
     updatedAt: row.updated_at,
+    fitScore: row.fit_score,
+    fitGrade: row.fit_grade,
+    fitReason: row.fit_reason,
+    fitMismatch: !!row.fit_mismatch,
+    fitMismatchReason: row.fit_mismatch_reason,
   };
 }
 
@@ -97,7 +102,8 @@ async function runPipeline(userId, leadId, lead, aiProvider) {
     // own. Uses the fallback chain (Groq -> Gemini -> DeepSeek), so a
     // single provider being rate-limited or down doesn't skip this step
     // entirely if another provider is available.
-    const aiResult = await analyzeWithAI(userId, lead, { website, gmb, social }, aiProvider);
+    const userRow = db.prepare("SELECT agency_profile FROM users WHERE id = ?").get(userId);
+    const aiResult = await analyzeWithAI(userId, lead, { website, gmb, social }, aiProvider, userRow?.agency_profile);
     if (isCancelled(leadId)) return;
 
     upsertAnalysisRow(leadId, {
@@ -106,9 +112,22 @@ async function runPipeline(userId, leadId, lead, aiProvider) {
       suggested_services: JSON.stringify(aiResult.ok ? aiResult.suggestedServices : []),
       raw_data: JSON.stringify({ aiError: aiResult.ok ? null : aiResult.error }),
       provider: aiResult.ok ? aiResult.provider : null,
+      fit_score: aiResult.ok ? aiResult.fitScore : null,
+      fit_grade: aiResult.ok ? aiResult.fitGrade : null,
+      fit_reason: aiResult.ok ? aiResult.fitReason : null,
+      fit_mismatch: aiResult.ok && aiResult.mismatch ? 1 : 0,
+      fit_mismatch_reason: aiResult.ok ? aiResult.mismatchReason : null,
       status: "done",
       current_step: null,
     });
+
+    // This is what actually upgrades the lead from its instant base
+    // score to the AI-refined one - the board reads fit_score/fit_grade
+    // directly off leads, not business_analysis, so this sync is what
+    // makes the refined grade actually visible.
+    if (aiResult.ok && aiResult.fitScore != null) {
+      db.prepare("UPDATE leads SET fit_score = ?, fit_grade = ?, fit_source = 'ai' WHERE id = ?").run(aiResult.fitScore, aiResult.fitGrade, leadId);
+    }
   } catch (err) {
     upsertAnalysisRow(leadId, { status: "failed", error: err.message, current_step: null });
   } finally {

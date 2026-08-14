@@ -3,6 +3,7 @@ const db = require("../db");
 const { searchPlaces } = require("../placesApi");
 const { tagNeeds } = require("../filters");
 const apiKeys = require("../apiKeys");
+const { computeBaseFitScore } = require("../fitScore");
 
 const router = express.Router();
 
@@ -132,12 +133,15 @@ router.post("/", async (req, res) => {
     }
 
     const insert = db.prepare(`
-      INSERT INTO leads (catch_log_id, place_id, name, address, phone, website, rating, review_count, business_status, needs, socials)
-      VALUES (@catch_log_id, @place_id, @name, @address, @phone, @website, @rating, @review_count, @business_status, @needs, @socials)
+      INSERT INTO leads (catch_log_id, place_id, name, address, phone, website, rating, review_count, business_status, needs, socials, fit_score, fit_grade, fit_source)
+      VALUES (@catch_log_id, @place_id, @name, @address, @phone, @website, @rating, @review_count, @business_status, @needs, @socials, @fit_score, @fit_grade, @fit_source)
       ON CONFLICT(catch_log_id, place_id) DO UPDATE SET
         name=excluded.name, address=excluded.address, phone=excluded.phone,
         website=excluded.website, rating=excluded.rating, review_count=excluded.review_count,
-        business_status=excluded.business_status, needs=excluded.needs
+        business_status=excluded.business_status, needs=excluded.needs,
+        fit_score = CASE WHEN fit_source = 'ai' THEN fit_score ELSE excluded.fit_score END,
+        fit_grade = CASE WHEN fit_source = 'ai' THEN fit_grade ELSE excluded.fit_grade END,
+        fit_source = CASE WHEN fit_source = 'ai' THEN fit_source ELSE excluded.fit_source END
     `);
     const markSeen = db.prepare(
       "INSERT OR IGNORE INTO seen_places (user_id, niche_id, location_key, place_id) VALUES (?, ?, ?, ?)"
@@ -147,12 +151,13 @@ router.post("/", async (req, res) => {
     const results = [];
     for (const place of places) {
       const needs = tagNeeds(place);
+      const fit = computeBaseFitScore({ ...place, niche_id: niche.id, socials: "{}" });
       // No automatic social scraping here - that's now only ever done via
       // the explicit "Scrape" button (separate Python microservice), so a
       // hunt never gets slowed down or blocked by scanning every website.
-      insert.run({ ...place, catch_log_id: catchLogId, needs: JSON.stringify(needs), socials: JSON.stringify({}) });
+      insert.run({ ...place, catch_log_id: catchLogId, needs: JSON.stringify(needs), socials: JSON.stringify({}), fit_score: fit.score, fit_grade: fit.grade, fit_source: "base" });
       markSeen.run(userId, niche.id, locationKey, place.place_id);
-      results.push({ ...place, needs, socials: {} });
+      results.push({ ...place, needs, socials: {}, fitScore: fit.score, fitGrade: fit.grade });
       newCount++;
     }
 
