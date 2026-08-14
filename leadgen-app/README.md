@@ -6,6 +6,37 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.35
+Fixed a real bug affecting live sent emails: the AI would sometimes
+ignore instructions and add its own broken sign-off like "Best, [Your
+Name]" - since it has no way of knowing the actual sender's name.
+
+- **The instructions themselves are now explicit and impossible to
+  half-follow**: never write any sign-off or name at all (not "keep it
+  short," the full sign-off is banned outright), and never use a
+  bracket placeholder for anything - if a detail isn't known, leave it
+  out entirely rather than placeholder it. Found this exact weak
+  wording in the follow-up prompt too, which had an even softer
+  version of the same instruction than the main one - now both say the
+  same clear thing. Also reworded an instruction that was showing the
+  AI a "don't do this" example using a literal bracket, since even a
+  negative example can reinforce a pattern.
+- **A deterministic safety net catches whatever still slips through**
+  - the same kind of backstop already in place for em dashes and
+  broken links. Verified this against the exact bug reported: a
+  simulated AI response ending in "Best regards,\n[Your Name]" came out
+  completely clean, with the real call-to-action question preserved
+  intact. Also specifically verified this doesn't create a new problem
+  of its own - legitimate bracketed text unrelated to a placeholder
+  (like citing "[A/B testing]" as a real term) is left completely
+  untouched, only actual name/company-style placeholder patterns get
+  removed.
+- Together with the signature's own "Thank you for your time and
+  consideration... Kind Regards, Xeven Pixels" closing from an earlier
+  version, an email's ending is now consistently: a real, specific
+  call-to-action question, then a genuine thank-you signed off as Xeven
+  Pixels - never a broken placeholder reaching a real recipient.
+
 ## What's in this V15.34
 The agency profile is now visible and editable, and the "why" behind a
 grade is finally shown, not just the letter. Filter/sort by grade,

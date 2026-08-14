@@ -168,9 +168,10 @@ Write the message now. Requirements:
 - Lead with THEIR problem or opportunity, not your pitch - frame it around what it costs them to leave it as-is or what they stand to gain, before mentioning what you'd do about it
 - Where it fits naturally, ground the pitch in a concrete number or figure (a realistic industry benchmark, a plausible percentage, a rough time/cost estimate) rather than vague claims like "more customers" or "better results" - specific numbers read as credible and human, not like padding
 - Reference the specific context above where relevant (don't invent facts not given, and don't fabricate statistics about THIS business specifically - general industry figures are fine, made-up specifics about them are not)
-- End with a natural closing line appropriate to the message${extraInstructions.length ? " (working in the items listed above)" : " (a soft, low-pressure call-to-action)"}
+- End with a clear call-to-action as an actual question or specific ask (e.g. "Worth a quick call this week?" or "Want me to send over a couple of examples?") - not a vague trail-off like "let me know your thoughts."${extraInstructions.length ? " Work in the items listed above too." : ""}
 ${HUMANIZE_INSTRUCTION}
-- Do NOT include a signature or sign-off - that will be added separately
+- Never write a sign-off, closing salutation, or the sender's name anywhere in the message (no "Best regards," no "Thanks,", no name at the end) - the real signature is always appended separately after this. The message ends right after its final sentence/question, nothing else.
+- Never use a placeholder in brackets like [Your Name], [Company Name], or similar - if you don't know a specific detail, don't reference it at all rather than leaving a placeholder. A placeholder reaching a real recipient looks broken, not just incomplete.
 - Plain text only - no markdown formatting of any kind (no **asterisks** for bold, no _underscores_ for italics, no # headers, no markdown links). Write it exactly as it should be read, since this goes straight into an email/DM with no markdown rendering.
 - Output ONLY the message content itself, nothing else (no preamble, no explanation)`;
 }
@@ -207,6 +208,37 @@ function stripAiDashes(text) {
     .replace(/\s+[—–]\s+/g, ", ")
     .replace(/([^\s])[—–]([^\s])/g, "$1, $2")
     .replace(/[—–]/g, ",");
+}
+
+// Safety net for the "never sign off, never use a placeholder" rules
+// above - a prompt instruction reduces the risk but can't guarantee the
+// AI never falls back to something like "Best, [Your Name]" out of habit
+// since it doesn't know the sender's real name. A placeholder reaching a
+// real recipient looks broken, not just incomplete, so this is treated
+// with the same seriousness as the em-dash/link safety nets above.
+function stripAiPlaceholderSignoff(text) {
+  if (!text) return text;
+  let result = text;
+
+  // A trailing sign-off phrase (with or without its own line break)
+  // immediately followed by a bracket placeholder, anywhere at the very
+  // end of the message - e.g. "Best regards,\n[Your Name]" or "Thanks,
+  // [Company Name]". Removed entirely, since the real signature is
+  // always appended separately and this whole line shouldn't exist.
+  result = result.replace(
+    /\n?[ \t]*(best regards|kind regards|warm regards|warmest regards|best|regards|sincerely|warmly|thanks|thank you|cheers|talk soon|looking forward)[,.]?[ \t]*\n?[ \t]*\[[^\]\n]{1,50}\]\s*$/i,
+    ""
+  );
+
+  // Any remaining stray placeholder elsewhere in the text, targeted at
+  // actual placeholder wording (name/company/insert-style) rather than
+  // any bracketed text whatsoever - a broader rule would risk mangling
+  // legitimate bracketed content that has nothing to do with a
+  // placeholder, like "[A/B testing]" mentioned as a real term.
+  result = result.replace(/\[[^\]\n]{0,10}(your\s+name|your\s+company|company\s+name|business\s+name|sender'?s?\s+name|recipient'?s?\s+name|insert\s+name|name\s+here|first\s+name|last\s+name)[^\]\n]{0,10}\]/gi, "");
+  result = result.replace(/[ \t]{2,}/g, " ");
+
+  return result.trim();
 }
 
 // The prompt instructions above reduce the risk of the AI mangling or
@@ -255,7 +287,7 @@ async function generateOutreachContent(
   if (!result.ok) return result;
 
   const signatureHtml = wrapSignatureWithFont(signature != null && signature !== "" ? signature : DEFAULT_SIGNATURE, signatureFontFamily, signatureFontSize);
-  const bodyText = ensureLinksPresent(stripAiDashes(result.text.trim()), [
+  const bodyText = ensureLinksPresent(stripAiPlaceholderSignoff(stripAiDashes(result.text.trim())), [
     { label: "Book a time", url: meeting ? meetingLink : null },
     { label: "WhatsApp", url: whatsapp ? whatsappLink : null },
     { label: "See an example", url: website ? websiteLink : null },
@@ -335,8 +367,11 @@ Rules:
 - If a specific problem/pain point was identified above, point back at it directly rather than staying generic - that's what makes this feel like a real follow-up and not a template nudge.
 - Sound like a real person nudging a conversation forward, not a template.
 - No guilt-tripping, no "just checking in" filler with nothing else said - add one small new angle, question, or reason to reply if possible.
-- Do not include a greeting salutation line like "Hi [name]," as the literal first line if it would feel redundant with a real email thread - a brief natural opening is fine.${languageInstruction}${linkSection}${linkSeparationRule}${customSection}
+- Do not open with a greeting salutation naming the person if it would feel redundant with a real email thread (a brief natural opening is fine either way).
+- End with a clear call-to-action as an actual question or specific ask, not a vague trail-off.${languageInstruction}${linkSection}${linkSeparationRule}${customSection}
 ${HUMANIZE_INSTRUCTION}
+- Never write a sign-off, closing salutation, or the sender's name anywhere in the message - the real signature is always appended separately after this.
+- Never use a placeholder in brackets for a name, company, or any other detail - if you don't know something specific, don't reference it at all rather than leaving a placeholder.
 
 Return ONLY the follow-up email body text (no subject line, no signature).`;
 }
@@ -353,7 +388,7 @@ async function generateFollowUpContent(
   const result = await generateWithFallback(userId, prompt, { onlyProvider: aiProvider || undefined });
   if (!result.ok) return result;
   const signatureHtml = wrapSignatureWithFont(signature != null && signature !== "" ? signature : DEFAULT_SIGNATURE, signatureFontFamily, signatureFontSize);
-  const bodyText = ensureLinksPresent(stripAiDashes(result.text.trim()), [
+  const bodyText = ensureLinksPresent(stripAiPlaceholderSignoff(stripAiDashes(result.text.trim())), [
     { label: "Book a time", url: meeting ? meetingLink : null },
     { label: "WhatsApp", url: whatsapp ? whatsappLink : null },
   ]);
