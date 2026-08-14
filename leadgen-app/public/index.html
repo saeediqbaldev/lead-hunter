@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="Xeven Leads" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=1533" />
+<link rel="stylesheet" href="style.css?v=1534" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -905,6 +905,14 @@
 
           <div class="settings-divider"></div>
 
+          <h3 class="settings-subheading">Agency profile</h3>
+          <p class="hint">A short description of your services, experience, and niches - used to ground the AI's fit-score grading and suggested-services on what your agency actually offers, instead of generic marketing advice.</p>
+          <textarea id="agencyProfileInput" rows="6" style="width:100%; font-family:inherit; font-size:13px; padding:10px; background:var(--panel-raised); color:var(--text); border:1px solid var(--border); border-radius:6px;" placeholder="e.g. We're a digital agency offering website design, SEO, and content writing..."></textarea>
+          <button type="button" class="small-btn" id="agencyProfileSaveBtn" style="margin-top:8px;">Save agency profile</button>
+          <div class="settings-result" id="agencyProfileResult" style="display:none;"></div>
+
+          <div class="settings-divider"></div>
+
           <h3 class="settings-subheading">Signature</h3>
           <p class="hint">Appended to the end of every generated outreach message and every campaign email. Fully rich - bold/italic, links, images, and lists are all supported and will render as real formatting in sent emails.</p>
 
@@ -1061,7 +1069,7 @@
 
 
 
-  <script src="app.js?v=1533"></script>
+  <script src="app.js?v=1534"></script>
   <script src="pwa-install.js"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.14-15.33";
+const APP_VERSION = "2026.08.14-15.34";
 
 // Every email provider section (Hostinger, Gmail, Bluehost/Titan) shares
 // the same Tracking/History/Alerts/Reports/Campaigns/Setup views, keyed
@@ -3070,6 +3070,42 @@ async function ensureSignatureFontsLoaded() {
   }
 }
 
+async function loadAgencyProfile() {
+  try {
+    const res = await api("/api/settings/agency-profile");
+    const data = await res.json();
+    document.getElementById("agencyProfileInput").value = data.agencyProfile || "";
+  } catch (err) {
+    console.error("Failed to load agency profile:", err);
+  }
+}
+
+document.getElementById("agencyProfileSaveBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("agencyProfileSaveBtn");
+  const resultEl = document.getElementById("agencyProfileResult");
+  btn.disabled = true;
+  try {
+    const res = await api("/api/settings/agency-profile", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agencyProfile: document.getElementById("agencyProfileInput").value }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Could not save");
+    resultEl.style.display = "block";
+    resultEl.className = "settings-result ok";
+    resultEl.textContent = "Agency profile saved - used the next time a lead is analyzed.";
+    showToast("Agency profile saved", "success");
+  } catch (err) {
+    resultEl.style.display = "block";
+    resultEl.className = "settings-result bad";
+    resultEl.textContent = err.message;
+    showToast(`Could not save: ${err.message}`, "error");
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 async function loadSignature() {
   try {
     await ensureSignatureFontsLoaded();
@@ -3123,6 +3159,7 @@ navSettingsAccount.addEventListener("click", async () => {
   state.lastNavSection = "settings";
   setContentView("settings-account");
   await loadDailyCap();
+  await loadAgencyProfile();
   await loadSignature();
   await loadProviderPreferences();
 });
@@ -5933,6 +5970,23 @@ function renderInspectSectionBody(analysis, lead) {
         <div style="font-size:11.5px; color:var(--text-muted); display:flex; align-items:center; gap:8px;">Last checked ${analysis.updatedAt || ""} ${analysisSourceHintHtml(analysis.provider)}</div>
       </div>
     </div>
+    ${
+      analysis.fitGrade
+        ? `
+    <div class="fit-score-panel">
+      <span class="fit-grade-badge fit-grade-badge-lg" style="background:${FIT_GRADE_COLORS[analysis.fitGrade]}22; color:${FIT_GRADE_COLORS[analysis.fitGrade]}; border-color:${FIT_GRADE_COLORS[analysis.fitGrade]}66;">${analysis.fitGrade}</span>
+      <div>
+        <div style="font-family:var(--font-display); font-weight:600; font-size:13px;">Fit for outreach: ${analysis.fitScore}/100</div>
+        ${analysis.fitReason ? `<div style="font-size:11.5px; color:var(--text-muted);">${analysis.fitReason}</div>` : ""}
+      </div>
+    </div>
+    ${
+      analysis.fitMismatch
+        ? `<div class="fit-mismatch-warning"><i class="bi bi-exclamation-triangle-fill"></i> This might not be the right business - ${analysis.fitMismatchReason || "the scraped website doesn't clearly match this lead."}</div>`
+        : ""
+    }`
+        : ""
+    }
     <div class="category-grid-mini">
       ${categories
         .map(

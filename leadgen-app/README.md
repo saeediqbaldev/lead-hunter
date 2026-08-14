@@ -6,6 +6,26 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.34
+The agency profile is now visible and editable, and the "why" behind a
+grade is finally shown, not just the letter. Filter/sort by grade,
+campaign-creation warnings, and a bulk backfill for existing leads are
+still ahead.
+
+- **A real settings page for your agency profile** - the description
+  grounding every fit-score judgment was already saved and working from
+  what you told me directly, but there was no way to see or change it
+  until now. It's in Account Settings, pre-filled correctly. Verified
+  it loads, saves, and survives a fresh page reload.
+- **The fit score's actual reasoning is now visible**, not just a
+  letter badge - opening a lead's inspection panel shows the grade,
+  the score, and the one-line reason right alongside the existing
+  strengths/weaknesses. When the AI flags a likely mismatch (the
+  scraped site probably doesn't belong to this business), a clear
+  warning banner shows why, instead of that information sitting
+  unused in the database. Verified end-to-end in a real browser,
+  including the mismatch warning rendering correctly.
+
 ## What's in this V15.33
 The fit-score system - backend foundation and the grade badge on the
 board. Settings page, campaign-creation warning, and bulk backfill for

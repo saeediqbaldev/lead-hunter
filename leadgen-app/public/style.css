@@ -1403,6 +1403,16 @@ button#huntBtn:disabled, .primary-btn:disabled { background: var(--border); colo
 
 /* Inspect: results */
 .score-header-mini { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; }
+.fit-score-panel {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px; margin-bottom: 14px;
+  background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px;
+}
+.fit-grade-badge-lg { width: 34px; height: 34px; font-size: 16px; flex-shrink: 0; }
+.fit-mismatch-warning {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px; margin: -6px 0 14px;
+  background: rgba(217,93,93,0.1); border: 1px solid rgba(217,93,93,0.4); border-radius: 6px;
+  color: var(--danger); font-size: 12px;
+}
 .score-ring-mini { position: relative; width: 60px; height: 60px; flex-shrink: 0; }
 .score-ring-mini svg { transform: rotate(-90deg); }
 .score-ring-mini-bg { fill: none; stroke: var(--border); stroke-width: 6; }

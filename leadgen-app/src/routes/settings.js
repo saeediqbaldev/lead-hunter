@@ -127,6 +127,24 @@ router.get("/site-generator-meta", (req, res) => {
 // GET /api/settings/signature-fonts - the available font options, for
 // populating the signature editor's font dropdown, plus the combined
 // Google Fonts stylesheet URL to actually load them in the editor.
+// GET/PUT /api/settings/agency-profile - the free-text description of
+// this agency's own services, experience, and niches, used to ground
+// the AI fit-score/service-suggestion prompts in what this specific
+// agency actually offers rather than generic marketing advice.
+router.get("/agency-profile", (req, res) => {
+  const row = db.prepare("SELECT agency_profile FROM users WHERE id = ?").get(req.session.userId);
+  res.json({ agencyProfile: row?.agency_profile || "" });
+});
+
+router.put("/agency-profile", (req, res) => {
+  const value = typeof req.body.agencyProfile === "string" ? req.body.agencyProfile.trim() : "";
+  if (value.length > 4000) {
+    return res.status(400).json({ error: "Keep this under 4,000 characters - a concise summary works better in the AI prompt than an exhaustive one." });
+  }
+  db.prepare("UPDATE users SET agency_profile = ? WHERE id = ?").run(value || null, req.session.userId);
+  res.json({ agencyProfile: value });
+});
+
 router.get("/signature-fonts", (req, res) => {
   res.json({
     fonts: SIGNATURE_FONTS.map((f) => ({ value: f.value, label: f.label })),
