@@ -6,6 +6,24 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.32
+Campaigns reverted from the deep tree back to the familiar grid style -
+Niche > Country > City > cards, click a card for the full detail view
+with its tab bar back.
+
+- The Email List/Sent/Replied/Report/Follow-ups tab bar is back inside
+  each campaign, rather than the tree itself being the navigation.
+- Follow-ups didn't lose any capability in the revert - the tab now
+  shows a small grid of "Followup 1," "Followup 2," etc. cards, each
+  with View/Edit/Pause/Resume, plus the existing "due now" list of
+  individual leads below it. Clicking View drills into that one
+  follow-up's own scoped Email List/Sent/Replied/Report with a clear
+  way back to the main tab bar.
+- Verified the complete path end-to-end in a real browser: the grid
+  renders, clicking a card opens the tab bar, the Follow-ups tab shows
+  both configured levels as cards, drilling into one and clicking back
+  correctly returns to the main campaign view.
+
 ## What's in this V15.31
 A proper, thankful email ending, and full font customization for the
 signature.

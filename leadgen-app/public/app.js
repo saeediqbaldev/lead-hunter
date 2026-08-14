@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.13-15.31";
+const APP_VERSION = "2026.08.14-15.32";
 
 // Every email provider section (Hostinger, Gmail, Bluehost/Titan) shares
 // the same Tracking/History/Alerts/Reports/Campaigns/Setup views, keyed
@@ -1678,120 +1678,72 @@ async function loadContactedCampaigns() {
     return;
   }
 
-  // Two-level grouping now: niche -> country -> campaign (no city level -
-  // a campaign's cities are covered by its own Email List/Sent/etc views
-  // instead of a separate browsable branch).
+  // Three-level grouping: niche -> country -> city, using each campaign's
+  // dominant city/country (whichever has the most of its leads, resolved
+  // server-side) - a campaign without a niche_id (an older campaign from
+  // before niches were required) falls into its own "Unassigned" group
+  // rather than being dropped or crashing the grouping, and the same for
+  // a campaign with no resolvable dominant city.
   const nicheGroups = new Map();
   data.campaigns.forEach((c) => {
     const nicheKey = c.niche_id || "unassigned";
     if (!nicheGroups.has(nicheKey)) nicheGroups.set(nicheKey, new Map());
     const countryMap = nicheGroups.get(nicheKey);
     const countryKey = c.dominant_country || "Unassigned";
-    if (!countryMap.has(countryKey)) countryMap.set(countryKey, []);
-    countryMap.get(countryKey).push(c);
+    if (!countryMap.has(countryKey)) countryMap.set(countryKey, new Map());
+    const cityMap = countryMap.get(countryKey);
+    const cityKey = c.dominant_city_name || "Unassigned";
+    if (!cityMap.has(cityKey)) cityMap.set(cityKey, []);
+    cityMap.get(cityKey).push(c);
   });
 
+  const cardHtml = (c) => {
+    const display = campaignDisplayStatus(c);
+    const locationBadge = c.dominant_city_name ? `<span class="campaign-location-badge">${c.dominant_city_name}${c.dominant_country ? `, ${c.dominant_country}` : ""}</span>` : "";
+    return `
+    <div class="campaign-card" data-campaign-id="${c.id}">
+      <div class="campaign-card-top">
+        <span class="campaign-name">${escapeHtml(c.name)}</span>
+        <span class="campaign-status-pill campaign-status-${display.key}">${display.label}</span>
+      </div>
+      ${locationBadge}
+      ${campaignProgressBarHtml(c)}
+      <div class="campaign-card-meta">Every ${c.min_gap_minutes}-${c.max_gap_minutes} min, up to ${c.max_per_day}/day · Created ${formatContactedTimestamp(c.created_at)}</div>
+    </div>`;
+  };
+
+  // Niches default open (there are usually only a handful); country and
+  // city default closed (there could be many) - the same balance Hunt's
+  // own tree strikes, so a first-time niche gets auto-opened once so the
+  // page doesn't look empty on first load.
   if (!state.campaignsOpenNicheIds) state.campaignsOpenNicheIds = new Set(nicheGroups.keys());
   if (!state.campaignsOpenCountryKeys) state.campaignsOpenCountryKeys = new Set();
-  if (!state.campaignsOpenCampaignIds) state.campaignsOpenCampaignIds = new Set();
-  if (!state.campaignsOpenFollowupsIds) state.campaignsOpenFollowupsIds = new Set();
-  if (!state.campaignsOpenFollowupDetailKeys) state.campaignsOpenFollowupDetailKeys = new Set();
-
-  // The 5 sub-nodes under a campaign (Followups gets its own recursive
-  // renderer below, since it isn't a leaf).
-  const campaignSubNodesHtml = (c, treeData) => {
-    if (campaignsTreeLoadErrors.has(c.id)) {
-      return `<p class="hint" style="padding:4px 0 4px 20px; color:var(--danger);">Couldn't load - <a href="#" data-action="retry-campaign-tree" data-campaign-id="${c.id}" style="color:var(--danger); text-decoration:underline;">click to retry</a></p>`;
-    }
-    if (!treeData) return `<p class="hint" style="padding:4px 0 4px 20px;">Loading…</p>`;
-    const { leads } = treeData;
-    const sentCount = leads.filter((l) => l.status === "sent").length;
-    const repliedCount = leads.filter((l) => l.replied_at).length;
-    const followupTouchCount = leads.filter((l) => l.touch_number > 1).length;
-    const nodes = [
-      { view: "emails", label: "Email List", count: leads.length },
-      { view: "sent", label: "Sent", count: sentCount },
-      { view: "replied", label: "Replied", count: repliedCount },
-      { view: "report", label: "Report", count: null },
-    ];
-    const leafNodesHtml = nodes
-      .map(
-        (n) => `
-      <div class="campaign-leaf-node" data-action="nav-campaign-view" data-campaign-id="${c.id}" data-view="${n.view}">
-        <i class="bi bi-dot"></i> ${n.label}${n.count != null ? ` <span class="niche-count">${n.count}</span>` : ""}
-      </div>`
-      )
-      .join("");
-
-    const followupsOpen = state.campaignsOpenFollowupsIds.has(c.id);
-    return `
-      ${leafNodesHtml}
-      <div class="campaign-leaf-node" data-action="toggle-campaign-followups" data-campaign-id="${c.id}">
-        <span class="niche-caret small">▶</span> Followups${followupTouchCount ? ` <span class="niche-count">${followupTouchCount}</span>` : ""}
-      </div>
-      <div class="catchlog-list ${followupsOpen ? "open" : ""}" style="padding-left:16px;">
-        ${followupsOpen ? followupNodesHtml(c, treeData) : ""}
-      </div>`;
-  };
-
-  // Followup 1, Followup 2... up to followup_max_count - shown even for
-  // a level no lead has reached yet, since the point is being able to
-  // configure a follow-up ahead of time, not just review one that
-  // already happened.
-  const followupNodesHtml = (c, treeData) => {
-    if (!c.followup_enabled || !c.followup_max_count) return `<p class="hint" style="padding:4px 0 4px 4px;">Follow-ups aren't enabled for this campaign.</p>`;
-    return Array.from({ length: c.followup_max_count }, (_, i) => i + 2) // touch numbers 2..max+1
-      .map((touchNumber) => {
-        const key = `${c.id}:${touchNumber}`;
-        const open = state.campaignsOpenFollowupDetailKeys.has(key);
-        const touchLeads = treeData.leads.filter((l) => l.touch_number === touchNumber);
-        return `
-        <div class="campaign-followup-block ${open ? "open" : ""}" data-campaigns-followup-key="${key}">
-          <div class="country-row" data-action="toggle-followup-detail" data-campaign-id="${c.id}" data-touch-number="${touchNumber}">
-            <span class="niche-caret small">▶</span>
-            <span class="country-name"><i class="bi bi-send"></i> Followup ${touchNumber - 1}</span>
-            <span class="niche-count">${touchLeads.length}</span>
-            ${actionsMenuHtml("followup", c.id, touchNumber)}
-          </div>
-          <div class="campaign-followup-subnodes" style="padding-left:16px;">
-            ${["emails", "sent", "replied", "report"]
-              .map(
-                (view) => `
-              <div class="campaign-leaf-node" data-action="nav-campaign-view" data-campaign-id="${c.id}" data-view="${view}" data-touch-number="${touchNumber}">
-                <i class="bi bi-dot"></i> ${view === "emails" ? "Email List" : view.charAt(0).toUpperCase() + view.slice(1)}
-              </div>`
-              )
-              .join("")}
-          </div>
-        </div>`;
-      })
-      .join("");
-  };
+  if (!state.campaignsOpenCityKeys) state.campaignsOpenCityKeys = new Set();
 
   list.innerHTML = Array.from(nicheGroups.entries())
     .map(([nicheKey, countryMap]) => {
       const nicheName = nicheKey === "unassigned" ? "Unassigned" : state.niches.find((n) => n.id === nicheKey)?.name || "Unknown niche";
-      const nicheCampaignCount = Array.from(countryMap.values()).reduce((sum, arr) => sum + arr.length, 0);
+      const nicheCampaignCount = Array.from(countryMap.values()).reduce((sum, cityMap) => sum + Array.from(cityMap.values()).reduce((s, arr) => s + arr.length, 0), 0);
       const nicheOpen = state.campaignsOpenNicheIds.has(nicheKey);
 
       const countriesHtml = Array.from(countryMap.entries())
-        .map(([country, campaigns]) => {
+        .map(([country, cityMap]) => {
           const countryKey = `${nicheKey}:${country}`;
           const countryOpen = state.campaignsOpenCountryKeys.has(countryKey);
+          const countryCampaignCount = Array.from(cityMap.values()).reduce((sum, arr) => sum + arr.length, 0);
 
-          const campaignsHtml = campaigns
-            .map((c) => {
-              const campaignOpen = state.campaignsOpenCampaignIds.has(c.id);
-              const display = campaignDisplayStatus(c);
-              const treeData = campaignsTreeDataCache.get(c.id);
+          const citiesHtml = Array.from(cityMap.entries())
+            .map(([city, campaigns]) => {
+              const cityKey = `${countryKey}:${city}`;
+              const cityOpen = state.campaignsOpenCityKeys.has(cityKey);
               return `
-              <div class="country-block ${campaignOpen ? "open" : ""}" data-campaigns-campaign-key="${c.id}">
-                <div class="country-row" data-action="toggle-campaigns-campaign" data-campaign-id="${c.id}">
+              <div class="campaigns-city-block ${cityOpen ? "open" : ""}" data-campaigns-city-key="${escapeHtmlAttr(cityKey)}">
+                <div class="country-row" data-action="toggle-campaigns-city" data-campaigns-city-key="${escapeHtmlAttr(cityKey)}">
                   <span class="niche-caret small">▶</span>
-                  <span class="country-name"><i class="bi bi-send-fill"></i> ${escapeHtml(c.name)}</span>
-                  <span class="campaign-status-pill campaign-status-${display.key}" style="margin-right:6px;">${display.label}</span>
+                  <span class="country-name"><i class="bi bi-geo-alt"></i> ${escapeHtml(city)}</span>
+                  <span class="niche-count">${campaigns.length}</span>
                 </div>
-                <div class="catchlog-list" style="padding-left:16px;">${campaignSubNodesHtml(c, treeData)}</div>
+                <div class="campaigns-grid" style="padding:10px 0 10px 20px;">${campaigns.map(cardHtml).join("")}</div>
               </div>`;
             })
             .join("");
@@ -1801,9 +1753,9 @@ async function loadContactedCampaigns() {
             <div class="country-row" data-action="toggle-campaigns-country" data-campaigns-country-key="${escapeHtmlAttr(countryKey)}">
               <span class="niche-caret small">▶</span>
               <span class="country-name"><i class="bi bi-flag"></i> ${escapeHtml(country)}</span>
-              <span class="niche-count">${campaigns.length}</span>
+              <span class="niche-count">${countryCampaignCount}</span>
             </div>
-            <div class="catchlog-list" style="padding-left:16px;">${campaignsHtml}</div>
+            <div class="catchlog-list" style="padding-left:16px;">${citiesHtml}</div>
           </div>`;
         })
         .join("");
@@ -1818,6 +1770,9 @@ async function loadContactedCampaigns() {
     })
     .join("");
 
+  // Niche/country/city rows toggle expand state; only a leaf campaign
+  // card actually navigates - stopPropagation on the card keeps a click
+  // there from also bubbling up and toggling whichever row contains it.
   list.querySelectorAll('[data-action="toggle-campaigns-niche"]').forEach((el) => {
     el.addEventListener("click", () => {
       const key = el.dataset.campaignsNicheKey;
@@ -1835,77 +1790,19 @@ async function loadContactedCampaigns() {
       loadContactedCampaigns();
     });
   });
-  list.querySelectorAll('[data-action="toggle-campaigns-campaign"]').forEach((el) => {
-    el.addEventListener("click", async (e) => {
+  list.querySelectorAll('[data-action="toggle-campaigns-city"]').forEach((el) => {
+    el.addEventListener("click", (e) => {
       e.stopPropagation();
-      const id = Number(el.dataset.campaignId);
-      if (state.campaignsOpenCampaignIds.has(id)) {
-        state.campaignsOpenCampaignIds.delete(id);
-        loadContactedCampaigns();
-      } else {
-        state.campaignsOpenCampaignIds.add(id);
-        try {
-          await getCampaignTreeData(id); // populate the cache before re-rendering, so counts show immediately instead of "Loading…" then a second re-render
-          campaignsTreeLoadErrors.delete(id);
-        } catch (err) {
-          console.error(`Failed to load tree summary for campaign ${id}:`, err);
-          campaignsTreeLoadErrors.add(id);
-        }
-        loadContactedCampaigns(); // always re-renders, success or failure - this is what prevents "Loading…" from getting stuck forever
-      }
-    });
-  });
-  list.querySelectorAll('[data-action="retry-campaign-tree"]').forEach((el) => {
-    el.addEventListener("click", async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const id = Number(el.dataset.campaignId);
-      campaignsTreeLoadErrors.delete(id);
-      try {
-        await getCampaignTreeData(id);
-      } catch (err) {
-        console.error(`Retry failed for campaign ${id}:`, err);
-        campaignsTreeLoadErrors.add(id);
-      }
+      const key = el.dataset.campaignsCityKey;
+      if (state.campaignsOpenCityKeys.has(key)) state.campaignsOpenCityKeys.delete(key);
+      else state.campaignsOpenCityKeys.add(key);
       loadContactedCampaigns();
     });
   });
-  list.querySelectorAll('[data-action="toggle-campaign-followups"]').forEach((el) => {
-    el.addEventListener("click", (e) => {
+  list.querySelectorAll(".campaign-card").forEach((card) => {
+    card.addEventListener("click", (e) => {
       e.stopPropagation();
-      const id = Number(el.dataset.campaignId);
-      if (state.campaignsOpenFollowupsIds.has(id)) state.campaignsOpenFollowupsIds.delete(id);
-      else state.campaignsOpenFollowupsIds.add(id);
-      loadContactedCampaigns();
-    });
-  });
-  list.querySelectorAll('[data-action="toggle-followup-detail"]').forEach((el) => {
-    el.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const key = `${el.dataset.campaignId}:${el.dataset.touchNumber}`;
-      if (state.campaignsOpenFollowupDetailKeys.has(key)) state.campaignsOpenFollowupDetailKeys.delete(key);
-      else state.campaignsOpenFollowupDetailKeys.add(key);
-      loadContactedCampaigns();
-    });
-  });
-  list.querySelectorAll('[data-action="nav-campaign-view"]').forEach((el) => {
-    el.addEventListener("click", (e) => {
-      e.stopPropagation();
-      loadCampaignDetail(el.dataset.campaignId, el.dataset.view, el.dataset.touchNumber ? Number(el.dataset.touchNumber) : null);
-    });
-  });
-  list.querySelectorAll('[data-action="pause-followup"], [data-action="resume-followup"]').forEach((el) => {
-    el.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      const action = el.dataset.action === "pause-followup" ? "pause" : "resume";
-      await api(`/api/campaigns/${el.dataset.campaignId}/followups/${el.dataset.touchNumber}/${action}`, { method: "POST" });
-      showToast(`Followup ${el.dataset.touchNumber - 1} ${action}d`, "success");
-    });
-  });
-  list.querySelectorAll('[data-action="edit-followup"]').forEach((el) => {
-    el.addEventListener("click", (e) => {
-      e.stopPropagation();
-      openFollowupEditModal(Number(el.dataset.campaignId), Number(el.dataset.touchNumber));
+      loadCampaignDetail(card.dataset.campaignId);
     });
   });
 }
@@ -2412,7 +2309,7 @@ function startCampaignDetailPolling(campaignId) {
 
 let campaignDetailCache = null; // { campaign, leads } for the currently-viewed campaign - avoids re-fetching on every tab switch
 
-async function loadCampaignDetail(campaignId, view = "emails", touchNumber = null) {
+async function loadCampaignDetail(campaignId, touchNumber = null) {
   stopCampaignDetailPolling();
   setContentView("contacted-campaign-detail");
   document.getElementById("campaignDetailTitle").textContent = "Loading…";
@@ -2433,31 +2330,54 @@ async function loadCampaignDetail(campaignId, view = "emails", touchNumber = nul
     bodyEl0.innerHTML = `<p class="hint" style="padding:20px 0; color:var(--danger);">${err.message} - <a href="#" data-action="retry-campaign-detail" style="color:var(--danger); text-decoration:underline;">click to retry</a></p>`;
     bodyEl0.querySelector('[data-action="retry-campaign-detail"]').addEventListener("click", (e) => {
       e.preventDefault();
-      loadCampaignDetail(campaignId, view, touchNumber);
+      loadCampaignDetail(campaignId, touchNumber);
     });
     return;
   }
   campaignDetailCache = data;
-  campaignsTreeDataCache.set(Number(campaignId), data); // keep the tree's own cache in sync, so counts shown there reflect anything just changed here
   const { campaign, leads } = data;
 
   document.getElementById("campaignDetailTitle").textContent = touchNumber ? `${campaign.name} - Followup ${touchNumber - 1}` : campaign.name;
   document.getElementById("campaignDetailScope").textContent = `${campaignDisplayStatus(campaign).label}${campaign.pause_reason ? ` - ${campaign.pause_reason}` : ""}`;
-  document.getElementById("campaignDetailTabs").style.display = "none"; // navigation lives in the tree now, not a tab bar
 
   const actionsEl = document.getElementById("campaignDetailActions");
-  const actions = [];
-  if (!touchNumber) {
-    // Whole-campaign actions only make sense when not viewing one
-    // specific follow-up's own scoped content - a follow-up has its own
-    // pause/resume/edit reachable from its tree node instead.
-    if (campaign.status === "draft") actions.push(`<button class="site-generate-btn" data-campaign-action="start">Start</button>`);
-    if (campaign.status === "running") actions.push(`<button class="small-btn" data-campaign-action="pause">Pause</button>`);
-    if (campaign.status === "paused") actions.push(`<button class="site-generate-btn" data-campaign-action="resume">Resume</button>`);
-    if (["draft", "paused"].includes(campaign.status)) actions.push(`<button class="small-btn" data-campaign-action="edit">Edit</button>`);
-    if (["draft", "running", "paused"].includes(campaign.status)) actions.push(`<button class="small-btn danger-btn" data-campaign-action="cancel">Cancel</button>`);
-    actions.push(`<button class="small-btn danger-btn" data-campaign-action="delete">Delete</button>`);
+
+  if (touchNumber) {
+    // Followup drill-down mode - a simpler action set scoped to just
+    // this one touch level, and the tab bar stays hidden since it's for
+    // the whole campaign, not one specific follow-up.
+    actionsEl.innerHTML = `
+      <button class="small-btn" data-action="edit-followup-detail"><i class="bi bi-pencil"></i> Edit</button>
+      <button class="small-btn" data-action="pause-followup-detail"><i class="bi bi-pause-fill"></i> Pause</button>
+      <button class="small-btn" data-action="resume-followup-detail"><i class="bi bi-play-fill"></i> Resume</button>
+      <button class="icon-toggle-btn" data-action="back-to-followups" title="Back to Follow-ups"><i class="bi bi-arrow-left"></i></button>
+    `;
+    actionsEl.querySelector('[data-action="back-to-followups"]').addEventListener("click", () => {
+      loadCampaignDetail(campaignId);
+    });
+    actionsEl.querySelector('[data-action="edit-followup-detail"]').addEventListener("click", () => openFollowupEditModal(Number(campaignId), touchNumber));
+    actionsEl.querySelector('[data-action="pause-followup-detail"]').addEventListener("click", async () => {
+      await api(`/api/campaigns/${campaignId}/followups/${touchNumber}/pause`, { method: "POST" });
+      showToast(`Followup ${touchNumber - 1} paused`, "success");
+    });
+    actionsEl.querySelector('[data-action="resume-followup-detail"]').addEventListener("click", async () => {
+      await api(`/api/campaigns/${campaignId}/followups/${touchNumber}/resume`, { method: "POST" });
+      showToast(`Followup ${touchNumber - 1} resumed`, "success");
+    });
+
+    if (!state.followupDetailTab) state.followupDetailTab = "emails";
+    renderFollowupDetailTabs(campaignId, campaign, leads, touchNumber);
+    return;
   }
+
+  // Whole-campaign mode - full action set plus the tab bar.
+  const actions = [];
+  if (campaign.status === "draft") actions.push(`<button class="site-generate-btn" data-campaign-action="start">Start</button>`);
+  if (campaign.status === "running") actions.push(`<button class="small-btn" data-campaign-action="pause">Pause</button>`);
+  if (campaign.status === "paused") actions.push(`<button class="site-generate-btn" data-campaign-action="resume">Resume</button>`);
+  if (["draft", "paused"].includes(campaign.status)) actions.push(`<button class="small-btn" data-campaign-action="edit">Edit</button>`);
+  if (["draft", "running", "paused"].includes(campaign.status)) actions.push(`<button class="small-btn danger-btn" data-campaign-action="cancel">Cancel</button>`);
+  actions.push(`<button class="small-btn danger-btn" data-campaign-action="delete">Delete</button>`);
   actions.push(`<button class="icon-toggle-btn" data-campaign-action="back" title="Back to list"><i class="bi bi-arrow-left"></i></button>`);
   actionsEl.innerHTML = actions.join("");
 
@@ -2489,25 +2409,60 @@ async function loadCampaignDetail(campaignId, view = "emails", touchNumber = nul
       }
       await api(`/api/campaigns/${campaignId}/${action}`, { method: "POST" });
       showToast(`Campaign ${action}d`, "success");
-      loadCampaignDetail(campaignId, view, touchNumber);
+      loadCampaignDetail(campaignId);
+    });
+  });
+
+  if (!state.campaignDetailTab) state.campaignDetailTab = "emails";
+  renderCampaignDetailTabs();
+  renderActiveCampaignTab();
+
+  if (campaign.status === "running") startCampaignDetailPolling(campaign.id);
+}
+
+// A lightweight tab row for one specific follow-up's own scoped content -
+// deliberately simpler than the main campaign's tab bar (no Followups
+// tab of its own, since a follow-up doesn't have follow-ups), reusing
+// the exact same renderCampaignLeadsTable/renderCampaignReportTab
+// functions the main view uses, just filtered to this touch number.
+function renderFollowupDetailTabs(campaignId, campaign, leads, touchNumber) {
+  const scopedLeads = leads.filter((l) => l.touch_number === touchNumber);
+  const sentCount = scopedLeads.filter((l) => l.status === "sent").length;
+  const repliedCount = scopedLeads.filter((l) => l.replied_at).length;
+  const tabsEl = document.getElementById("campaignDetailTabs");
+  tabsEl.style.display = "flex";
+  const tabs = [
+    { key: "emails", label: "Emails List", count: scopedLeads.length },
+    { key: "sent", label: "Sent", count: sentCount },
+    { key: "replied", label: "Replied", count: repliedCount },
+    { key: "report", label: "Report", count: null },
+  ];
+  tabsEl.innerHTML = tabs
+    .map(
+      (t) =>
+        `<button type="button" class="campaign-detail-tab ${state.followupDetailTab === t.key ? "active" : ""}" data-followup-detail-tab="${t.key}">${t.label}${
+          t.count != null ? ` <span class="campaign-tab-count">${t.count}</span>` : ""
+        }</button>`
+    )
+    .join("");
+  tabsEl.querySelectorAll("[data-followup-detail-tab]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.followupDetailTab = btn.dataset.followupDetailTab;
+      renderFollowupDetailTabs(campaignId, campaign, leads, touchNumber);
     });
   });
 
   const bodyEl = document.getElementById("campaignDetailBody");
-  const scopedLeads = touchNumber ? leads.filter((l) => l.touch_number === touchNumber) : leads;
-  const scopeLabel = touchNumber ? `for Followup ${touchNumber - 1}` : "";
-
-  if (view === "emails") {
-    renderCampaignLeadsTable(bodyEl, campaign, scopedLeads, { selectable: !touchNumber, emptyMessage: `No leads ${scopeLabel} yet.` });
-  } else if (view === "sent") {
+  const scopeLabel = `for Followup ${touchNumber - 1}`;
+  if (state.followupDetailTab === "emails") {
+    renderCampaignLeadsTable(bodyEl, campaign, scopedLeads, { emptyMessage: `No leads ${scopeLabel} yet.` });
+  } else if (state.followupDetailTab === "sent") {
     renderCampaignLeadsTable(bodyEl, campaign, scopedLeads.filter((l) => l.status === "sent"), { emptyMessage: `No emails sent ${scopeLabel} yet.` });
-  } else if (view === "replied") {
+  } else if (state.followupDetailTab === "replied") {
     renderCampaignLeadsTable(bodyEl, campaign, scopedLeads.filter((l) => l.replied_at), { emptyMessage: `No replies ${scopeLabel} yet.` });
-  } else if (view === "report") {
+  } else if (state.followupDetailTab === "report") {
     renderCampaignReportTab(bodyEl, campaign, scopedLeads);
   }
-
-  if (campaign.status === "running") startCampaignDetailPolling(campaign.id);
 }
 
 // The tab bar itself - shown only while viewing an existing campaign
@@ -2764,19 +2719,48 @@ function renderCampaignLeadsTable(bodyEl, campaign, leads, { selectable = false,
 // non-trivial to replicate correctly in JS and the backend already does
 // it exactly right for the scheduler itself).
 async function renderCampaignFollowupsTab(bodyEl, campaign) {
-  bodyEl.innerHTML = `<p class="hint" style="padding:20px 0;">Loading upcoming follow-ups…</p>`;
-  const data = await api(`/api/campaigns/${campaign.id}/upcoming-followups`).then((r) => r.json());
+  bodyEl.innerHTML = `<p class="hint" style="padding:20px 0;">Loading follow-ups…</p>`;
 
-  if (!data.upcoming.length) {
-    bodyEl.innerHTML = `<p class="hint" style="padding:20px 0;">No upcoming follow-ups right now - every lead has either replied, run out of follow-up touches, or hasn't been sent to yet.</p>`;
+  if (!campaign.followup_enabled || !campaign.followup_max_count) {
+    bodyEl.innerHTML = `<p class="hint" style="padding:20px 0;">Follow-ups aren't enabled for this campaign.</p>`;
     return;
   }
 
-  bodyEl.innerHTML = `
+  const { leads } = campaignDetailCache;
+  const upcomingRes = await api(`/api/campaigns/${campaign.id}/upcoming-followups`).then((r) => r.json());
+
+  // A card per follow-up level, up to the campaign's max count - shown
+  // even for a level no lead has reached yet, since the point is being
+  // able to configure a follow-up ahead of time, not just review one
+  // that already happened.
+  const followupCardsHtml = Array.from({ length: campaign.followup_max_count }, (_, i) => i + 2) // touch numbers 2..max+1
+    .map((touchNumber) => {
+      const touchLeads = leads.filter((l) => l.touch_number === touchNumber);
+      const sentCount = touchLeads.filter((l) => l.status === "sent").length;
+      const repliedCount = touchLeads.filter((l) => l.replied_at).length;
+      return `
+      <div class="campaign-card followup-card">
+        <div class="campaign-card-top">
+          <span class="campaign-name">Followup ${touchNumber - 1}</span>
+        </div>
+        <div class="campaign-card-meta">${touchLeads.length} total · ${sentCount} sent · ${repliedCount} replied</div>
+        <div class="followup-card-actions">
+          <button type="button" class="small-btn" data-action="view-followup-detail" data-touch-number="${touchNumber}"><i class="bi bi-eye"></i> View</button>
+          <button type="button" class="small-btn" data-action="edit-followup-card" data-touch-number="${touchNumber}"><i class="bi bi-pencil"></i> Edit</button>
+          <button type="button" class="small-btn" data-action="pause-followup-card" data-touch-number="${touchNumber}"><i class="bi bi-pause-fill"></i> Pause</button>
+          <button type="button" class="small-btn" data-action="resume-followup-card" data-touch-number="${touchNumber}"><i class="bi bi-play-fill"></i> Resume</button>
+        </div>
+      </div>`;
+    })
+    .join("");
+
+  const upcomingHtml = !upcomingRes.upcoming.length
+    ? `<p class="hint" style="padding:12px 0;">No leads due for a follow-up right now.</p>`
+    : `
     <table class="contacted-table campaign-detail-table">
       <thead><tr><th>Lead</th><th>Recipient</th><th>Next touch</th><th>Scheduled for</th><th></th></tr></thead>
       <tbody>
-        ${data.upcoming
+        ${upcomingRes.upcoming
           .map(
             (u) => `
         <tr>
@@ -2792,8 +2776,27 @@ async function renderCampaignFollowupsTab(bodyEl, campaign) {
           )
           .join("")}
       </tbody>
-    </table>
+    </table>`;
+
+  bodyEl.innerHTML = `
+    <div class="campaigns-grid" style="padding:4px 0 16px;">${followupCardsHtml}</div>
+    <h4 style="margin:0 0 8px;">Due now / soon</h4>
+    ${upcomingHtml}
   `;
+
+  bodyEl.querySelectorAll('[data-action="view-followup-detail"]').forEach((btn) => {
+    btn.addEventListener("click", () => loadCampaignDetail(campaign.id, Number(btn.dataset.touchNumber)));
+  });
+  bodyEl.querySelectorAll('[data-action="edit-followup-card"]').forEach((btn) => {
+    btn.addEventListener("click", () => openFollowupEditModal(campaign.id, Number(btn.dataset.touchNumber)));
+  });
+  bodyEl.querySelectorAll('[data-action="pause-followup-card"], [data-action="resume-followup-card"]').forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const action = btn.dataset.action === "pause-followup-card" ? "pause" : "resume";
+      await api(`/api/campaigns/${campaign.id}/followups/${btn.dataset.touchNumber}/${action}`, { method: "POST" });
+      showToast(`Followup ${btn.dataset.touchNumber - 1} ${action}d`, "success");
+    });
+  });
 
   bodyEl.querySelectorAll('[data-action="send-followup-now"]').forEach((btn) => {
     btn.addEventListener("click", async () => {
