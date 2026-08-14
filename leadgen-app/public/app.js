@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.14-15.35";
+const APP_VERSION = "2026.08.14-15.36";
 
 // Every email provider section (Hostinger, Gmail, Bluehost/Titan) shares
 // the same Tracking/History/Alerts/Reports/Campaigns/Setup views, keyed
@@ -4100,6 +4100,9 @@ const needDropdown = document.getElementById("needDropdown");
 const needDropdownTrigger = document.getElementById("needDropdownTrigger");
 const needDropdownPanel = document.getElementById("needDropdownPanel");
 const needDropdownLabel = document.getElementById("needDropdownLabel");
+const gradeDropdownTrigger = document.getElementById("gradeDropdownTrigger");
+const gradeDropdownPanel = document.getElementById("gradeDropdownPanel");
+const gradeDropdownLabel = document.getElementById("gradeDropdownLabel");
 
 const sortDropdown = document.getElementById("sortDropdown");
 const sortDropdownTrigger = document.getElementById("sortDropdownTrigger");
@@ -4131,12 +4134,13 @@ const pageInfo = document.getElementById("pageInfo");
 const prevPageBtn = document.getElementById("prevPageBtn");
 const nextPageBtn = document.getElementById("nextPageBtn");
 
-const filterState = { status: "", need: "", inspected: false };
+const filterState = { status: "", need: "", inspected: false, fitGrade: "" };
 const SORT_OPTIONS = [
   { value: "created_at", label: "Latest first", color: "#948d80" },
   { value: "name", label: "Name (A-Z)", color: "#7fa8d9" },
   { value: "rating", label: "Rating (high-low)", color: "#7fb88a" },
   { value: "needs_count", label: "Most needed first", color: "#ff6a3d" },
+  { value: "fit_score", label: "Best fit first", color: "#5fb87a" },
 ];
 
 const catchLogNameInput = document.getElementById("catchLogName");
@@ -4465,6 +4469,7 @@ exportViewMenu.querySelectorAll("[data-export-view]").forEach((link) => {
       params.set("status", "new");
       if (filterSearch.value) params.set("search", filterSearch.value);
       if (filterState.need) params.set("need", filterState.need);
+      if (filterState.fitGrade) params.set("fitGrade", filterState.fitGrade);
       if (state.activeCatchLogId) params.set("catchLogId", state.activeCatchLogId);
       else if (state.activeNicheId) params.set("nicheId", state.activeNicheId);
     }
@@ -4605,6 +4610,7 @@ scrapeStartBtn.addEventListener("click", async () => {
     params.set("status", "new");
     if (filterSearch.value) params.set("search", filterSearch.value);
     if (filterState.need) params.set("need", filterState.need);
+    if (filterState.fitGrade) params.set("fitGrade", filterState.fitGrade);
     if (filterState.inspected) params.set("inspected", "1");
 
     const res = await api(`/api/catch-logs/${catchLogId}/scrape/start?${params.toString()}`, { method: "POST" });
@@ -4805,6 +4811,31 @@ function renderNeedDropdown() {
     onSelect: (value) => {
       filterState.need = value;
       renderNeedDropdown();
+      state.page = 1;
+      loadLeads();
+    },
+  });
+}
+
+const FIT_GRADE_FILTER_OPTIONS = [
+  { value: "", label: "All grades", color: "#948d80" },
+  { value: "A", label: "A - great fit", color: FIT_GRADE_COLORS.A },
+  { value: "B", label: "B - good fit", color: FIT_GRADE_COLORS.B },
+  { value: "C", label: "C - okay fit", color: FIT_GRADE_COLORS.C },
+  { value: "D", label: "D - weak fit", color: FIT_GRADE_COLORS.D },
+  { value: "F", label: "F - poor fit", color: FIT_GRADE_COLORS.F },
+];
+
+function renderGradeDropdown() {
+  buildFilterDropdown({
+    options: FIT_GRADE_FILTER_OPTIONS,
+    trigger: gradeDropdownTrigger,
+    panel: gradeDropdownPanel,
+    label: gradeDropdownLabel,
+    currentValue: filterState.fitGrade,
+    onSelect: (value) => {
+      filterState.fitGrade = value;
+      renderGradeDropdown();
       state.page = 1;
       loadLeads();
     },
@@ -5780,6 +5811,7 @@ document.querySelectorAll("[data-refresh-section]").forEach((btn) => {
 document.getElementById("resetFiltersBtn").addEventListener("click", async () => {
   filterSearch.value = "";
   filterState.need = "";
+  filterState.fitGrade = "";
   filterState.inspected = false;
   document.getElementById("inspectedFilterBtn").classList.remove("active");
   state.sortBy = "created_at";
@@ -5792,6 +5824,7 @@ document.getElementById("resetFiltersBtn").addEventListener("click", async () =>
   renderQuickNicheDropdown();
   renderQuickCityDropdown();
   renderNeedDropdown();
+  renderGradeDropdown();
   renderSortDropdown();
   await loadLeads();
   showToast("Filters reset", "success");
@@ -7160,6 +7193,7 @@ async function loadLeads() {
     params.set("status", "new");
     if (filterSearch.value) params.set("search", filterSearch.value);
     if (filterState.need) params.set("need", filterState.need);
+    if (filterState.fitGrade) params.set("fitGrade", filterState.fitGrade);
     if (filterState.inspected) params.set("inspected", "1");
     if (state.activeCatchLogId) {
       params.set("catchLogId", state.activeCatchLogId);
@@ -7880,6 +7914,7 @@ goToTopBtn.addEventListener("click", () => {
   const versionTag = document.getElementById("versionTag");
   if (versionTag) versionTag.textContent = "build " + APP_VERSION;
   renderNeedDropdown();
+  renderGradeDropdown();
   renderSortDropdown();
   renderReportsRangeDropdown();
   renderReportsNicheDropdown();

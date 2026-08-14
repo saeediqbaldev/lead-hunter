@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="Xeven Leads" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=1535" />
+<link rel="stylesheet" href="style.css?v=1536" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -400,6 +400,15 @@
               <span class="theme-dropdown-caret">▾</span>
             </button>
             <div class="theme-dropdown-panel" id="needDropdownPanel"></div>
+          </div>
+
+          <div class="theme-dropdown filter-dropdown icon-filter" id="gradeDropdown" title="Fit grade">
+            <button type="button" class="theme-dropdown-trigger" id="gradeDropdownTrigger">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="trigger-icon"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l2.5 2.5"/></svg>
+              <span id="gradeDropdownLabel">Grade</span>
+              <span class="theme-dropdown-caret">▾</span>
+            </button>
+            <div class="theme-dropdown-panel" id="gradeDropdownPanel"></div>
           </div>
 
           <button type="button" id="inspectedFilterBtn" class="small-btn filter-toggle-btn" title="Show only inspected businesses">
@@ -1069,7 +1078,7 @@
 
 
 
-  <script src="app.js?v=1535"></script>
+  <script src="app.js?v=1536"></script>
   <script src="pwa-install.js"></script>
 </body>
 </html>

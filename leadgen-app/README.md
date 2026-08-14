@@ -6,6 +6,22 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.36
+Filter and sort the board by fit grade - the campaign-creation warning
+for low-graded leads and a bulk backfill for existing leads are still
+ahead.
+
+- A new "Grade" filter next to Need in the board's filter panel - A
+  through F, or "All grades." Wired into every place the board's active
+  filters get used (the main board query, "scrape current view," and
+  export), so filtering to just A/B leads genuinely scopes every one of
+  those actions the same way, not just what's on screen.
+- A new "Best fit first" sort option, right alongside the existing
+  ones.
+- Verified end-to-end in a real browser: filtering to Grade A correctly
+  narrowed 3 leads down to exactly the 1 that qualified, and sorting by
+  best fit first correctly ordered all 3 from highest to lowest score.
+
 ## What's in this V15.35
 Fixed a real bug affecting live sent emails: the AI would sometimes
 ignore instructions and add its own broken sign-off like "Best, [Your
