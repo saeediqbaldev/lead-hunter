@@ -6,6 +6,44 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.42
+Fixed the website inspection sending false claims - traced the exact
+bug behind "the contact form is missing" being said about a site that
+had one on every page, and rebuilt both the detection and the AI
+instructions around never doing that again.
+
+- **Found the actual root cause**: the contact-form check was a single
+  search for a literal `<form>` tag in the raw, un-rendered HTML of the
+  homepage only. That fails constantly in completely ordinary
+  situations - a form injected by JavaScript after the page loads, a
+  third-party embed (Typeform, HubSpot, Calendly, JotForm, Google
+  Forms, and common WordPress form plugins), or a form that simply
+  lives on a separate /contact page. This wasn't a rare edge case - it
+  was a check that was wrong by design for a large share of real
+  websites.
+- **Contact-form detection is now genuinely more capable**: recognizes
+  the common third-party embed patterns above, and tries a /contact
+  page as a fallback before concluding anything. Verified directly
+  against the exact scenario that caused the original bug (a form only
+  on /contact, not the homepage) - now correctly detected instead of
+  reported as missing.
+- **Never asserts something is "missing" from an uncertain signal
+  again, by design, not just for this one check** - a checklist item
+  that can't be fully confirmed now says so honestly ("not detected on
+  the homepage or /contact - may still exist via JavaScript or a
+  different page") instead of a confident-sounding fail, and the AI is
+  now explicitly instructed that this kind of hedge is not a claim to
+  repeat as fact. Verified end-to-end with a full mocked pipeline: zero
+  false claims in the generated output.
+- **Two new signals that are genuinely reliable, not guessed** - a
+  copyright year (a real printed fact, good for confidently calling out
+  an actually outdated site) and a count of internal navigation links.
+- **The analysis now actively covers content/copywriting, SEO beyond
+  meta tags, UX/navigation, and design freshness** - not just GMB
+  rating and reviews. Verified the generated output spans multiple of
+  these angles in a single realistic test, not just reputation signals
+  repeated back.
+
 ## What's in this V15.41
 Engaged, Won, and Converted leads are now permanently excluded from all
 future outreach - the website inspection accuracy problem is still

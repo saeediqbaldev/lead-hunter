@@ -35,6 +35,49 @@ function extractVisibleText(html) {
     .trim();
 }
 
+// Contact-form detection from a single no-JavaScript homepage fetch is
+// inherently unreliable - a real form is very often rendered client-side
+// after page load, embedded via a third-party service (Typeform, HubSpot,
+// Calendly, JotForm, Google Forms, Formspree, and common WordPress form
+// plugins), or lives on a dedicated /contact page rather than the
+// homepage. A naive "no <form> tag found" check produces confident-
+// sounding false negatives for all of these everyday, common cases -
+// exactly the kind of wrong, embarrassing claim that must never reach a
+// real prospect. This checks for the actual tag AND the fingerprints of
+// every common way a form gets embedded without one.
+function detectContactForm(html) {
+  if (/<form[^>]*>/i.test(html)) return true;
+  const thirdPartyPatterns = [
+    /typeform\.com/i,
+    /hubspot\.com\/.*forms?/i,
+    /js\.hsforms/i,
+    /calendly\.com/i,
+    /jotform\.com/i,
+    /forms\.gle/i,
+    /docs\.google\.com\/forms/i,
+    /formspree\.io/i,
+    /wufoo\.com/i,
+    /123formbuilder/i,
+    /ninja-?forms/i,
+    /gravityforms/i,
+    /wpcf7|contact-form-7/i,
+    /elementor-form/i,
+    /formstack/i,
+    /jetpack.*contact-form/i,
+  ];
+  return thirdPartyPatterns.some((p) => p.test(html));
+}
+
+// A copyright year is a genuinely concrete, verifiable signal for a
+// stale/outdated site - unlike a structural guess, this is either
+// literally printed on the page or it isn't, so it's safe to state with
+// real confidence rather than hedging.
+function detectCopyrightYear(html) {
+  const matches = [...html.matchAll(/(?:©|&copy;|copyright)\s*(\d{4})/gi)].map((m) => parseInt(m[1], 10));
+  if (!matches.length) return null;
+  return Math.max(...matches);
+}
+
 // ---------- Website checks (live HTML fetch, no paid API) ----------
 async function runWebsiteChecks(website) {
   const checks = [];
@@ -79,8 +122,58 @@ async function runWebsiteChecks(website) {
     const hasViewport = /<meta[^>]+name=["']viewport["']/i.test(html);
     checks.push({ label: "Mobile viewport tag", status: hasViewport ? "pass" : "fail" });
 
-    const hasContactForm = /<form[^>]*>/i.test(html);
-    checks.push({ label: "Contact form present", status: hasContactForm ? "pass" : "warn" });
+    const hasContactFormOnHomepage = detectContactForm(html);
+    let contactFormFound = hasContactFormOnHomepage;
+    let contactFormDetail;
+    if (!hasContactFormOnHomepage) {
+      // Very common pattern: the contact form lives on its own page, not
+      // the homepage - worth one more quick, cheap look before concluding
+      // anything, since that's the single most likely reason a homepage
+      // fetch alone wouldn't show one.
+      try {
+        const contactUrl = new URL("/contact", finalUrl).toString();
+        const contactRes = await fetchWithTimeout(contactUrl, { redirect: "follow" });
+        if (contactRes.ok) {
+          const contactHtml = await contactRes.text();
+          if (detectContactForm(contactHtml)) {
+            contactFormFound = true;
+            contactFormDetail = "found on /contact page";
+          }
+        }
+      } catch {
+        // /contact not reachable - not informative either way, just move on
+      }
+    }
+    checks.push({
+      label: "Contact form present",
+      status: contactFormFound ? "pass" : "warn",
+      // Deliberately hedged, never a confident "missing" - a single fetch
+      // (even with the /contact fallback above) can't rule out a form
+      // rendered by JavaScript or embedded through a widget this check
+      // doesn't recognize, and stating it's absent when it might not be
+      // is exactly the kind of claim that must never reach a real
+      // prospect.
+      detail: contactFormFound ? contactFormDetail : "not detected on the homepage or /contact - may still exist via JavaScript or a different page",
+    });
+
+    const copyrightYear = detectCopyrightYear(html);
+    if (copyrightYear) {
+      const currentYear = new Date().getFullYear();
+      const age = currentYear - copyrightYear;
+      checks.push({
+        label: "Copyright year (footer)",
+        status: age <= 1 ? "pass" : age <= 3 ? "warn" : "fail",
+        detail: `${copyrightYear}${age > 1 ? ` (${age} years old)` : ""}`,
+      });
+    }
+
+    // Rough navigation signal - not a claim about UX quality (which the
+    // AI should read from the actual content/structure), just a
+    // concrete, countable fact: how many distinct internal links exist,
+    // as a floor-level check for "is there basically a site here beyond
+    // one page."
+    const internalLinkCount = new Set((html.match(/<a\b[^>]*href\s*=\s*["']([^"'#][^"']*)["']/gi) || [])).size;
+    checks.push({ label: "Internal navigation links found", status: internalLinkCount >= 4 ? "pass" : "warn", detail: `${internalLinkCount} distinct links found on the homepage` });
 
     // Structured data (schema.org JSON-LD or microdata) helps a business
     // show up richer in search results - a genuinely useful, checkable signal.
@@ -278,6 +371,8 @@ Based on the checklist above and the actual page content if given (don't invent 
 
 Rules:
 - 2-4 genuine strengths (specific, not generic praise), 2-4 genuine weaknesses (specific, actionable gaps).
+- CRITICAL: never state something is "missing," "doesn't have," or "lacks" X unless the checklist marks that exact item FAIL (a confidently, directly observed fact), or the actual page content given above clearly shows it's absent. A checklist item marked WARN with hedged wording like "not detected" or "couldn't confirm" means exactly that - it is NOT a confident claim that the thing is actually missing. A single automated page fetch can't see everything a real visitor would: content added by JavaScript after load, a form embedded through a widget this check doesn't recognize, or a page this fetch never reached. Turning an uncertain signal into a confident claim is the single most damaging mistake possible here - it is exactly the kind of wrong, embarrassing statement that destroys trust the moment a real recipient reads it and knows it's false, because they're looking at their own website right now. When a signal is uncertain, either leave it out of weaknesses entirely, or phrase around what's actually confirmed ("the homepage doesn't clearly showcase X" rather than "there is no X").
+- Weigh EVERY aspect of the business's online presence, not just the GMB rating/review count/reputation signals - actively look for things to say about the actual website content given above. Consider: is the copywriting clear and persuasive or generic and thin (Content/Copywriting); are there obvious gaps beyond meta tags like thin content or no clear service/location keywords (SEO); is the page easy to navigate and well-structured, does it guide a visitor toward an action (UX/UI, Navigation); does the design read as current or dated - a copyright year shown in the checklist several years old is a real, confirmed fact worth using directly, not a guess (Outdated design). A good analysis draws from several of these angles, not just "reviews are good, website could be better."
 - 2-3 suggestedServices this agency could pitch, each a short phrase (e.g. "Local SEO optimization") - these MUST be services this agency actually offers per its profile above, not generic marketing services it may not provide. If no agency profile was given, keep suggestions generic and clearly service-oriented.
 - If page content was given above, weigh in on genuine content quality too (is it clear what the business does, does it read professionally, is there a real call to action) alongside the structural checklist - a page can pass every structural check and still read poorly, or vice versa.
 - fitScore (0-100) is NOT the same thing as the website/GMB/social health scores above, and is very often the *inverse* of them - it measures how good a PROSPECT this business is for cold outreach from THIS specific agency, not how good their current online presence already is. A business with a poor or missing website is often a BETTER prospect (an obvious, provable gap this agency's own services fix), not a worse one. Weigh: (a) does this business look established enough to plausibly afford these services (reviews, rating, being open) - a very new or clearly struggling business may not have budget yet; (b) is there a real, specific, provable gap here that maps to a service this agency actually offers; (c) would pitching this specific agency's services to this specific business make obvious sense. Score low if the business is not operational, has no real weaknesses to pitch, or the gaps found don't map to anything this agency offers.
