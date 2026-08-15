@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="Xeven Leads" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=1538" />
+<link rel="stylesheet" href="style.css?v=1541" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -689,16 +689,21 @@
 
       <!-- ---------- Contacted: Campaign detail ---------- -->
       <section class="panel simple-panel view-hidden" id="contactedCampaignDetailView">
-        <div class="board-header">
-          <div class="board-header-row-top">
-            <div class="board-header-title-group">
-              <h2 id="campaignDetailTitle">Campaign</h2>
-              <div class="scope-line" id="campaignDetailScope"></div>
+        <div class="campaign-detail-sticky-header">
+          <div class="board-header">
+            <div class="board-header-row-top">
+              <div class="board-header-left-group">
+                <button class="icon-toggle-btn" id="campaignDetailBackBtn" title="Back to list"><i class="bi bi-arrow-left"></i></button>
+                <div class="board-header-title-group">
+                  <h2 id="campaignDetailTitle">Campaign</h2>
+                  <div class="scope-line" id="campaignDetailScope"></div>
+                </div>
+              </div>
+              <div class="board-header-actions" id="campaignDetailActions"></div>
             </div>
-            <div class="board-header-actions" id="campaignDetailActions"></div>
           </div>
+          <div id="campaignDetailTabs" class="campaign-detail-tabs" style="display:none;"></div>
         </div>
-        <div id="campaignDetailTabs" class="campaign-detail-tabs" style="display:none;"></div>
         <div id="campaignDetailBody" class="campaign-detail-body"></div>
       </section>
 
@@ -1028,7 +1033,7 @@
 
   </main>
 
-  <button id="goToTopBtn" class="go-to-top-btn" title="Go to top" style="display:none;"><i class="bi bi-arrow-up"></i></button>
+  <button id="goToTopBtn" class="go-to-top-btn" title="Go to top"><i class="bi bi-arrow-up"></i></button>
 
   <!-- Generic modal, reused for create/rename/delete-confirm across niches and catch logs -->
   <!-- Status/Needs color-key popup, opened via the (i) icon in the Catch Log header -->
@@ -1098,7 +1103,7 @@
 
 
 
-  <script src="app.js?v=1538"></script>
+  <script src="app.js?v=1541"></script>
   <script src="pwa-install.js"></script>
 </body>
 </html>

@@ -56,7 +56,9 @@ async function scheduleFollowUps(campaign) {
   // hurts sender reputation for every other send too.
   const candidates = db
     .prepare(
-      `SELECT ecl.* FROM email_campaign_leads ecl
+      `SELECT ecl.*,
+              (SELECT sent_at FROM email_campaign_leads WHERE campaign_id = ecl.campaign_id AND lead_id = ecl.lead_id AND status = 'sent' ORDER BY touch_number ASC LIMIT 1) AS first_touch_sent_at
+       FROM email_campaign_leads ecl
        LEFT JOIN tracked_emails te ON te.id = ecl.tracked_email_id
        WHERE ecl.campaign_id = ?
          AND ecl.status = 'sent'
@@ -69,20 +71,27 @@ async function scheduleFollowUps(campaign) {
     .all(campaign.id, campaign.followup_max_count + 1);
 
   for (const row of candidates) {
-    const sentAtMs = new Date(row.sent_at.replace(" ", "T") + "Z").getTime();
-    const dueAtMs = sentAtMs + campaign.followup_wait_days * 86400000;
+    // Anchored to the FIRST email ever sent to this lead, not the most
+    // recent touch - so if an earlier touch goes out later than
+    // scheduled (a pause, a delayed pickup, etc.), the whole sequence
+    // doesn't drift forward with it. Touch N's due date is always
+    // first-send + (N-1) * wait_days, computed fresh every tick rather
+    // than compounding delays touch over touch.
+    const firstSentAtMs = new Date((row.first_touch_sent_at || row.sent_at).replace(" ", "T") + "Z").getTime();
+    const nextTouchNumber = row.touch_number + 1;
+    const dueAtMs = firstSentAtMs + (nextTouchNumber - 1) * campaign.followup_wait_days * 86400000;
     if (Date.now() < dueAtMs) continue;
 
     // This specific next touch level might have been paused independently
     // of the rest of the sequence (see the per-followup pause/resume
     // routes) - a different lead due for a different touch number should
     // still be processed this tick, so this only skips this one candidate.
-    const nextTouchNumber = row.touch_number + 1;
     const touchConfig = db.prepare("SELECT status FROM campaign_followup_configs WHERE campaign_id = ? AND touch_number = ?").get(campaign.id, nextTouchNumber);
     if (touchConfig?.status === "paused") continue;
 
     const lead = db.prepare("SELECT * FROM leads WHERE id = ?").get(row.lead_id);
     if (!lead) continue;
+    if (lead.outreach_excluded_at) continue; // permanently excluded (Engaged/Won/Converted) - never gets another touch, no matter how it reached that status
     let socials = {};
     try {
       socials = JSON.parse(lead.socials || "{}");
@@ -307,10 +316,50 @@ async function processCampaignLead(campaign, campaignLeadRow) {
   db.prepare("UPDATE tracked_emails SET body_html = ? WHERE id = ?").run(html, trackedId);
   db.prepare("UPDATE email_campaign_leads SET status = 'sent', tracked_email_id = ?, sent_at = datetime('now') WHERE id = ?").run(trackedId, campaignLeadRow.id);
   db.prepare("UPDATE leads SET status = 'contacted' WHERE id = ? AND status IN ('new', 'shortlisted')").run(lead.id);
+  db.prepare("UPDATE email_campaigns SET auto_resume_attempts = 0 WHERE id = ? AND auto_resume_attempts > 0").run(campaign.id);
   return { ok: true, skipped: false };
 }
 
+const AUTO_RESUME_WAIT_MS = 5 * 60 * 1000;
+const MAX_AUTO_RESUME_ATTEMPTS = 5; // ~25 minutes of retrying a transient issue before requiring manual review, so a genuinely broken config (wrong password, etc.) doesn't retry forever
+
+// A campaign auto-paused by an actual failure (SMTP rejecting the send,
+// the AI provider erroring out, etc.) gets a few automatic chances to
+// recover on its own - many of these are transient (a brief provider
+// outage, a momentary rate limit) and don't need a person to notice and
+// click Resume by hand. A campaign the person paused themselves is never
+// touched here - see the exact 'Paused manually' string the manual
+// pause route uses, which this deliberately excludes.
+function autoResumeStalledCampaigns() {
+  const candidates = db
+    .prepare(
+      `SELECT * FROM email_campaigns
+       WHERE status = 'paused'
+         AND pause_reason IS NOT NULL
+         AND pause_reason != 'Paused manually'
+         AND auto_resume_attempts < ?
+         AND paused_at IS NOT NULL
+         AND paused_at <= datetime('now', '-5 minutes')`
+    )
+    .all(MAX_AUTO_RESUME_ATTEMPTS);
+
+  for (const campaign of candidates) {
+    db.prepare("UPDATE email_campaign_leads SET status = 'pending', error = NULL WHERE campaign_id = ? AND status IN ('failed', 'inspecting', 'generating', 'sending')").run(campaign.id);
+    db.prepare(
+      "UPDATE email_campaigns SET status = 'running', paused_at = NULL, pause_reason = NULL, auto_resume_attempts = auto_resume_attempts + 1 WHERE id = ?"
+    ).run(campaign.id);
+    console.log(`[campaign-scheduler] Auto-resumed campaign ${campaign.id} after a ${campaign.pause_reason.slice(0, 80)} failure (attempt ${campaign.auto_resume_attempts + 1}/${MAX_AUTO_RESUME_ATTEMPTS}).`);
+    notifyUser(campaign.user_id, {
+      type: "campaign_auto_resumed",
+      title: "Campaign auto-resumed",
+      message: `"${campaign.name}" was paused by a failure and has been automatically resumed.`,
+      link: `campaign:${campaign.id}`,
+    });
+  }
+}
+
 async function tick() {
+  autoResumeStalledCampaigns();
   const campaigns = db.prepare("SELECT * FROM email_campaigns WHERE status = 'running'").all();
 
   for (const campaign of campaigns) {
@@ -399,4 +448,4 @@ function startScheduler() {
   }, TICK_INTERVAL_MS);
 }
 
-module.exports = { startScheduler, tick, scheduleFollowUps };
+module.exports = { startScheduler, tick, scheduleFollowUps, autoResumeStalledCampaigns };

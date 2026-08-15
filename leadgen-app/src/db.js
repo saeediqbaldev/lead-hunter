@@ -433,6 +433,18 @@ CREATE TABLE IF NOT EXISTS api_key_daily_usage (
     db.exec("ALTER TABLE leads ADD COLUMN fit_source TEXT"); // 'base' (instant, rule-based) or 'ai' (refined by the analysis pipeline)
     db.exec("CREATE INDEX IF NOT EXISTS idx_leads_fit_grade ON leads(fit_grade)");
   }
+  if (!leadCols.includes("outreach_excluded_at")) {
+    db.exec("ALTER TABLE leads ADD COLUMN outreach_excluded_at TEXT");
+    // Backfill: a lead already at one of these statuses before this
+    // column existed still needs to be excluded going forward - this is
+    // a one-way flag set once and never cleared, even if the status is
+    // later changed away from Engaged/Won/Converted (accidentally or
+    // otherwise), so it stays permanently out of future outreach.
+    const backfilled = db
+      .prepare("UPDATE leads SET outreach_excluded_at = datetime('now') WHERE status IN ('engaged', 'won', 'converted') AND outreach_excluded_at IS NULL")
+      .run();
+    if (backfilled.changes) console.log(`[migration] Permanently excluded ${backfilled.changes} lead(s) already at Engaged/Won/Converted from future outreach.`);
+  }
 
   // One-time cleanup: unpin every currently-pinned lead except ones with
   // real pipeline progress (Engaged/Won/Converted) - a lot of leads
@@ -877,6 +889,9 @@ CREATE INDEX IF NOT EXISTS idx_country_scrape_jobs_user ON country_scrape_jobs(u
   }
   if (!campaignCols.includes("send_provider")) {
     db.exec("ALTER TABLE email_campaigns ADD COLUMN send_provider TEXT NOT NULL DEFAULT 'hostinger'");
+  }
+  if (!campaignCols.includes("auto_resume_attempts")) {
+    db.exec("ALTER TABLE email_campaigns ADD COLUMN auto_resume_attempts INTEGER NOT NULL DEFAULT 0");
   }
   const campaignLeadCols = db.prepare("PRAGMA table_info(email_campaign_leads)").all().map((c) => c.name);
   if (!campaignLeadCols.includes("touch_number")) {

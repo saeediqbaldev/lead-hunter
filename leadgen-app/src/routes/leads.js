@@ -162,12 +162,19 @@ router.patch("/:id", (req, res) => {
   const newPinned = pinned !== undefined ? (pinned ? 1 : 0) : statusChangedToAutoPin ? 1 : existing.pinned;
   const newPinReason = pinned === undefined && statusChangedToAutoPin ? `Status: ${status.charAt(0).toUpperCase()}${status.slice(1)}` : existing.pin_reason;
 
-  db.prepare("UPDATE leads SET status = ?, notes = ?, pinned = ?, pin_reason = ?, owner_name = ? WHERE id = ?").run(
+  // Permanent, one-way exclusion from all future outreach - set once,
+  // the moment the lead first reaches one of these statuses, and never
+  // cleared afterward even if the status later changes away from it.
+  const newOutreachExcludedAt =
+    existing.outreach_excluded_at || (AUTO_PIN_STATUSES.includes(newStatus) ? new Date().toISOString().replace("T", " ").slice(0, 19) : null);
+
+  db.prepare("UPDATE leads SET status = ?, notes = ?, pinned = ?, pin_reason = ?, owner_name = ?, outreach_excluded_at = ? WHERE id = ?").run(
     newStatus,
     newNotes,
     newPinned,
     newPinReason,
     newOwnerName,
+    newOutreachExcludedAt,
     id
   );
   res.json(rowToLead(db.prepare("SELECT * FROM leads WHERE id = ?").get(id)));

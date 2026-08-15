@@ -305,18 +305,42 @@ async function checkRepliesForUserProvider(userId, provider) {
        ORDER BY created_at DESC LIMIT 1`
     );
     const markFailed = db.prepare("UPDATE tracked_emails SET delivery_failed_at = datetime('now') WHERE id = ?");
+    // Same mechanism the manual "Stop follow-ups" button uses (see
+    // POST /campaigns/:id/leads/:leadRowId/stop-followups) - inserting a
+    // 'skipped' row for the next touch number makes it the new "latest
+    // touch" for the lead, so the scheduler's own candidate query (which
+    // only ever looks at the latest touch) naturally never revisits it.
+    const findCampaignLeadRow = db.prepare("SELECT * FROM email_campaign_leads WHERE tracked_email_id = ?");
+    const findLatestTouchId = db.prepare("SELECT MAX(id) AS maxId FROM email_campaign_leads WHERE campaign_id = ? AND lead_id = ?");
+    const insertAutoStop = db.prepare(
+      "INSERT INTO email_campaign_leads (campaign_id, lead_id, status, touch_number, error) VALUES (?, ?, 'skipped', ?, 'Follow-ups stopped automatically - this email bounced')"
+    );
     let markedCount = 0;
+    let autoStoppedCount = 0;
     for (const bounce of bounceRecords) {
       for (const address of bounce.candidateAddresses || []) {
         const match = findRecentSend.get(userId, `%${address}%`);
         if (match) {
           markFailed.run(match.id);
           markedCount++;
+
+          // If this bounced send was part of a campaign and is still
+          // that lead's most recent touch (no later touch already
+          // exists), stop future follow-ups for it automatically.
+          const campaignLeadRow = findCampaignLeadRow.get(String(match.id));
+          if (campaignLeadRow) {
+            const latest = findLatestTouchId.get(campaignLeadRow.campaign_id, campaignLeadRow.lead_id);
+            if (latest.maxId === campaignLeadRow.id) {
+              insertAutoStop.run(campaignLeadRow.campaign_id, campaignLeadRow.lead_id, campaignLeadRow.touch_number + 1);
+              autoStoppedCount++;
+            }
+          }
           break; // one match per bounce is enough - stop trying its other candidate addresses
         }
       }
     }
     if (markedCount) console.log(`[reply-checker] Matched ${markedCount} bounce(s) to an original send - excluded from Sent counts.`);
+    if (autoStoppedCount) console.log(`[reply-checker] Automatically stopped follow-ups for ${autoStoppedCount} lead(s) whose email bounced.`);
   }
 
   if (genuineReplies.size === 0) {

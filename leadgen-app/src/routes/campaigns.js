@@ -57,7 +57,7 @@ router.post("/", (req, res) => {
     candidateLeads = db
       .prepare(
         `SELECT l.id, l.socials FROM leads l JOIN catch_logs cl ON cl.id = l.catch_log_id JOIN niches n ON n.id = cl.niche_id
-         WHERE l.id IN (${placeholders}) AND n.user_id = ?`
+         WHERE l.id IN (${placeholders}) AND n.user_id = ? AND l.outreach_excluded_at IS NULL`
       )
       .all(...leadIds, userId);
   } else if (Array.isArray(catchLogIds) && catchLogIds.length) {
@@ -65,16 +65,20 @@ router.post("/", (req, res) => {
     candidateLeads = db
       .prepare(
         `SELECT l.id, l.socials FROM leads l JOIN catch_logs cl ON cl.id = l.catch_log_id JOIN niches n ON n.id = cl.niche_id
-         WHERE cl.id IN (${placeholders}) AND n.user_id = ?`
+         WHERE cl.id IN (${placeholders}) AND n.user_id = ? AND l.outreach_excluded_at IS NULL`
       )
       .all(...catchLogIds, userId);
   } else if (catchLogId) {
     candidateLeads = db
-      .prepare(`SELECT l.id, l.socials FROM leads l JOIN catch_logs cl ON cl.id = l.catch_log_id JOIN niches n ON n.id = cl.niche_id WHERE cl.id = ? AND n.user_id = ?`)
+      .prepare(
+        `SELECT l.id, l.socials FROM leads l JOIN catch_logs cl ON cl.id = l.catch_log_id JOIN niches n ON n.id = cl.niche_id WHERE cl.id = ? AND n.user_id = ? AND l.outreach_excluded_at IS NULL`
+      )
       .all(catchLogId, userId);
   } else if (nicheId) {
     candidateLeads = db
-      .prepare(`SELECT l.id, l.socials FROM leads l JOIN catch_logs cl ON cl.id = l.catch_log_id JOIN niches n ON n.id = cl.niche_id WHERE n.id = ? AND n.user_id = ?`)
+      .prepare(
+        `SELECT l.id, l.socials FROM leads l JOIN catch_logs cl ON cl.id = l.catch_log_id JOIN niches n ON n.id = cl.niche_id WHERE n.id = ? AND n.user_id = ? AND l.outreach_excluded_at IS NULL`
+      )
       .all(nicheId, userId);
   } else {
     return res.status(400).json({ error: "Select a niche, a city, or a specific list of leads to target" });
@@ -89,6 +93,26 @@ router.post("/", (req, res) => {
   });
 
   if (emailable.length === 0) {
+    // Distinguish the two different reasons the list ended up empty,
+    // since "no email on file" would be actively misleading for a lead
+    // that has one but was excluded for having already been Won/etc.
+    let excludedCount = 0;
+    if (Array.isArray(leadIds) && leadIds.length) {
+      const placeholders = leadIds.map(() => "?").join(",");
+      excludedCount = db.prepare(`SELECT COUNT(*) AS c FROM leads WHERE id IN (${placeholders}) AND outreach_excluded_at IS NOT NULL`).get(...leadIds).c;
+    } else if (Array.isArray(catchLogIds) && catchLogIds.length) {
+      const placeholders = catchLogIds.map(() => "?").join(",");
+      excludedCount = db.prepare(`SELECT COUNT(*) AS c FROM leads WHERE catch_log_id IN (${placeholders}) AND outreach_excluded_at IS NOT NULL`).get(...catchLogIds).c;
+    } else if (catchLogId) {
+      excludedCount = db.prepare("SELECT COUNT(*) AS c FROM leads WHERE catch_log_id = ? AND outreach_excluded_at IS NOT NULL").get(catchLogId).c;
+    } else if (nicheId) {
+      excludedCount = db.prepare("SELECT COUNT(*) AS c FROM leads l JOIN catch_logs cl ON cl.id = l.catch_log_id WHERE cl.niche_id = ? AND l.outreach_excluded_at IS NOT NULL").get(nicheId).c;
+    }
+    if (excludedCount > 0) {
+      return res
+        .status(400)
+        .json({ error: `Every lead in this scope is either missing an email address or already Engaged/Won/Converted (${excludedCount} permanently excluded from outreach) - nothing to send to.` });
+    }
     return res.status(400).json({ error: "None of the leads in this scope have an email address on file - nothing to send to." });
   }
 
@@ -272,7 +296,7 @@ router.post("/:id/pause", requireOwnedCampaign, (req, res) => {
 router.post("/:id/resume", requireOwnedCampaign, (req, res) => {
   if (req.campaign.status !== "paused") return res.status(400).json({ error: "Only a paused campaign can be resumed" });
   db.prepare("UPDATE email_campaign_leads SET status = 'pending', error = NULL WHERE campaign_id = ? AND status IN ('failed', 'inspecting', 'generating', 'sending')").run(req.campaign.id);
-  db.prepare("UPDATE email_campaigns SET status = 'running', paused_at = NULL, pause_reason = NULL WHERE id = ?").run(req.campaign.id);
+  db.prepare("UPDATE email_campaigns SET status = 'running', paused_at = NULL, pause_reason = NULL, auto_resume_attempts = 0 WHERE id = ?").run(req.campaign.id);
   res.json({ ok: true });
 });
 
@@ -405,7 +429,8 @@ router.get("/:id/upcoming-followups", requireOwnedCampaign, (req, res) => {
 
   const rows = db
     .prepare(
-      `SELECT ecl.id, ecl.lead_id, ecl.touch_number, ecl.sent_at, l.name AS lead_name, l.socials
+      `SELECT ecl.id, ecl.lead_id, ecl.touch_number, ecl.sent_at, l.name AS lead_name, l.socials,
+              (SELECT sent_at FROM email_campaign_leads WHERE campaign_id = ecl.campaign_id AND lead_id = ecl.lead_id AND status = 'sent' ORDER BY touch_number ASC LIMIT 1) AS first_touch_sent_at
        FROM email_campaign_leads ecl
        JOIN leads l ON l.id = ecl.lead_id
        WHERE ecl.campaign_id = ?
@@ -424,17 +449,22 @@ router.get("/:id/upcoming-followups", requireOwnedCampaign, (req, res) => {
     } catch {
       email = null;
     }
-    const sentAtMs = new Date(row.sent_at.replace(" ", "T") + "Z").getTime();
-    const scheduledAt = new Date(sentAtMs + req.campaign.followup_wait_days * 86400000).toISOString();
+    // Anchored to the first email ever sent to this lead - matches
+    // scheduleFollowUps in campaignScheduler.js exactly, so this list
+    // never shows a different "due" time than what will actually happen.
+    const firstSentAtMs = new Date((row.first_touch_sent_at || row.sent_at).replace(" ", "T") + "Z").getTime();
+    const nextTouchNumber = row.touch_number + 1;
+    const dueAtMs = firstSentAtMs + (nextTouchNumber - 1) * req.campaign.followup_wait_days * 86400000;
+    const scheduledAt = new Date(dueAtMs).toISOString();
     return {
       campaignLeadId: row.id,
       leadId: row.lead_id,
       leadName: row.lead_name,
       recipientEmail: email,
       currentTouchNumber: row.touch_number,
-      nextTouchNumber: row.touch_number + 1,
+      nextTouchNumber,
       scheduledAt,
-      overdue: Date.now() >= sentAtMs + req.campaign.followup_wait_days * 86400000,
+      overdue: Date.now() >= dueAtMs,
     };
   });
 
@@ -462,6 +492,7 @@ router.post("/:id/leads/:leadRowId/send-followup-now", requireOwnedCampaign, asy
   if (touchConfig?.status === "paused") return res.status(409).json({ error: `Follow-up ${leadRow.touch_number} is paused - resume it first.` });
 
   const lead = db.prepare("SELECT * FROM leads WHERE id = ?").get(leadRow.lead_id);
+  if (lead?.outreach_excluded_at) return res.status(400).json({ error: "This lead has reached Engaged/Won/Converted and is permanently excluded from further outreach." });
   let socials = {};
   try {
     socials = JSON.parse(lead?.socials || "{}");

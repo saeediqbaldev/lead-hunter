@@ -925,6 +925,7 @@ button#huntBtn:disabled, .primary-btn:disabled { background: var(--border); colo
 .board-header h2 { margin: 0; flex-shrink: 0; }
 .scope-line { min-width: 0; overflow-wrap: break-word; word-break: break-word; }
 .board-header-title-group { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; min-width: 0; }
+.board-header-left-group { display: flex; align-items: center; gap: 12px; min-width: 0; }
 
 .board-header-row-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .board-header-actions { display: flex; gap: 6px; align-self: flex-start; }
@@ -1213,6 +1214,22 @@ button#huntBtn:disabled, .primary-btn:disabled { background: var(--border); colo
    deliberately NOT included - forcing overflow on those would conflict
    with their own header+scrollable-body structure. */
 .panel.simple-panel { overflow-y: auto; }
+
+/* Campaign detail's own header (title + Start/Pause/Resume/etc actions)
+   plus its tab bar stay visible together while scrolling through a long
+   lead list - the negative margin cancels the panel's own padding so
+   the sticky background extends full width with no gap at the edges,
+   then the padding is re-added as the wrapper's own inner spacing. */
+#contactedCampaignDetailView .campaign-detail-sticky-header {
+  position: sticky;
+  top: -22px;
+  z-index: 5;
+  background: var(--panel);
+  margin: -22px -22px 0;
+  padding-top: 22px;
+}
+#contactedCampaignDetailView .campaign-detail-sticky-header .board-header { padding: 0 22px 16px; }
+#contactedCampaignDetailView .campaign-detail-tabs { margin: 0; padding: 0 22px; }
 
 /* ---------- Settings pages (API Keys / Colors / Team) - these class names
    existed in the HTML with zero corresponding CSS, which is exactly why

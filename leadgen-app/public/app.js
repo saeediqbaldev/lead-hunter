@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.14-15.38";
+const APP_VERSION = "2026.08.15-15.41";
 
 // Every email provider section (Hostinger, Gmail, Bluehost/Titan) shares
 // the same Tracking/History/Alerts/Reports/Campaigns/Setup views, keyed
@@ -2366,16 +2366,15 @@ async function loadCampaignDetail(campaignId, touchNumber = null) {
   if (touchNumber) {
     // Followup drill-down mode - a simpler action set scoped to just
     // this one touch level, and the tab bar stays hidden since it's for
-    // the whole campaign, not one specific follow-up.
+    // the whole campaign, not one specific follow-up. The dedicated
+    // left-side back button (wired below, after this if-block) handles
+    // navigation consistently, so no separate back button needed here.
     actionsEl.innerHTML = `
       <button class="small-btn" data-action="edit-followup-detail"><i class="bi bi-pencil"></i> Edit</button>
       <button class="small-btn" data-action="pause-followup-detail"><i class="bi bi-pause-fill"></i> Pause</button>
       <button class="small-btn" data-action="resume-followup-detail"><i class="bi bi-play-fill"></i> Resume</button>
-      <button class="icon-toggle-btn" data-action="back-to-followups" title="Back to Follow-ups"><i class="bi bi-arrow-left"></i></button>
     `;
-    actionsEl.querySelector('[data-action="back-to-followups"]').addEventListener("click", () => {
-      loadCampaignDetail(campaignId);
-    });
+    document.getElementById("campaignDetailBackBtn").onclick = () => loadCampaignDetail(campaignId);
     actionsEl.querySelector('[data-action="edit-followup-detail"]').addEventListener("click", () => openFollowupEditModal(Number(campaignId), touchNumber));
     actionsEl.querySelector('[data-action="pause-followup-detail"]').addEventListener("click", async () => {
       await api(`/api/campaigns/${campaignId}/followups/${touchNumber}/pause`, { method: "POST" });
@@ -2399,17 +2398,16 @@ async function loadCampaignDetail(campaignId, touchNumber = null) {
   if (["draft", "paused"].includes(campaign.status)) actions.push(`<button class="small-btn" data-campaign-action="edit">Edit</button>`);
   if (["draft", "running", "paused"].includes(campaign.status)) actions.push(`<button class="small-btn danger-btn" data-campaign-action="cancel">Cancel</button>`);
   actions.push(`<button class="small-btn danger-btn" data-campaign-action="delete">Delete</button>`);
-  actions.push(`<button class="icon-toggle-btn" data-campaign-action="back" title="Back to list"><i class="bi bi-arrow-left"></i></button>`);
   actionsEl.innerHTML = actions.join("");
+
+  document.getElementById("campaignDetailBackBtn").onclick = () => {
+    loadContactedCampaigns();
+    setContentView("contacted-campaigns");
+  };
 
   actionsEl.querySelectorAll("[data-campaign-action]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const action = btn.dataset.campaignAction;
-      if (action === "back") {
-        loadContactedCampaigns();
-        setContentView("contacted-campaigns");
-        return;
-      }
       if (action === "edit") {
         showCampaignEditForm(campaign);
         return;
@@ -2438,7 +2436,24 @@ async function loadCampaignDetail(campaignId, touchNumber = null) {
   renderCampaignDetailTabs();
   renderActiveCampaignTab();
 
-  if (campaign.status === "running") startCampaignDetailPolling(campaign.id);
+  if (campaign.status === "running") {
+    startCampaignDetailPolling(campaign.id);
+    if (state.campaignDetailTab === "emails") scrollToLastSentLeadRow(leads);
+  }
+}
+
+// Jumps straight to the most recently sent lead's row - useful the
+// moment you open a running campaign, since that's usually the thing
+// you actually want to check on, not the top of a long, mostly-pending
+// list. Silently does nothing if no lead has been sent to yet.
+function scrollToLastSentLeadRow(leads) {
+  const sentLeads = leads.filter((l) => l.status === "sent" && l.sent_at);
+  if (!sentLeads.length) return;
+  const mostRecent = sentLeads.reduce((latest, l) => (l.sent_at > latest.sent_at ? l : latest));
+  requestAnimationFrame(() => {
+    const row = document.querySelector(`[data-lead-row-toggle="${mostRecent.id}"]`);
+    row?.scrollIntoView({ block: "center", behavior: "smooth" });
+  });
 }
 
 // A lightweight tab row for one specific follow-up's own scoped content -

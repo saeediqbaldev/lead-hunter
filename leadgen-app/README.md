@@ -6,6 +6,96 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.41
+Engaged, Won, and Converted leads are now permanently excluded from all
+future outreach - the website inspection accuracy problem is still
+ahead.
+
+- **A one-way flag, not a live status check** - set the moment a lead
+  first reaches Engaged/Won/Converted and never cleared again, even if
+  the status is later changed back (by mistake or otherwise). This is
+  the deliberate difference from just checking current status: once a
+  lead crosses this line, it stays excluded forever, matching exactly
+  what was asked for.
+- **Blocks every actual way an email gets sent** - campaign creation
+  (including a lead explicitly hand-picked into the campaign, not just
+  bulk-scoped ones), automatic follow-up scheduling, and the manual
+  "Send Now" action. Traced through the whole app to confirm there's no
+  other path that actually dispatches an email outside of these three.
+- **Existing leads already at one of these statuses get backfilled
+  automatically** - a lead that reached Won before this feature existed
+  is still correctly excluded going forward, verified directly against
+  a simulated pre-upgrade install.
+- **A clearer error message** when a campaign scope has no valid leads
+  - now distinguishes "nobody has an email on file" from "these leads
+  are permanently excluded," since the old generic message would have
+  been actively confusing for a lead that has an email but was excluded
+  for having already converted.
+- Verified the complete, most important case end-to-end: mark a lead
+  Won, confirm a campaign explicitly targeting it silently skips it,
+  revert the status back to New, and confirm it's still excluded on a
+  second attempt - exactly the "forever, no matter what" behavior asked
+  for.
+
+## What's in this V15.40
+Finishes the campaign detail work: opens a running campaign scrolled to
+where you'd actually want to look, keeps the action buttons reachable
+while scrolling, and campaigns can now recover from a transient SMTP or
+AI provider failure on their own.
+
+- **Opening a running campaign now scrolls straight to the most
+  recently sent lead** - usually the thing you actually want to check
+  on, not the top of a long, mostly-pending list. Verified in a real
+  browser: the view lands exactly on the boundary between sent and
+  pending leads.
+- **The header (title, Start/Pause/Resume/Cancel/Delete) stays visible
+  while scrolling** through a long lead list, and the Back button moved
+  to the far left, next to the title, instead of being just the
+  left-most button in the right-aligned action group.
+- **A campaign paused by an actual failure (SMTP rejecting a send, the
+  AI provider erroring out) now tries to resume itself after 5
+  minutes** - many of these are transient and don't need someone to
+  notice and click Resume by hand. Deliberately never touches a
+  campaign you paused yourself - traced the exact distinction the app
+  already makes between the two. Capped at 5 automatic attempts so a
+  genuinely broken config (wrong password, etc.) doesn't retry forever
+  and spam notifications; the counter resets the moment a send actually
+  succeeds, or if you resume it yourself. Verified against all four
+  real cases: an eligible campaign resumes correctly, a manually-paused
+  one is never touched, one still under 5 minutes correctly waits, and
+  one that's already used up its retries correctly stays paused.
+
+## What's in this V15.39
+Fixed the Go-to-Top button (a real bug, not a missing feature), and
+reworked follow-up timing to be drift-free with automatic bounce
+handling. Item 3 (campaign detail scroll/sticky buttons/auto-resume)
+is still in progress.
+
+- **The Go-to-Top button was never actually going to appear** - a
+  leftover inline `display:none` in the HTML was silently overriding
+  the CSS that was supposed to fade it in on scroll, so no amount of
+  scrolling would ever have shown it. Fixed and verified directly: it
+  now appears after scrolling and correctly scrolls back to top on
+  click.
+- **Follow-up timing is now anchored to the first email sent to each
+  lead**, not the most recent touch - so if one touch in the sequence
+  goes out later than scheduled, the rest of the sequence doesn't drift
+  forward with it. Verified with a deliberately-late touch: under the
+  old logic the next follow-up would have shown as not-yet-due; under
+  the new logic it correctly shows as overdue, anchored to the original
+  first send. Applied to both the actual scheduler and the "upcoming
+  follow-ups" list shown in the UI, so what you see always matches what
+  will actually happen.
+- **A bounced email now automatically stops further follow-ups for
+  that lead** - not just silently excluded from the next scheduling
+  pass (which was already happening), but an explicit, visible stop
+  using the exact same mechanism the manual "Stop follow-ups" button
+  already used. Verified against three scenarios: a bounce on the most
+  recent touch (correctly auto-stopped), a bounce on an older touch
+  that's since been superseded by a later send (correctly left alone,
+  since it's no longer relevant), and a bounced email with no campaign
+  association at all (correctly ignored, no crash).
+
 ## What's in this V15.38
 The last two pieces of the fit-score plan - a campaign-creation warning
 for low-graded leads, and a one-time backfill for leads scraped before
