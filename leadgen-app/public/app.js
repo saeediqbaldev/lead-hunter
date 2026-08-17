@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.17-15.46";
+const APP_VERSION = "2026.08.17-15.47";
 
 // Every email provider section (Hostinger, Gmail, Bluehost/Titan) shares
 // the same Tracking/History/Alerts/Reports/Campaigns/Setup views, keyed
@@ -3417,6 +3417,140 @@ async function renderEmailTemplateGallery() {
     });
   });
 }
+
+// ---------- Template customization modal ----------
+const tcOverlay = document.getElementById("templateCustomizeOverlay");
+let tcCurrentKey = null;
+let tcPreviewDebounceTimer = null;
+
+async function openTemplateCustomizeModal(templateKey) {
+  tcCurrentKey = templateKey;
+  const res = await api("/api/settings/email-templates");
+  const data = await res.json();
+  const template = data.templates.find((t) => t.key === templateKey);
+  if (!template) return;
+
+  document.getElementById("tcTitle").textContent = `Customize - ${template.name}`;
+
+  const fontSelect = document.getElementById("tcFontFamily");
+  fontSelect.innerHTML = data.fonts.map((f) => `<option value="${escapeHtmlAttr(f.value)}">${f.label}</option>`).join("");
+
+  applyTemplateSettingsToForm(template.settings);
+  tcOverlay.style.display = "flex";
+  await updateTemplatePreview();
+}
+
+function applyTemplateSettingsToForm(s) {
+  document.getElementById("tcFontFamily").value = s.fontFamily;
+  document.getElementById("tcFontSize").value = s.fontSize;
+  document.getElementById("tcFontSizeValue").textContent = `${s.fontSize}px`;
+  document.getElementById("tcTextColor").value = s.textColor;
+  document.getElementById("tcBackgroundColor").value = s.backgroundColor;
+  document.getElementById("tcAccentColor").value = s.accentColor;
+  document.getElementById("tcShowLogo").checked = !!s.showLogo;
+  document.getElementById("tcLogoHeight").value = s.logoHeight;
+  document.getElementById("tcLogoHeightValue").textContent = `${s.logoHeight}px`;
+  document.getElementById("tcHeaderText").value = s.headerText || "";
+  document.getElementById("tcHeaderFontSize").value = s.headerFontSize;
+  document.getElementById("tcHeaderFontSizeValue").textContent = `${s.headerFontSize}px`;
+  document.getElementById("tcHeaderColor").value = s.headerColor;
+  document.getElementById("tcShowAccentBar").checked = !!s.showAccentBar;
+  document.getElementById("tcShowDivider").checked = !!s.showDivider;
+  document.getElementById("tcCtaStyle").value = s.ctaStyle;
+  document.getElementById("tcShowSocialIcons").checked = !!s.showSocialIcons;
+  document.getElementById("tcFooterText").value = s.footerText || "";
+  document.getElementById("tcFooterFontSize").value = s.footerFontSize;
+  document.getElementById("tcFooterFontSizeValue").textContent = `${s.footerFontSize}px`;
+  document.getElementById("tcFooterColor").value = s.footerColor;
+}
+
+function readTemplateSettingsFromForm() {
+  return {
+    fontFamily: document.getElementById("tcFontFamily").value,
+    fontSize: Number(document.getElementById("tcFontSize").value),
+    textColor: document.getElementById("tcTextColor").value,
+    backgroundColor: document.getElementById("tcBackgroundColor").value,
+    accentColor: document.getElementById("tcAccentColor").value,
+    showLogo: document.getElementById("tcShowLogo").checked,
+    logoHeight: Number(document.getElementById("tcLogoHeight").value),
+    headerText: document.getElementById("tcHeaderText").value,
+    headerFontSize: Number(document.getElementById("tcHeaderFontSize").value),
+    headerColor: document.getElementById("tcHeaderColor").value,
+    showAccentBar: document.getElementById("tcShowAccentBar").checked,
+    showDivider: document.getElementById("tcShowDivider").checked,
+    ctaStyle: document.getElementById("tcCtaStyle").value,
+    showSocialIcons: document.getElementById("tcShowSocialIcons").checked,
+    footerText: document.getElementById("tcFooterText").value,
+    footerFontSize: Number(document.getElementById("tcFooterFontSize").value),
+    footerColor: document.getElementById("tcFooterColor").value,
+  };
+}
+
+async function updateTemplatePreview() {
+  document.getElementById("tcFontSizeValue").textContent = `${document.getElementById("tcFontSize").value}px`;
+  document.getElementById("tcLogoHeightValue").textContent = `${document.getElementById("tcLogoHeight").value}px`;
+  document.getElementById("tcHeaderFontSizeValue").textContent = `${document.getElementById("tcHeaderFontSize").value}px`;
+  document.getElementById("tcFooterFontSizeValue").textContent = `${document.getElementById("tcFooterFontSize").value}px`;
+
+  const res = await api(`/api/settings/email-templates/${tcCurrentKey}/preview-draft`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ settings: readTemplateSettingsFromForm() }),
+  });
+  const data = await res.json();
+  document.getElementById("tcPreviewIframe").srcdoc = data.html;
+}
+
+function scheduleTemplatePreviewUpdate() {
+  clearTimeout(tcPreviewDebounceTimer);
+  tcPreviewDebounceTimer = setTimeout(updateTemplatePreview, 350);
+}
+
+document.querySelectorAll(".template-customize-fields input, .template-customize-fields select").forEach((el) => {
+  el.addEventListener("input", scheduleTemplatePreviewUpdate);
+});
+
+document.getElementById("tcCancelBtn").addEventListener("click", () => {
+  tcOverlay.style.display = "none";
+});
+tcOverlay.addEventListener("click", (e) => {
+  if (e.target === tcOverlay) tcOverlay.style.display = "none";
+});
+
+document.getElementById("tcSaveBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("tcSaveBtn");
+  btn.disabled = true;
+  try {
+    await api(`/api/settings/email-templates/${tcCurrentKey}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ settings: readTemplateSettingsFromForm() }),
+    });
+    tcOverlay.style.display = "none";
+    showToast("Template saved", "success");
+    await renderEmailTemplateGallery();
+  } catch (err) {
+    showToast(`Could not save: ${err.message}`, "error");
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+document.getElementById("tcResetBtn").addEventListener("click", async () => {
+  const confirmed = await openModal({
+    title: "Reset this template?",
+    message: "This discards every customization on this template and returns it to its original defaults.",
+    confirmText: "Reset",
+    danger: true,
+  });
+  if (!confirmed) return;
+  const res = await api(`/api/settings/email-templates/${tcCurrentKey}/reset`, { method: "POST" });
+  const data = await res.json();
+  applyTemplateSettingsToForm(data.settings);
+  await updateTemplatePreview();
+  showToast("Template reset to defaults", "success");
+  await renderEmailTemplateGallery();
+});
 
 document.getElementById("providerPrefSaveBtn").addEventListener("click", async () => {
   const resultEl = document.getElementById("providerPrefResult");

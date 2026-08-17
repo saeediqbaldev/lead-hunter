@@ -328,24 +328,11 @@ router.get("/email-templates", (req, res) => {
 // defaults. Only known, valid fields are accepted, so a malformed
 // request can't inject arbitrary keys into what eventually gets
 // interpolated into real HTML.
-const VALID_TEMPLATE_SETTING_KEYS = Object.keys(emailTemplates.DEFAULT_TEMPLATE_SETTINGS);
 router.put("/email-templates/:key", (req, res) => {
   const preset = emailTemplates.TEMPLATE_PRESETS.find((t) => t.key === req.params.key);
   if (!preset) return res.status(404).json({ error: "Unknown template" });
 
-  const incoming = req.body?.settings || {};
-  const sanitized = {};
-  for (const k of VALID_TEMPLATE_SETTING_KEYS) {
-    if (incoming[k] !== undefined) sanitized[k] = incoming[k];
-  }
-  // Font size and logo height are the only free-numeric fields - clamp
-  // them to sane ranges so a bad value can't produce broken-looking HTML.
-  if (sanitized.fontSize !== undefined) sanitized.fontSize = Math.max(10, Math.min(24, Number(sanitized.fontSize) || 14));
-  if (sanitized.headerFontSize !== undefined) sanitized.headerFontSize = Math.max(8, Math.min(20, Number(sanitized.headerFontSize) || 12));
-  if (sanitized.footerFontSize !== undefined) sanitized.footerFontSize = Math.max(8, Math.min(18, Number(sanitized.footerFontSize) || 11));
-  if (sanitized.logoHeight !== undefined) sanitized.logoHeight = Math.max(16, Math.min(80, Number(sanitized.logoHeight) || 32));
-  if (sanitized.fontFamily !== undefined && !emailTemplates.EMAIL_TEMPLATE_FONTS.some((f) => f.value === sanitized.fontFamily)) delete sanitized.fontFamily;
-  if (sanitized.ctaStyle !== undefined && !["plain", "colored", "button"].includes(sanitized.ctaStyle)) delete sanitized.ctaStyle;
+  const sanitized = emailTemplates.sanitizeTemplateSettings(req.body?.settings || {});
 
   const existing = db.prepare("SELECT settings FROM email_templates WHERE user_id = ? AND template_key = ?").get(req.session.userId, req.params.key);
   const merged = { ...(existing ? JSON.parse(existing.settings) : {}), ...sanitized };
@@ -378,22 +365,13 @@ router.put("/default-email-template", (req, res) => {
 // real sample content through the exact same function used for an
 // actual send, so what's shown here is never a prettier stand-in for
 // what a recipient actually gets.
-router.get("/email-templates/:key/preview", (req, res) => {
-  const preset = emailTemplates.TEMPLATE_PRESETS.find((t) => t.key === req.params.key);
-  if (!preset) return res.status(404).json({ error: "Unknown template" });
-
+function buildTemplatePreviewContext(userId) {
   const userRow = db
     .prepare("SELECT signature, signature_font_family, signature_font_size, email_logo_path, facebook_link, instagram_link, linkedin_link, tiktok_link FROM users WHERE id = ?")
-    .get(req.session.userId);
-  const existing = db.prepare("SELECT settings FROM email_templates WHERE user_id = ? AND template_key = ?").get(req.session.userId, req.params.key);
+    .get(userId);
   const { wrapSignatureWithFont, DEFAULT_SIGNATURE } = require("../outreachContent");
-
-  const sampleBody = `Hi Sarah,\n\nI came across Rooftop Restorations while researching roofing companies in Austin, and noticed you've built up 140 five-star reviews without even having a website yet. That's a rare position to be in - most of your competitors are paying for ads to get the trust you've already earned for free.\n\nWorth a quick call this week to see what that could look like?`;
-
-  const html = emailTemplates.renderEmailHtml({
-    templateKey: req.params.key,
-    customSettings: existing ? JSON.parse(existing.settings) : null,
-    bodyText: sampleBody,
+  return {
+    bodyText: `Hi Sarah,\n\nI came across Rooftop Restorations while researching roofing companies in Austin, and noticed you've built up 140 five-star reviews without even having a website yet. That's a rare position to be in - most of your competitors are paying for ads to get the trust you've already earned for free.\n\nWorth a quick call this week to see what that could look like?`,
     signatureHtml: wrapSignatureWithFont(userRow?.signature || DEFAULT_SIGNATURE, userRow?.signature_font_family, userRow?.signature_font_size),
     universalLinks: {
       facebookLink: userRow?.facebook_link,
@@ -402,6 +380,36 @@ router.get("/email-templates/:key/preview", (req, res) => {
       tiktokLink: userRow?.tiktok_link,
     },
     logoUrl: userRow?.email_logo_path,
+  };
+}
+
+router.get("/email-templates/:key/preview", (req, res) => {
+  const preset = emailTemplates.TEMPLATE_PRESETS.find((t) => t.key === req.params.key);
+  if (!preset) return res.status(404).json({ error: "Unknown template" });
+
+  const existing = db.prepare("SELECT settings FROM email_templates WHERE user_id = ? AND template_key = ?").get(req.session.userId, req.params.key);
+  const html = emailTemplates.renderEmailHtml({
+    templateKey: req.params.key,
+    customSettings: existing ? JSON.parse(existing.settings) : null,
+    ...buildTemplatePreviewContext(req.session.userId),
+  });
+  res.json({ html });
+});
+
+// POST /api/settings/email-templates/:key/preview-draft { settings } ->
+// { html } - renders with UNSAVED, in-progress settings from the
+// customization editor, sanitized exactly like a real save would be, so
+// the live preview always reflects what a save would actually produce -
+// nothing is written to the database here.
+router.post("/email-templates/:key/preview-draft", (req, res) => {
+  const preset = emailTemplates.TEMPLATE_PRESETS.find((t) => t.key === req.params.key);
+  if (!preset) return res.status(404).json({ error: "Unknown template" });
+
+  const sanitized = emailTemplates.sanitizeTemplateSettings(req.body?.settings || {});
+  const html = emailTemplates.renderEmailHtml({
+    templateKey: req.params.key,
+    customSettings: sanitized,
+    ...buildTemplatePreviewContext(req.session.userId),
   });
   res.json({ html });
 });

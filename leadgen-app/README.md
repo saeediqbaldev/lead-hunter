@@ -6,6 +6,33 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.47
+The customization editor is real now - "Customize" on any template
+card actually does something. Wiring the default template into real
+campaign sends is the one piece still ahead.
+
+- **Every field is editable with a genuine live preview** - font,
+  size, all five colors, header text and its own styling, the accent
+  bar, the divider, CTA link style, social icons, and footer text and
+  its own styling. Changing anything updates the preview a moment
+  later, without saving until you actually click Save.
+- **The live preview is never a separate, prettier stand-in** - it
+  renders through the exact same function a real save and a real send
+  both use, just fed draft, unsaved values instead of what's in the
+  database.
+- **Found and fixed two real security gaps while building this**: a
+  custom header/footer tagline wasn't being escaped before going into
+  the HTML (fixed - verified a script-tag attempt comes back visibly
+  neutralized), and color fields weren't validated as real colors at
+  all (fixed - verified a malicious value gets rejected outright,
+  falling back to the safe default rather than being written into the
+  page).
+- **Reset returns a template to its exact original defaults**, with a
+  confirmation first since it discards everything. Verified the whole
+  loop end-to-end in a real browser: open the editor, change a color,
+  watch the preview update, save, and confirm - via a fresh API call,
+  not just what the page shows - that it actually persisted.
+
 ## What's in this V15.46
 The Email Templates page is real now - a new "Email Templates" entry
 in the Settings sidebar. The customization editor (actually changing a

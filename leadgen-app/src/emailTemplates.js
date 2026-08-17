@@ -171,6 +171,13 @@ function escapeAttr(str) {
   return String(str || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+function escapeHtml(str) {
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 // The actual HTML that gets sent - and, rendered inside a preview
 // frame, the exact same HTML shown while customizing a template in
 // Settings. Using one function for both is deliberate: a separate,
@@ -185,7 +192,7 @@ function renderEmailHtml({ templateKey, customSettings, bodyText, signatureHtml,
     headerHtml += `<img src="${escapeAttr(logoUrl)}" height="${s.logoHeight}" style="height:${s.logoHeight}px; width:auto; display:block; border:0; margin-bottom:${s.headerText ? "8px" : "22px"};" alt="Logo">`;
   }
   if (s.headerText) {
-    headerHtml += `<p style="margin:0 0 22px; font-family:${s.fontFamily}; font-size:${s.headerFontSize}px; color:${s.headerColor};">${s.headerText}</p>`;
+    headerHtml += `<p style="margin:0 0 22px; font-family:${s.fontFamily}; font-size:${s.headerFontSize}px; color:${s.headerColor};">${escapeHtml(s.headerText)}</p>`;
   }
 
   const bodyHtml = paragraphsFromText(bodyText, s);
@@ -208,7 +215,7 @@ function renderEmailHtml({ templateKey, customSettings, bodyText, signatureHtml,
   }
 
   const footerTextHtml = s.footerText
-    ? `<p style="margin:12px 0 0; font-family:${s.fontFamily}; font-size:${s.footerFontSize}px; color:${s.footerColor};">${s.footerText}</p>`
+    ? `<p style="margin:12px 0 0; font-family:${s.fontFamily}; font-size:${s.footerFontSize}px; color:${s.footerColor};">${escapeHtml(s.footerText)}</p>`
     : "";
 
   const belowDivider = `${signatureHtml || ""}${socialHtml}${footerTextHtml}`;
@@ -242,12 +249,42 @@ function renderEmailHtml({ templateKey, customSettings, bodyText, signatureHtml,
 </table>`;
 }
 
+const VALID_TEMPLATE_SETTING_KEYS = Object.keys(DEFAULT_TEMPLATE_SETTINGS);
+const HEX_COLOR_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+const COLOR_FIELDS = ["textColor", "backgroundColor", "accentColor", "headerColor", "footerColor"];
+
+// Shared between the save route and the live-preview-draft route, so a
+// value that wouldn't be trusted for a real save is never trusted for a
+// preview either - only known setting keys pass through at all, numeric
+// fields are clamped to sane ranges, colors must be real hex values, and
+// free-choice fields (font, CTA style) must match an actual known option.
+function sanitizeTemplateSettings(incoming) {
+  const sanitized = {};
+  for (const k of VALID_TEMPLATE_SETTING_KEYS) {
+    if (incoming[k] !== undefined) sanitized[k] = incoming[k];
+  }
+  if (sanitized.fontSize !== undefined) sanitized.fontSize = Math.max(10, Math.min(24, Number(sanitized.fontSize) || 14));
+  if (sanitized.headerFontSize !== undefined) sanitized.headerFontSize = Math.max(8, Math.min(20, Number(sanitized.headerFontSize) || 12));
+  if (sanitized.footerFontSize !== undefined) sanitized.footerFontSize = Math.max(8, Math.min(18, Number(sanitized.footerFontSize) || 11));
+  if (sanitized.logoHeight !== undefined) sanitized.logoHeight = Math.max(16, Math.min(80, Number(sanitized.logoHeight) || 32));
+  if (sanitized.fontFamily !== undefined && !EMAIL_TEMPLATE_FONTS.some((f) => f.value === sanitized.fontFamily)) delete sanitized.fontFamily;
+  if (sanitized.ctaStyle !== undefined && !["plain", "colored", "button"].includes(sanitized.ctaStyle)) delete sanitized.ctaStyle;
+  for (const field of COLOR_FIELDS) {
+    if (sanitized[field] !== undefined && !HEX_COLOR_RE.test(sanitized[field])) delete sanitized[field];
+  }
+  // headerText/footerText pass through as raw strings here - they're
+  // escaped at render time (see escapeHtml above), not at save time, so
+  // the stored value always matches exactly what was typed.
+  return sanitized;
+}
+
 module.exports = {
   EMAIL_TEMPLATE_FONTS,
   DEFAULT_TEMPLATE_SETTINGS,
   TEMPLATE_PRESETS,
   getPresetByKey,
   mergeTemplateSettings,
+  sanitizeTemplateSettings,
   renderEmailHtml,
   paragraphsFromText,
   socialIconSvg,

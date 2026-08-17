@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="Xeven Leads" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=1546" />
+<link rel="stylesheet" href="style.css?v=1547" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -1144,9 +1144,76 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="templateCustomizeOverlay" style="display:none;">
+    <div class="modal-box template-customize-box">
+      <h3 id="tcTitle">Customize template</h3>
+      <div class="template-customize-layout">
+        <div class="template-customize-fields">
+          <label class="site-field-label">Font family
+            <select id="tcFontFamily"></select>
+          </label>
+          <label class="site-field-label">Font size <span id="tcFontSizeValue"></span>
+            <input type="range" id="tcFontSize" min="10" max="24" step="0.5">
+          </label>
+          <div class="template-customize-color-row">
+            <label class="site-field-label">Text color<input type="color" id="tcTextColor"></label>
+            <label class="site-field-label">Background<input type="color" id="tcBackgroundColor"></label>
+            <label class="site-field-label">Accent color<input type="color" id="tcAccentColor"></label>
+          </div>
+
+          <div class="settings-divider"></div>
+          <label class="site-visuals-toggle"><input type="checkbox" id="tcShowLogo"> Show logo</label>
+          <label class="site-field-label">Logo height <span id="tcLogoHeightValue"></span>
+            <input type="range" id="tcLogoHeight" min="16" max="80" step="2">
+          </label>
+          <label class="site-field-label">Header text <small class="optional">(optional tagline near the logo)</small>
+            <input type="text" id="tcHeaderText" maxlength="120" placeholder="e.g. Trusted by 300+ businesses worldwide">
+          </label>
+          <div class="template-customize-color-row">
+            <label class="site-field-label">Header font size <span id="tcHeaderFontSizeValue"></span><input type="range" id="tcHeaderFontSize" min="8" max="20" step="0.5"></label>
+            <label class="site-field-label">Header color<input type="color" id="tcHeaderColor"></label>
+          </div>
+
+          <div class="settings-divider"></div>
+          <label class="site-visuals-toggle"><input type="checkbox" id="tcShowAccentBar"> Show left accent bar</label>
+          <label class="site-visuals-toggle"><input type="checkbox" id="tcShowDivider"> Show divider before signature</label>
+          <label class="site-field-label">Call-to-action link style
+            <select id="tcCtaStyle">
+              <option value="plain">Plain text</option>
+              <option value="colored">Colored, underlined link</option>
+              <option value="button">Button</option>
+            </select>
+          </label>
+
+          <div class="settings-divider"></div>
+          <label class="site-visuals-toggle"><input type="checkbox" id="tcShowSocialIcons"> Show social icons</label>
+          <label class="site-field-label">Footer text <small class="optional">(optional, e.g. an address)</small>
+            <input type="text" id="tcFooterText" maxlength="160">
+          </label>
+          <div class="template-customize-color-row">
+            <label class="site-field-label">Footer font size <span id="tcFooterFontSizeValue"></span><input type="range" id="tcFooterFontSize" min="8" max="18" step="0.5"></label>
+            <label class="site-field-label">Footer color<input type="color" id="tcFooterColor"></label>
+          </div>
+        </div>
+        <div class="template-customize-preview">
+          <div class="email-template-preview-frame" style="height:100%; min-height:360px;">
+            <iframe id="tcPreviewIframe" title="Live preview" sandbox=""></iframe>
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions" style="justify-content:space-between;">
+        <button id="tcResetBtn" class="small-btn danger-btn">Reset to defaults</button>
+        <div style="display:flex; gap:8px;">
+          <button id="tcCancelBtn" class="small-btn">Cancel</button>
+          <button id="tcSaveBtn" class="primary-btn">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
 
-  <script src="app.js?v=1546"></script>
+
+  <script src="app.js?v=1547"></script>
   <script src="pwa-install.js"></script>
 </body>
 </html>
