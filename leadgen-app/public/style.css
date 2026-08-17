@@ -1833,6 +1833,28 @@ a.site-generate-btn { color: #1a1310; }
 .followup-card-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .followup-card-actions .small-btn { font-size: 11px; padding: 4px 8px; }
 .campaign-grade-checklist { display: flex; flex-wrap: wrap; gap: 14px; padding: 10px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 10px; }
+
+.email-universal-links-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 10px; }
+.email-universal-links-grid input { width: 100%; margin-top: 4px; }
+
+.email-logo-upload-row { display: flex; align-items: center; gap: 16px; margin-top: 8px; }
+.email-logo-preview {
+  width: 140px; height: 60px; border: 1px dashed var(--border); border-radius: 8px;
+  display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.03); overflow: hidden; flex-shrink: 0;
+}
+.email-logo-preview img { max-width: 120px; max-height: 50px; }
+
+.email-template-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-top: 14px; }
+.email-template-card { border: 1px solid var(--border); border-radius: 10px; padding: 14px; background: var(--panel-raised); position: relative; }
+.email-template-card.is-default { border-color: var(--accent); }
+.email-template-card-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.email-template-name { font-family: var(--font-display); font-weight: 600; font-size: 14px; }
+.email-template-default-badge { font-size: 10.5px; font-weight: 700; color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); padding: 2px 8px; border-radius: 10px; }
+.email-template-customized-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); display: inline-block; margin-left: 6px; }
+.email-template-preview-frame { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin: 10px 0; background: #ffffff; height: 220px; }
+.email-template-preview-frame iframe { width: 100%; height: 100%; border: 0; }
+.email-template-card-actions { display: flex; gap: 6px; }
+.email-template-card-actions .small-btn { flex: 1; font-size: 12px; }
 .campaign-grade-check { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
 .campaign-grade-ungraded-badge {
   display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px;

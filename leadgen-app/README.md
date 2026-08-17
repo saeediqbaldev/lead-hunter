@@ -6,6 +6,53 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.46
+The Email Templates page is real now - a new "Email Templates" entry
+in the Settings sidebar. The customization editor (actually changing a
+template's font/colors/header/footer) and wiring the default into
+campaign sending are still ahead.
+
+- **A new Settings page** with the universal links form (CTA + all four
+  social links), logo upload with a live preview and a remove option,
+  and a gallery of all 10 templates below it.
+- **Every template card shows its actual rendered output**, not a
+  static screenshot or description - each one fetches and displays real
+  HTML through an isolated preview frame, using your real signature and
+  a realistic sample email. Verified in a real browser: all 10 load
+  correctly, exactly one shows as the current default, and the visual
+  differences between templates (like the serif font on Understated
+  Serif) are genuinely visible, not just described in text.
+- "Set as default" on any card updates immediately.
+
+## What's in this V15.45
+The actual 10 templates and the full backend behind them - still no
+UI to see or use any of this yet, that's next.
+
+- **All 10 templates are real, working email-safe HTML now** - genuine
+  nested tables with inline styles throughout, not the modern CSS a
+  browser would render fine but Outlook wouldn't. Verified every one
+  individually: balanced HTML structure, and each template's specific
+  distinguishing feature (the accent bar's color, the serif font, the
+  cream background, etc.) actually present in its output.
+- **One shared, fully-customizable schema across all 10** - font,
+  colors, header, footer, accent styling. Customizing any field works
+  the same way regardless of which of the 10 you're adjusting, which is
+  what makes "each and every field editable" true for all of them at
+  once rather than needing separate handling per template.
+- **Every save is validated server-side** - verified directly:
+  attempting to inject a fake font family was rejected outright, an
+  absurd font size was clamped back into a sane range.
+- **The universal links now include your new fields** - a dedicated
+  CTA link and the four social links, alongside the meeting/website/
+  whatsapp links that already existed. Found and fixed a real bug while
+  building this: the save endpoint would have silently wiped the new
+  fields to blank every time old code saved just the original three -
+  fixed before it could lose anyone's data, verified directly.
+- **A live preview endpoint** that renders real sample content -
+  including your actual signature - through the exact same function
+  that will render a real send, so there's no separate "prettier"
+  preview that could ever look different from what actually goes out.
+
 ## What's in this V15.44
 The foundation for the 10-template email system - schema and logo
 upload only. Nothing is visible or usable yet; the template designs,

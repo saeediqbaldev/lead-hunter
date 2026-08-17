@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.17-15.44";
+const APP_VERSION = "2026.08.17-15.46";
 
 // Every email provider section (Hostinger, Gmail, Bluehost/Titan) shares
 // the same Tracking/History/Alerts/Reports/Campaigns/Setup views, keyed
@@ -3247,6 +3247,177 @@ navSettingsAccount.addEventListener("click", async () => {
   await loadProviderPreferences();
 });
 
+document.getElementById("navSettingsEmailTemplates").addEventListener("click", async () => {
+  state.lastNavSection = "settings";
+  setContentView("settings-email-templates");
+  await loadEmailTemplateSettings();
+});
+
+async function loadEmailTemplateSettings() {
+  try {
+    const res = await api("/api/settings/content-links");
+    const data = await res.json();
+    document.getElementById("etCtaLink").value = data.ctaLink || "";
+    document.getElementById("etFacebookLink").value = data.facebookLink || "";
+    document.getElementById("etInstagramLink").value = data.instagramLink || "";
+    document.getElementById("etLinkedinLink").value = data.linkedinLink || "";
+    document.getElementById("etTiktokLink").value = data.tiktokLink || "";
+    renderLogoPreview(data.emailLogoUrl);
+    state.defaultEmailTemplateKey = data.defaultTemplateKey;
+  } catch (err) {
+    console.error("Failed to load universal links:", err);
+  }
+  await renderEmailTemplateGallery();
+}
+
+function renderLogoPreview(url) {
+  const el = document.getElementById("etLogoPreview");
+  const removeBtn = document.getElementById("etRemoveLogoBtn");
+  if (url) {
+    el.innerHTML = `<img src="${url}" alt="Logo">`;
+    removeBtn.style.display = "inline-block";
+  } else {
+    el.innerHTML = `<span class="hint">No logo yet</span>`;
+    removeBtn.style.display = "none";
+  }
+}
+
+document.getElementById("etSaveLinksBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("etSaveLinksBtn");
+  const resultEl = document.getElementById("etLinksResult");
+  btn.disabled = true;
+  try {
+    const res = await api("/api/settings/content-links", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ctaLink: document.getElementById("etCtaLink").value.trim(),
+        facebookLink: document.getElementById("etFacebookLink").value.trim(),
+        instagramLink: document.getElementById("etInstagramLink").value.trim(),
+        linkedinLink: document.getElementById("etLinkedinLink").value.trim(),
+        tiktokLink: document.getElementById("etTiktokLink").value.trim(),
+      }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error || "Could not save");
+    resultEl.style.display = "block";
+    resultEl.className = "settings-result ok";
+    resultEl.textContent = "Links saved.";
+    showToast("Links saved", "success");
+    await renderEmailTemplateGallery(); // social icons in previews may now show/hide
+  } catch (err) {
+    resultEl.style.display = "block";
+    resultEl.className = "settings-result bad";
+    resultEl.textContent = err.message;
+    showToast(`Could not save: ${err.message}`, "error");
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+document.getElementById("etLogoFileInput").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const resultEl = document.getElementById("etLogoResult");
+  if (file.size > 2 * 1024 * 1024) {
+    resultEl.style.display = "block";
+    resultEl.className = "settings-result bad";
+    resultEl.textContent = "Image is too large - please use one under 2MB.";
+    e.target.value = "";
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const res = await api("/api/settings/email-logo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dataUrl: reader.result }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not upload");
+      renderLogoPreview(data.url);
+      resultEl.style.display = "block";
+      resultEl.className = "settings-result ok";
+      resultEl.textContent = "Logo uploaded.";
+      showToast("Logo uploaded", "success");
+      await renderEmailTemplateGallery();
+    } catch (err) {
+      resultEl.style.display = "block";
+      resultEl.className = "settings-result bad";
+      resultEl.textContent = err.message;
+      showToast(`Could not upload: ${err.message}`, "error");
+    }
+  };
+  reader.readAsDataURL(file);
+  e.target.value = "";
+});
+
+document.getElementById("etRemoveLogoBtn").addEventListener("click", async () => {
+  await api("/api/settings/email-logo", { method: "DELETE" });
+  renderLogoPreview(null);
+  showToast("Logo removed", "success");
+  await renderEmailTemplateGallery();
+});
+
+async function renderEmailTemplateGallery() {
+  const gallery = document.getElementById("emailTemplateGallery");
+  gallery.innerHTML = `<p class="hint">Loading templates…</p>`;
+  const res = await api("/api/settings/email-templates");
+  const data = await res.json();
+  state.emailTemplateFonts = data.fonts;
+
+  gallery.innerHTML = data.templates
+    .map(
+      (t) => `
+    <div class="email-template-card ${t.isDefault ? "is-default" : ""}" data-template-key="${t.key}">
+      <div class="email-template-card-header">
+        <span class="email-template-name">${t.name}${t.isCustomized ? '<span class="email-template-customized-dot" title="Customized"></span>' : ""}</span>
+        ${t.isDefault ? '<span class="email-template-default-badge">DEFAULT</span>' : ""}
+      </div>
+      <p class="hint" style="min-height:32px;">${t.description}</p>
+      <div class="email-template-preview-frame"><iframe data-template-iframe="${t.key}" title="${t.name} preview" sandbox=""></iframe></div>
+      <div class="email-template-card-actions">
+        ${t.isDefault ? "" : `<button type="button" class="small-btn" data-action="set-default-template">Set as default</button>`}
+        <button type="button" class="small-btn" data-action="customize-template">Customize</button>
+      </div>
+    </div>`
+    )
+    .join("");
+
+  // Each card's preview is fetched and painted independently, so a slow
+  // or failed one doesn't hold up the other nine.
+  data.templates.forEach(async (t) => {
+    try {
+      const previewRes = await api(`/api/settings/email-templates/${t.key}/preview`);
+      const previewData = await previewRes.json();
+      const iframe = gallery.querySelector(`[data-template-iframe="${t.key}"]`);
+      if (iframe) iframe.srcdoc = previewData.html;
+    } catch (err) {
+      console.error(`Failed to load preview for ${t.key}:`, err);
+    }
+  });
+
+  gallery.querySelectorAll('[data-action="set-default-template"]').forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const key = btn.closest("[data-template-key]").dataset.templateKey;
+      await api("/api/settings/default-email-template", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ templateKey: key }),
+      });
+      showToast("Default template updated", "success");
+      await renderEmailTemplateGallery();
+    });
+  });
+
+  gallery.querySelectorAll('[data-action="customize-template"]').forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.closest("[data-template-key]").dataset.templateKey;
+      openTemplateCustomizeModal(key);
+    });
+  });
+}
+
 document.getElementById("providerPrefSaveBtn").addEventListener("click", async () => {
   const resultEl = document.getElementById("providerPrefResult");
   const res = await api("/api/settings/ai-provider-preferences", {
@@ -4384,6 +4555,7 @@ function navigateToSavedState(saved) {
       "settings-colors": "navSettingsColors",
       "settings-team": "navSettingsTeam",
       "settings-account": "navSettingsAccount",
+      "settings-email-templates": "navSettingsEmailTemplates",
       "settings-limits": "navSettingsLimits",
     };
     document.querySelector('[data-section="settings"]')?.click();
@@ -4452,6 +4624,7 @@ function setContentView(view) {
     "settings-colors": document.getElementById("settingsColorsView"),
     "settings-team": document.getElementById("settingsTeamView"),
     "settings-account": document.getElementById("settingsAccountView"),
+    "settings-email-templates": document.getElementById("settingsEmailTemplatesView"),
     "settings-limits": document.getElementById("settingsLimitsView"),
     "contacted-setup": document.getElementById("contactedSetupView"),
     "contacted-tracking": document.getElementById("contactedTrackingView"),

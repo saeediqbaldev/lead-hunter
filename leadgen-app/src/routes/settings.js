@@ -8,6 +8,7 @@ const { testApiKey: testPlacesKey } = require("../placesApi");
 const { testApiKey: testGeminiKey } = require("../gemini");
 const { groqClient, deepseekClient, opencodeClient } = require("../openaiCompatible");
 const apiKeys = require("../apiKeys");
+const emailTemplates = require("../emailTemplates");
 const { SIGNATURE_FONT_OPTIONS, DEFAULT_SIGNATURE_FONT_FAMILY, DEFAULT_SIGNATURE_FONT_SIZE, SIGNATURE_FONTS, GOOGLE_FONTS_IMPORT_URL } = require("../signatureFonts");
 const db = require("../db");
 
@@ -93,22 +94,69 @@ router.put("/page-size", (req, res) => {
   res.json({ pageSize: value });
 });
 
-// GET /api/settings/content-links -> this user's saved default meeting/whatsapp/website links
+// GET /api/settings/content-links -> this user's saved default meeting/whatsapp/website links, plus the universal links used by email templates (CTA + social)
 router.get("/content-links", (req, res) => {
-  const row = db.prepare("SELECT meeting_link, website_link, whatsapp_link FROM users WHERE id = ?").get(req.session.userId);
-  res.json({ meetingLink: row.meeting_link || "", websiteLink: row.website_link || "", whatsappLink: row.whatsapp_link || "" });
+  const row = db
+    .prepare(
+      "SELECT meeting_link, website_link, whatsapp_link, cta_link, facebook_link, instagram_link, linkedin_link, tiktok_link, email_logo_path, default_email_template_key FROM users WHERE id = ?"
+    )
+    .get(req.session.userId);
+  res.json({
+    meetingLink: row.meeting_link || "",
+    websiteLink: row.website_link || "",
+    whatsappLink: row.whatsapp_link || "",
+    ctaLink: row.cta_link || "",
+    facebookLink: row.facebook_link || "",
+    instagramLink: row.instagram_link || "",
+    linkedinLink: row.linkedin_link || "",
+    tiktokLink: row.tiktok_link || "",
+    emailLogoUrl: row.email_logo_path || "",
+    defaultTemplateKey: row.default_email_template_key || "minimal_branded",
+  });
 });
 
-// PUT /api/settings/content-links { meetingLink?, websiteLink?, whatsappLink? }
+// PUT /api/settings/content-links { meetingLink?, websiteLink?, whatsappLink?, ctaLink?, facebookLink?, instagramLink?, linkedinLink?, tiktokLink? }
+// Each field is independently optional - anything not included in the
+// request body keeps its previously saved value rather than being
+// wiped to null, since existing frontend code only sends a subset of
+// these fields and must not silently erase the rest.
 router.put("/content-links", (req, res) => {
-  const { meetingLink, websiteLink, whatsappLink } = req.body || {};
-  db.prepare("UPDATE users SET meeting_link = ?, website_link = ?, whatsapp_link = ? WHERE id = ?").run(
-    meetingLink || null,
-    websiteLink || null,
-    whatsappLink || null,
+  const { meetingLink, websiteLink, whatsappLink, ctaLink, facebookLink, instagramLink, linkedinLink, tiktokLink } = req.body || {};
+  db.prepare(
+    `UPDATE users SET
+      meeting_link = COALESCE(?, meeting_link),
+      website_link = COALESCE(?, website_link),
+      whatsapp_link = COALESCE(?, whatsapp_link),
+      cta_link = COALESCE(?, cta_link),
+      facebook_link = COALESCE(?, facebook_link),
+      instagram_link = COALESCE(?, instagram_link),
+      linkedin_link = COALESCE(?, linkedin_link),
+      tiktok_link = COALESCE(?, tiktok_link)
+     WHERE id = ?`
+  ).run(
+    meetingLink !== undefined ? meetingLink || "" : null,
+    websiteLink !== undefined ? websiteLink || "" : null,
+    whatsappLink !== undefined ? whatsappLink || "" : null,
+    ctaLink !== undefined ? ctaLink || "" : null,
+    facebookLink !== undefined ? facebookLink || "" : null,
+    instagramLink !== undefined ? instagramLink || "" : null,
+    linkedinLink !== undefined ? linkedinLink || "" : null,
+    tiktokLink !== undefined ? tiktokLink || "" : null,
     req.session.userId
   );
-  res.json({ meetingLink: meetingLink || "", websiteLink: websiteLink || "", whatsappLink: whatsappLink || "" });
+  const row = db
+    .prepare("SELECT meeting_link, website_link, whatsapp_link, cta_link, facebook_link, instagram_link, linkedin_link, tiktok_link FROM users WHERE id = ?")
+    .get(req.session.userId);
+  res.json({
+    meetingLink: row.meeting_link || "",
+    websiteLink: row.website_link || "",
+    whatsappLink: row.whatsapp_link || "",
+    ctaLink: row.cta_link || "",
+    facebookLink: row.facebook_link || "",
+    instagramLink: row.instagram_link || "",
+    linkedinLink: row.linkedin_link || "",
+    tiktokLink: row.tiktok_link || "",
+  });
 });
 
 const { DEFAULT_SIGNATURE } = require("../outreachContent");
@@ -254,6 +302,108 @@ router.post("/email-logo", (req, res) => {
 router.delete("/email-logo", (req, res) => {
   db.prepare("UPDATE users SET email_logo_path = NULL WHERE id = ?").run(req.session.userId);
   res.json({ ok: true });
+});
+
+// GET /api/settings/email-templates -> all 10 presets, each with its
+// merged settings (preset defaults + this user's customization, if
+// any) and whether it's currently the account's default for sending.
+router.get("/email-templates", (req, res) => {
+  const userRow = db.prepare("SELECT default_email_template_key FROM users WHERE id = ?").get(req.session.userId);
+  const customRows = db.prepare("SELECT template_key, settings FROM email_templates WHERE user_id = ?").all(req.session.userId);
+  const customByKey = new Map(customRows.map((r) => [r.template_key, JSON.parse(r.settings)]));
+
+  const templates = emailTemplates.TEMPLATE_PRESETS.map((preset) => ({
+    key: preset.key,
+    name: preset.name,
+    description: preset.description,
+    isDefault: preset.key === (userRow?.default_email_template_key || "minimal_branded"),
+    isCustomized: customByKey.has(preset.key),
+    settings: emailTemplates.mergeTemplateSettings(preset.key, customByKey.get(preset.key)),
+  }));
+  res.json({ templates, fonts: emailTemplates.EMAIL_TEMPLATE_FONTS.map((f) => ({ value: f.value, label: f.label })) });
+});
+
+// PUT /api/settings/email-templates/:key { settings: {...} } - saves a
+// partial or full override on top of that template's own preset
+// defaults. Only known, valid fields are accepted, so a malformed
+// request can't inject arbitrary keys into what eventually gets
+// interpolated into real HTML.
+const VALID_TEMPLATE_SETTING_KEYS = Object.keys(emailTemplates.DEFAULT_TEMPLATE_SETTINGS);
+router.put("/email-templates/:key", (req, res) => {
+  const preset = emailTemplates.TEMPLATE_PRESETS.find((t) => t.key === req.params.key);
+  if (!preset) return res.status(404).json({ error: "Unknown template" });
+
+  const incoming = req.body?.settings || {};
+  const sanitized = {};
+  for (const k of VALID_TEMPLATE_SETTING_KEYS) {
+    if (incoming[k] !== undefined) sanitized[k] = incoming[k];
+  }
+  // Font size and logo height are the only free-numeric fields - clamp
+  // them to sane ranges so a bad value can't produce broken-looking HTML.
+  if (sanitized.fontSize !== undefined) sanitized.fontSize = Math.max(10, Math.min(24, Number(sanitized.fontSize) || 14));
+  if (sanitized.headerFontSize !== undefined) sanitized.headerFontSize = Math.max(8, Math.min(20, Number(sanitized.headerFontSize) || 12));
+  if (sanitized.footerFontSize !== undefined) sanitized.footerFontSize = Math.max(8, Math.min(18, Number(sanitized.footerFontSize) || 11));
+  if (sanitized.logoHeight !== undefined) sanitized.logoHeight = Math.max(16, Math.min(80, Number(sanitized.logoHeight) || 32));
+  if (sanitized.fontFamily !== undefined && !emailTemplates.EMAIL_TEMPLATE_FONTS.some((f) => f.value === sanitized.fontFamily)) delete sanitized.fontFamily;
+  if (sanitized.ctaStyle !== undefined && !["plain", "colored", "button"].includes(sanitized.ctaStyle)) delete sanitized.ctaStyle;
+
+  const existing = db.prepare("SELECT settings FROM email_templates WHERE user_id = ? AND template_key = ?").get(req.session.userId, req.params.key);
+  const merged = { ...(existing ? JSON.parse(existing.settings) : {}), ...sanitized };
+  db.prepare(
+    `INSERT INTO email_templates (user_id, template_key, settings, updated_at) VALUES (?, ?, ?, datetime('now'))
+     ON CONFLICT(user_id, template_key) DO UPDATE SET settings = excluded.settings, updated_at = excluded.updated_at`
+  ).run(req.session.userId, req.params.key, JSON.stringify(merged));
+
+  res.json({ settings: emailTemplates.mergeTemplateSettings(req.params.key, merged) });
+});
+
+// POST /api/settings/email-templates/:key/reset - drops back to the
+// preset's own built-in defaults, discarding any customization.
+router.post("/email-templates/:key/reset", (req, res) => {
+  db.prepare("DELETE FROM email_templates WHERE user_id = ? AND template_key = ?").run(req.session.userId, req.params.key);
+  res.json({ settings: emailTemplates.mergeTemplateSettings(req.params.key, null) });
+});
+
+// PUT /api/settings/default-email-template { templateKey } - which
+// template every campaign actually sends with, automatically, unless
+// something later overrides it per-send.
+router.put("/default-email-template", (req, res) => {
+  const { templateKey } = req.body || {};
+  if (!emailTemplates.TEMPLATE_PRESETS.some((t) => t.key === templateKey)) return res.status(400).json({ error: "Unknown template" });
+  db.prepare("UPDATE users SET default_email_template_key = ? WHERE id = ?").run(templateKey, req.session.userId);
+  res.json({ defaultTemplateKey: templateKey });
+});
+
+// GET /api/settings/email-templates/:key/preview -> { html } - renders
+// real sample content through the exact same function used for an
+// actual send, so what's shown here is never a prettier stand-in for
+// what a recipient actually gets.
+router.get("/email-templates/:key/preview", (req, res) => {
+  const preset = emailTemplates.TEMPLATE_PRESETS.find((t) => t.key === req.params.key);
+  if (!preset) return res.status(404).json({ error: "Unknown template" });
+
+  const userRow = db
+    .prepare("SELECT signature, signature_font_family, signature_font_size, email_logo_path, facebook_link, instagram_link, linkedin_link, tiktok_link FROM users WHERE id = ?")
+    .get(req.session.userId);
+  const existing = db.prepare("SELECT settings FROM email_templates WHERE user_id = ? AND template_key = ?").get(req.session.userId, req.params.key);
+  const { wrapSignatureWithFont, DEFAULT_SIGNATURE } = require("../outreachContent");
+
+  const sampleBody = `Hi Sarah,\n\nI came across Rooftop Restorations while researching roofing companies in Austin, and noticed you've built up 140 five-star reviews without even having a website yet. That's a rare position to be in - most of your competitors are paying for ads to get the trust you've already earned for free.\n\nWorth a quick call this week to see what that could look like?`;
+
+  const html = emailTemplates.renderEmailHtml({
+    templateKey: req.params.key,
+    customSettings: existing ? JSON.parse(existing.settings) : null,
+    bodyText: sampleBody,
+    signatureHtml: wrapSignatureWithFont(userRow?.signature || DEFAULT_SIGNATURE, userRow?.signature_font_family, userRow?.signature_font_size),
+    universalLinks: {
+      facebookLink: userRow?.facebook_link,
+      instagramLink: userRow?.instagram_link,
+      linkedinLink: userRow?.linkedin_link,
+      tiktokLink: userRow?.tiktok_link,
+    },
+    logoUrl: userRow?.email_logo_path,
+  });
+  res.json({ html });
 });
 
 // GET /api/settings/ai-provider-preferences -> the default AI provider to

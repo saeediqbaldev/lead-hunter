@@ -410,4 +410,5 @@ module.exports = {
   generateOutreachContent,
   generateSubjectOnly,
   generateFollowUpContent,
+  wrapSignatureWithFont,
 };
