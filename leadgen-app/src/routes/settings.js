@@ -190,6 +190,16 @@ if (!fs.existsSync(SIGNATURE_UPLOAD_DIR)) fs.mkdirSync(SIGNATURE_UPLOAD_DIR, { r
 const SIGNATURE_IMAGE_MAX_BYTES = 2 * 1024 * 1024; // 2MB, matching the client-side cap
 const SIGNATURE_IMAGE_MIME_TO_EXT = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
 
+const LOGO_UPLOAD_DIR = path.join(__dirname, "..", "..", "data", "uploads", "logos");
+if (!fs.existsSync(LOGO_UPLOAD_DIR)) fs.mkdirSync(LOGO_UPLOAD_DIR, { recursive: true });
+
+const LOGO_IMAGE_MAX_BYTES = 2 * 1024 * 1024; // 2MB, as requested
+// PNG/JPEG/WEBP/GIF cover the common web image formats - deliberately no
+// SVG despite it being a common logo format elsewhere, since most email
+// clients (Outlook especially) don't render SVG at all; an SVG logo
+// would just show as a broken image in a real inbox.
+const LOGO_IMAGE_MIME_TO_EXT = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif" };
+
 // POST /api/settings/signature-image { dataUrl } -> { url }
 // Accepts a base64 data URL (what FileReader.readAsDataURL produces
 // client-side), decodes and saves it to disk, and returns a short URL to
@@ -212,6 +222,38 @@ router.post("/signature-image", (req, res) => {
   fs.writeFileSync(path.join(SIGNATURE_UPLOAD_DIR, filename), buffer);
 
   res.json({ url: `/uploads/signatures/${filename}` });
+});
+
+// POST /api/settings/email-logo { dataUrl } -> { url }
+// Same pattern as signature-image above, but this is the one logo used
+// across every email template - saved to disk and referenced by path on
+// the user's own row, not embedded inline.
+router.post("/email-logo", (req, res) => {
+  const { dataUrl } = req.body || {};
+  const match = typeof dataUrl === "string" && dataUrl.match(/^data:(image\/(?:png|jpeg|webp|gif));base64,(.+)$/);
+  if (!match) return res.status(400).json({ error: "Please upload a PNG, JPEG, GIF, or WEBP image." });
+
+  const [, mimeType, base64Data] = match;
+  const buffer = Buffer.from(base64Data, "base64");
+  if (buffer.length > LOGO_IMAGE_MAX_BYTES) {
+    return res.status(400).json({ error: "Image is too large - please use one under 2MB." });
+  }
+
+  const ext = LOGO_IMAGE_MIME_TO_EXT[mimeType];
+  const filename = `${req.session.userId}-${Date.now()}-${crypto.randomBytes(4).toString("hex")}.${ext}`;
+  fs.writeFileSync(path.join(LOGO_UPLOAD_DIR, filename), buffer);
+
+  const url = `/uploads/logos/${filename}`;
+  db.prepare("UPDATE users SET email_logo_path = ? WHERE id = ?").run(url, req.session.userId);
+  res.json({ url });
+});
+
+// DELETE /api/settings/email-logo - removes the logo reference (file
+// itself is left on disk rather than deleted, avoiding any risk of
+// deleting something still referenced by an in-flight send).
+router.delete("/email-logo", (req, res) => {
+  db.prepare("UPDATE users SET email_logo_path = NULL WHERE id = ?").run(req.session.userId);
+  res.json({ ok: true });
 });
 
 // GET /api/settings/ai-provider-preferences -> the default AI provider to

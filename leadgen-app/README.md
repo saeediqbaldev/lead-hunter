@@ -6,6 +6,26 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.44
+The foundation for the 10-template email system - schema and logo
+upload only. Nothing is visible or usable yet; the template designs,
+settings UI, and campaign wiring are still ahead.
+
+- Storage for per-template customization (font, header, footer,
+  signature settings per template, independent of the other nine).
+- The universal, cross-template settings: a dedicated CTA link (kept
+  separate from the existing "demo site" link, since they serve
+  different purposes), the four social links, and which template is
+  the active default for sending.
+- A real logo upload pipeline - PNG/JPEG/WEBP/GIF up to 2MB, stored on
+  the server and referenced by a short URL rather than embedded inline.
+  Deliberately does not accept SVG despite it being common for logos
+  elsewhere - most email clients (Outlook especially) don't render SVG
+  at all, so an SVG logo would just show as broken in a real inbox.
+  Verified the complete pipeline directly: upload, storage, serving the
+  file back correctly, rejecting an oversized file with a clear error,
+  and removing a logo.
+
 ## What's in this V15.43
 A Fit grade filter in the campaign creation form - a checkbox for each
 grade to control which leads get included.

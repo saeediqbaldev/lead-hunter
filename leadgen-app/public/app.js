@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.15-15.43";
+const APP_VERSION = "2026.08.17-15.44";
 
 // Every email provider section (Hostinger, Gmail, Bluehost/Titan) shares
 // the same Tracking/History/Alerts/Reports/Campaigns/Setup views, keyed

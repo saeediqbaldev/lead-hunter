@@ -344,6 +344,15 @@ if (!leadsTableExists) {
   }
   if (!userCols.includes("website_link")) db.exec("ALTER TABLE users ADD COLUMN website_link TEXT");
   if (!userCols.includes("whatsapp_link")) db.exec("ALTER TABLE users ADD COLUMN whatsapp_link TEXT");
+  if (!userCols.includes("cta_link")) db.exec("ALTER TABLE users ADD COLUMN cta_link TEXT");
+  if (!userCols.includes("facebook_link")) {
+    db.exec("ALTER TABLE users ADD COLUMN facebook_link TEXT");
+    db.exec("ALTER TABLE users ADD COLUMN instagram_link TEXT");
+    db.exec("ALTER TABLE users ADD COLUMN linkedin_link TEXT");
+    db.exec("ALTER TABLE users ADD COLUMN tiktok_link TEXT");
+  }
+  if (!userCols.includes("email_logo_path")) db.exec("ALTER TABLE users ADD COLUMN email_logo_path TEXT");
+  if (!userCols.includes("default_email_template_key")) db.exec("ALTER TABLE users ADD COLUMN default_email_template_key TEXT DEFAULT 'minimal_branded'");
   if (!userCols.includes("preferred_content_provider")) db.exec("ALTER TABLE users ADD COLUMN preferred_content_provider TEXT DEFAULT ''");
   if (!userCols.includes("preferred_inspection_provider")) db.exec("ALTER TABLE users ADD COLUMN preferred_inspection_provider TEXT DEFAULT ''");
 }
@@ -816,6 +825,23 @@ CREATE TABLE IF NOT EXISTS campaign_followup_configs (
   status TEXT NOT NULL DEFAULT 'active',
   updated_at TEXT DEFAULT (datetime('now')),
   PRIMARY KEY (campaign_id, touch_number)
+);
+
+-- One row per (user, template_key) that has had its settings
+-- customized away from that preset's built-in defaults. A template key
+-- with no row here just uses the preset's defaults, same "no row = use
+-- defaults" pattern as campaign_followup_configs above. Settings is a
+-- JSON blob rather than fixed columns because the ten presets don't all
+-- need the same fields (the accent-bar template needs a bar color, the
+-- minimal one doesn't) - a rigid column-per-field schema would mean
+-- dozens of columns mostly sitting NULL depending on which template a
+-- given row is for.
+CREATE TABLE IF NOT EXISTS email_templates (
+  user_id INTEGER NOT NULL,
+  template_key TEXT NOT NULL,
+  settings TEXT NOT NULL DEFAULT '{}',
+  updated_at TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, template_key)
 );
 
 CREATE TABLE IF NOT EXISTS country_scrape_jobs (
