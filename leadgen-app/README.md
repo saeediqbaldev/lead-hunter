@@ -6,6 +6,24 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.43
+A Fit grade filter in the campaign creation form - a checkbox for each
+grade to control which leads get included.
+
+- Six checkboxes (A, B, C, D, F, and Ungraded), all checked by default
+  so nothing changes unless you actively uncheck something. Ungraded is
+  its own checkbox rather than being silently swept into (or out of)
+  the filter, since a lead that simply hasn't been scored yet isn't
+  necessarily a bad one.
+- The lead-count preview updates live as grades are checked or
+  unchecked, so you can see exactly how many leads will actually be
+  targeted before creating the campaign - verified this matches what
+  actually gets included afterward.
+- Works together with the existing low-grade warning from before:
+  narrowing a campaign down to just A/B grades never triggers that
+  warning, since there's nothing low-graded left to warn about -
+  verified both paths directly.
+
 ## What's in this V15.42
 Fixed the website inspection sending false claims - traced the exact
 bug behind "the contact form is missing" being said about a site that

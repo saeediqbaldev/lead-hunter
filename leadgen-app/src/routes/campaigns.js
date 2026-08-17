@@ -15,6 +15,7 @@ router.post("/", (req, res) => {
     catchLogId,
     catchLogIds,
     leadIds,
+    fitGrades,
     requireInspection,
     tone,
     length,
@@ -50,6 +51,27 @@ router.post("/", (req, res) => {
   // every lead in the niche/catch-log scope. Either way, only leads with
   // an email on file can actually be targeted (checked at send time too,
   // but filtering here means the campaign's lead count is accurate from
+  // Optional fit-grade filter - same UNGRADED-token convention as the
+  // board's own grade filter (see leadsQuery.js), so a lead that simply
+  // hasn't been scored yet isn't silently dropped just because someone
+  // narrowed a campaign down to specific grades.
+  function buildFitGradeClause() {
+    if (!Array.isArray(fitGrades) || !fitGrades.length) return { sql: "", params: [] };
+    const tokens = fitGrades.map((g) => String(g).trim().toUpperCase()).filter(Boolean);
+    const grades = tokens.filter((t) => t !== "UNGRADED");
+    const includeUngraded = tokens.includes("UNGRADED");
+    const clauses = [];
+    const params = [];
+    if (grades.length) {
+      clauses.push(`l.fit_grade IN (${grades.map(() => "?").join(",")})`);
+      params.push(...grades);
+    }
+    if (includeUngraded) clauses.push("l.fit_grade IS NULL");
+    if (!clauses.length) return { sql: "", params: [] };
+    return { sql: ` AND (${clauses.join(" OR ")})`, params };
+  }
+  const fitGradeClause = buildFitGradeClause();
+
   // the start rather than silently including un-sendable leads).
   let candidateLeads;
   if (Array.isArray(leadIds) && leadIds.length) {
@@ -57,29 +79,29 @@ router.post("/", (req, res) => {
     candidateLeads = db
       .prepare(
         `SELECT l.id, l.socials FROM leads l JOIN catch_logs cl ON cl.id = l.catch_log_id JOIN niches n ON n.id = cl.niche_id
-         WHERE l.id IN (${placeholders}) AND n.user_id = ? AND l.outreach_excluded_at IS NULL`
+         WHERE l.id IN (${placeholders}) AND n.user_id = ? AND l.outreach_excluded_at IS NULL${fitGradeClause.sql}`
       )
-      .all(...leadIds, userId);
+      .all(...leadIds, userId, ...fitGradeClause.params);
   } else if (Array.isArray(catchLogIds) && catchLogIds.length) {
     const placeholders = catchLogIds.map(() => "?").join(",");
     candidateLeads = db
       .prepare(
         `SELECT l.id, l.socials FROM leads l JOIN catch_logs cl ON cl.id = l.catch_log_id JOIN niches n ON n.id = cl.niche_id
-         WHERE cl.id IN (${placeholders}) AND n.user_id = ? AND l.outreach_excluded_at IS NULL`
+         WHERE cl.id IN (${placeholders}) AND n.user_id = ? AND l.outreach_excluded_at IS NULL${fitGradeClause.sql}`
       )
-      .all(...catchLogIds, userId);
+      .all(...catchLogIds, userId, ...fitGradeClause.params);
   } else if (catchLogId) {
     candidateLeads = db
       .prepare(
-        `SELECT l.id, l.socials FROM leads l JOIN catch_logs cl ON cl.id = l.catch_log_id JOIN niches n ON n.id = cl.niche_id WHERE cl.id = ? AND n.user_id = ? AND l.outreach_excluded_at IS NULL`
+        `SELECT l.id, l.socials FROM leads l JOIN catch_logs cl ON cl.id = l.catch_log_id JOIN niches n ON n.id = cl.niche_id WHERE cl.id = ? AND n.user_id = ? AND l.outreach_excluded_at IS NULL${fitGradeClause.sql}`
       )
-      .all(catchLogId, userId);
+      .all(catchLogId, userId, ...fitGradeClause.params);
   } else if (nicheId) {
     candidateLeads = db
       .prepare(
-        `SELECT l.id, l.socials FROM leads l JOIN catch_logs cl ON cl.id = l.catch_log_id JOIN niches n ON n.id = cl.niche_id WHERE n.id = ? AND n.user_id = ? AND l.outreach_excluded_at IS NULL`
+        `SELECT l.id, l.socials FROM leads l JOIN catch_logs cl ON cl.id = l.catch_log_id JOIN niches n ON n.id = cl.niche_id WHERE n.id = ? AND n.user_id = ? AND l.outreach_excluded_at IS NULL${fitGradeClause.sql}`
       )
-      .all(nicheId, userId);
+      .all(nicheId, userId, ...fitGradeClause.params);
   } else {
     return res.status(400).json({ error: "Select a niche, a city, or a specific list of leads to target" });
   }

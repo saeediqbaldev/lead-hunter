@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.15-15.42";
+const APP_VERSION = "2026.08.15-15.43";
 
 // Every email provider section (Hostinger, Gmail, Bluehost/Titan) shares
 // the same Tracking/History/Alerts/Reports/Campaigns/Setup views, keyed
@@ -1895,6 +1895,16 @@ async function showCampaignCreationForm() {
     </div>
     <p class="hint" data-campaign-lead-preview></p>
 
+    <label class="site-field-label">Fit grade <small class="optional">(uncheck any grade to exclude those leads from this campaign)</small></label>
+    <div class="campaign-grade-checklist" data-campaign-grade-checklist>
+      ${["A", "B", "C", "D", "F"]
+        .map(
+          (g) => `<label class="campaign-grade-check"><input type="checkbox" data-campaign-grade-checkbox value="${g}" checked><span class="fit-grade-badge" style="background:${FIT_GRADE_COLORS[g]}22; color:${FIT_GRADE_COLORS[g]}; border-color:${FIT_GRADE_COLORS[g]}66;">${g}</span></label>`
+        )
+        .join("")}
+      <label class="campaign-grade-check"><input type="checkbox" data-campaign-grade-checkbox value="UNGRADED" checked><span class="campaign-grade-ungraded-badge">?</span> Ungraded</label>
+    </div>
+
     <label class="site-visuals-toggle"><input type="checkbox" data-campaign-require-inspection checked> Inspect uninspected leads first, before writing their email</label>
 
     <div class="smtp-field-row">
@@ -1976,7 +1986,13 @@ async function showCampaignCreationForm() {
 
   const nicheSelect = body.querySelector("[data-campaign-niche]");
   const cityChecklist = body.querySelector("[data-campaign-city-checklist]");
+  const gradeChecklist = body.querySelector("[data-campaign-grade-checklist]");
   const previewEl = body.querySelector("[data-campaign-lead-preview]");
+
+  function checkedGrades() {
+    return Array.from(gradeChecklist.querySelectorAll("input:checked")).map((cb) => cb.value);
+  }
+  gradeChecklist.querySelectorAll("[data-campaign-grade-checkbox]").forEach((cb) => cb.addEventListener("change", updateLeadPreview));
 
   async function updateLeadPreview() {
     const checkedIds = Array.from(cityChecklist.querySelectorAll("input:checked")).map((cb) => cb.value);
@@ -1984,11 +2000,16 @@ async function showCampaignCreationForm() {
       previewEl.textContent = "";
       return;
     }
+    const grades = checkedGrades();
+    const gradeFiltered = grades.length > 0 && grades.length < 6;
+    const gradeParam = gradeFiltered ? `&fitGrade=${grades.join(",")}` : "";
     const counts = await Promise.all(
-      checkedIds.map((id) => api(`/api/leads?catchLogId=${id}&pageSize=1`).then((r) => r.json()).then((d) => d.total))
+      checkedIds.map((id) => api(`/api/leads?catchLogId=${id}&pageSize=1${gradeParam}`).then((r) => r.json()).then((d) => d.total))
     );
     const total = counts.reduce((sum, n) => sum + n, 0);
-    previewEl.textContent = `${total} lead(s) across ${checkedIds.length} ${checkedIds.length === 1 ? "city" : "cities"} - leads without an email on file will be skipped automatically.`;
+    previewEl.textContent = `${total} lead(s) across ${checkedIds.length} ${checkedIds.length === 1 ? "city" : "cities"}${
+      gradeFiltered ? ` matching the selected grade(s)` : ""
+    } - leads without an email on file will be skipped automatically.`;
   }
 
   nicheSelect.addEventListener("change", async () => {
@@ -2060,6 +2081,7 @@ async function showCampaignCreationForm() {
         name: body.querySelector("[data-campaign-name]").value.trim(),
         nicheId: nicheSelect.value || undefined,
         catchLogIds: checkedCityIds.length ? checkedCityIds : undefined,
+        fitGrades: checkedGrades().length < 6 ? checkedGrades() : undefined,
         requireInspection: body.querySelector("[data-campaign-require-inspection]").checked,
         tone: body.querySelector("[data-campaign-tone]").value,
         length: body.querySelector("[data-campaign-length]").value,

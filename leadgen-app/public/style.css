@@ -1832,6 +1832,12 @@ a.site-generate-btn { color: #1a1310; }
 .campaign-card-meta { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
 .followup-card-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .followup-card-actions .small-btn { font-size: 11px; padding: 4px 8px; }
+.campaign-grade-checklist { display: flex; flex-wrap: wrap; gap: 14px; padding: 10px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 10px; }
+.campaign-grade-check { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+.campaign-grade-ungraded-badge {
+  display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px;
+  border-radius: 50%; border: 1px solid var(--text-muted); color: var(--text-muted); font-size: 10.5px; font-weight: 700;
+}
 .campaign-detail-body { padding: 0 22px 22px; }
 .campaign-detail-tabs { display: flex; gap: 4px; padding: 0 22px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
 .campaign-detail-tab {

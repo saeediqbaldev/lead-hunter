@@ -54,14 +54,21 @@ function buildLeadsQuery(userId, query) {
     baseQuery += " AND EXISTS(SELECT 1 FROM business_analysis ba WHERE ba.lead_id = l.id AND ba.status = 'done')";
   }
   if (query.fitGrade) {
-    // Accepts either one grade ("A") or a comma-separated set ("A,B") -
-    // the board's filter dropdown can offer both a single grade and a
-    // broader "A or B" style option without needing separate params.
-    const grades = query.fitGrade.split(",").map((g) => g.trim().toUpperCase()).filter(Boolean);
+    // Accepts one or more real grades ("A" or "A,B") and/or the special
+    // "UNGRADED" token meaning fit_grade IS NULL - without that second
+    // part, a lead that simply hasn't been scored yet would be silently
+    // excluded any time a grade filter is applied at all, which usually
+    // isn't the intent.
+    const tokens = query.fitGrade.split(",").map((g) => g.trim().toUpperCase()).filter(Boolean);
+    const grades = tokens.filter((t) => t !== "UNGRADED");
+    const includeUngraded = tokens.includes("UNGRADED");
+    const clauses = [];
     if (grades.length) {
-      baseQuery += ` AND l.fit_grade IN (${grades.map(() => "?").join(",")})`;
+      clauses.push(`l.fit_grade IN (${grades.map(() => "?").join(",")})`);
       params.push(...grades);
     }
+    if (includeUngraded) clauses.push("l.fit_grade IS NULL");
+    if (clauses.length) baseQuery += ` AND (${clauses.join(" OR ")})`;
   }
 
   return { baseQuery, params, sortBy, direction };
