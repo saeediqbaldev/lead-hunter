@@ -6,6 +6,66 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.49
+The 10 templates actually look different from each other now - real
+structural variety, not just color and font swapped on an identical
+skeleton.
+
+- **Found a real gap while redesigning**: the CTA link setting was
+  being collected and saved, but never actually rendered anywhere - it
+  had no effect on a single email. Built a real, distinct CTA element
+  (plain text, colored link, or an actual button) that only appears
+  when a CTA link is set, and confirmed it's fully click-tracked in a
+  real send, same as everything else.
+- **New structural building blocks, not just palette changes**: a real
+  full-width colored header band behind the logo (not a color swap - an
+  actual distinct band, used on Minimal Branded, Tight & Modern, and
+  Formal/Corporate), card elevation with a soft shadow for a genuinely
+  floating-card feel (Clean Professional, Soft Accent Bar, Confident
+  CTA), and corner radius that now varies deliberately by template -
+  sharp and formal on some, soft and rounded on others.
+- **All 10 redesigned with an actual distinct identity**: a SaaS-style
+  bold green header on Tight & Modern, a navy letterhead band on
+  Formal/Corporate, a soft blue-tinted logo band on Minimal Branded, an
+  unmistakable button on Confident CTA, a squared-off printed-letter
+  feel on Understated Serif. Personal Plus and Founder Note stay
+  deliberately flat and unadorned - the safest options for a first cold
+  touch, kept as a genuine choice rather than dressed up to match the
+  others.
+- Verified all 10 programmatically (balanced HTML, each template's
+  specific new feature actually present) and visually in a real
+  browser with an actual uploaded logo and CTA link configured -
+  re-confirmed the full click/open tracking integration still works
+  correctly through every new element, including the CTA button link
+  itself.
+
+## What's in this V15.48
+Templates are actually usable now - each campaign picks its own, and
+picking nothing sends exactly as before. The visual redesign toward
+"beautiful and stylish" is still ahead.
+
+- **A per-campaign "Email template" dropdown** - defaults to "None
+  (plain)", meaning an existing campaign, or a new one where nothing is
+  picked, sends precisely as it always has. Verified this directly two
+  ways: the plain path produces the exact same output as before this
+  feature existed, and an old, pre-upgrade campaign correctly comes
+  through migration with no template attached.
+- **Found and fixed a significant gap while wiring this in**: your
+  tracking system (the open-pixel and click-link rewriting) and the
+  template system didn't know about each other at all. A template-sent
+  email would have shipped with no open tracking and no click tracking
+  on any link - silently breaking your ability to measure anything
+  about it. Rebuilt the connection between them properly and verified,
+  point by point, that a template-rendered send still gets: the
+  tracking pixel, tracked body links, a tracked signature, and (also
+  fixed - it wasn't working at all) tracked social icon links.
+- **Also fixed while in there**: an uploaded logo's path wasn't being
+  resolved to a full URL for a template-rendered send, which would have
+  shown as a broken image in a real inbox - fixed and verified.
+- **An eye button on every template card** opens a large, realistic
+  full-size view - the actual rendered email at real width, not the
+  small card preview.
+
 ## What's in this V15.47
 The customization editor is real now - "Customize" on any template
 card actually does something. Wiring the default template into real

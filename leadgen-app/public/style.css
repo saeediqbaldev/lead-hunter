@@ -1864,8 +1864,19 @@ a.site-generate-btn { color: #1a1310; }
 .email-template-name { font-family: var(--font-display); font-weight: 600; font-size: 14px; }
 .email-template-default-badge { font-size: 10.5px; font-weight: 700; color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); padding: 2px 8px; border-radius: 10px; }
 .email-template-customized-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); display: inline-block; margin-left: 6px; }
-.email-template-preview-frame { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin: 10px 0; background: #ffffff; height: 220px; }
+.email-template-preview-frame { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin: 10px 0; background: #ffffff; height: 220px; position: relative; }
 .email-template-preview-frame iframe { width: 100%; height: 100%; border: 0; }
+.email-template-eye-btn {
+  position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.15); background: rgba(255,255,255,0.92); color: #333;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  opacity: 0; transition: opacity 0.15s; box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+.email-template-preview-frame:hover .email-template-eye-btn { opacity: 1; }
+.template-fullsize-box { width: 700px; max-width: 94vw; max-height: 92vh; padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.template-fullsize-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.template-fullsize-frame-wrap { flex: 1; overflow-y: auto; background: #e8e8e8; padding: 24px; display: flex; justify-content: center; }
+.template-fullsize-frame-wrap iframe { width: 640px; max-width: 100%; height: 900px; border: 0; background: #ffffff; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
 .email-template-card-actions { display: flex; gap: 6px; }
 .email-template-card-actions .small-btn { flex: 1; font-size: 12px; }
 .campaign-grade-check { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }

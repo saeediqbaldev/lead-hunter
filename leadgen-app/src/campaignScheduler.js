@@ -298,12 +298,33 @@ async function processCampaignLead(campaign, campaignLeadRow) {
 
   // Step 4: build the tracked HTML and send
   const baseUrl = getSetting("app_base_url") || "http://localhost:3000";
+  let templateSettings = null;
+  let universalLinks = null;
+  let logoUrl = null;
+  if (campaign.email_template_key) {
+    const userLinksRow = db
+      .prepare("SELECT facebook_link, instagram_link, linkedin_link, tiktok_link, email_logo_path FROM users WHERE id = ?")
+      .get(campaign.user_id);
+    const customRow = db.prepare("SELECT settings FROM email_templates WHERE user_id = ? AND template_key = ?").get(campaign.user_id, campaign.email_template_key);
+    templateSettings = customRow ? JSON.parse(customRow.settings) : null;
+    universalLinks = {
+      facebookLink: userLinksRow?.facebook_link,
+      instagramLink: userLinksRow?.instagram_link,
+      linkedinLink: userLinksRow?.linkedin_link,
+      tiktokLink: userLinksRow?.tiktok_link,
+    };
+    logoUrl = userLinksRow?.email_logo_path;
+  }
   const html = buildTrackedHtmlEmail({
     bodyText: genResult.content,
     signatureHtml: genResult.signatureHtml,
     pixelUrl: `${baseUrl}/t/${trackedId}/pixel.png`,
     clickBaseUrl: `${baseUrl}/t/${trackedId}/click`,
     baseUrl,
+    templateKey: campaign.email_template_key || null,
+    templateSettings,
+    universalLinks,
+    logoUrl,
   });
 
   db.prepare("UPDATE email_campaign_leads SET status = 'sending' WHERE id = ?").run(campaignLeadRow.id);

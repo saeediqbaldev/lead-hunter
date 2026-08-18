@@ -919,6 +919,9 @@ CREATE INDEX IF NOT EXISTS idx_country_scrape_jobs_user ON country_scrape_jobs(u
   if (!campaignCols.includes("auto_resume_attempts")) {
     db.exec("ALTER TABLE email_campaigns ADD COLUMN auto_resume_attempts INTEGER NOT NULL DEFAULT 0");
   }
+  if (!campaignCols.includes("email_template_key")) {
+    db.exec("ALTER TABLE email_campaigns ADD COLUMN email_template_key TEXT");
+  }
   const campaignLeadCols = db.prepare("PRAGMA table_info(email_campaign_leads)").all().map((c) => c.name);
   if (!campaignLeadCols.includes("touch_number")) {
     db.exec("ALTER TABLE email_campaign_leads ADD COLUMN touch_number INTEGER NOT NULL DEFAULT 1");

@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="Xeven Leads" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=1547" />
+<link rel="stylesheet" href="style.css?v=1549" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -1211,9 +1211,20 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="templateFullsizeOverlay" style="display:none;">
+    <div class="modal-box template-fullsize-box">
+      <div class="template-fullsize-header">
+        <h3 id="tfTitle" style="margin:0;">Template preview</h3>
+        <button id="tfCloseBtn" class="icon-toggle-btn" title="Close"><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="template-fullsize-frame-wrap">
+        <iframe id="tfPreviewIframe" title="Full size preview" sandbox=""></iframe>
+      </div>
+    </div>
+  </div>
 
 
-  <script src="app.js?v=1547"></script>
+  <script src="app.js?v=1549"></script>
   <script src="pwa-install.js"></script>
 </body>
 </html>

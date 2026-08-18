@@ -52,21 +52,52 @@ function trackSignatureLinks(signatureHtml, clickBaseUrl) {
   });
 }
 
-function buildTrackedHtmlEmail({ bodyText, signatureHtml, pixelUrl, clickBaseUrl, baseUrl }) {
+const { renderEmailHtml } = require("./emailTemplates");
+
+function buildTrackedHtmlEmail({ bodyText, signatureHtml, pixelUrl, clickBaseUrl, baseUrl, templateKey, templateSettings, universalLinks, logoUrl }) {
+  // Returns just the tracked URL - both call sites below build their own
+  // <a> tag from it, since the template path (emailTemplates.js) and the
+  // plain path each handle surrounding text slightly differently.
+  const rewriteUrlForTracking = (url) => `${clickBaseUrl}?url=${encodeURIComponent(url)}`;
+
+  const trackedSignature = trackSignatureLinks(resolveRelativeImageUrls(signatureHtml, baseUrl), clickBaseUrl);
+
+  if (templateKey) {
+    // Template path - real layout/styling from the template system, but
+    // still the exact same tracking: body links go through the click
+    // redirect, signature links and images are handled identically to
+    // the plain path, and the same pixel gets appended at the end.
+    const templateHtml = renderEmailHtml({
+      templateKey,
+      customSettings: templateSettings,
+      bodyText,
+      signatureHtml: trackedSignature,
+      universalLinks,
+      logoUrl: logoUrl && logoUrl.startsWith("/") ? `${baseUrl}${logoUrl}` : logoUrl,
+      linkRewriter: rewriteUrlForTracking,
+    });
+    return `<!DOCTYPE html>
+<html>
+<body style="margin:0; padding:0;">
+${templateHtml}
+<img src="${pixelUrl}" width="1" height="1" alt="" style="display:none; width:1px; height:1px; border:0;" />
+</body>
+</html>`;
+  }
+
+  // Plain path - completely unchanged from before templates existed.
   const paragraphs = String(bodyText || "")
     .split(/\n{2,}/)
     .map((block) => {
       const withLineBreaks = escapeHtml(block).replace(/\n/g, "<br>");
       const withTrackedLinks = withLineBreaks.replace(URL_PATTERN, (url) => {
         const { cleanUrl, trailing } = splitTrailingPunctuation(url);
-        const trackedHref = `${clickBaseUrl}?url=${encodeURIComponent(cleanUrl)}`;
-        return `<a href="${trackedHref}">${cleanUrl}</a>${trailing}`;
+        return `<a href="${rewriteUrlForTracking(cleanUrl)}">${cleanUrl}</a>${trailing}`;
       });
       return `<p style="margin:0 0 14px 0;">${withTrackedLinks}</p>`;
     })
     .join("\n");
 
-  const trackedSignature = trackSignatureLinks(resolveRelativeImageUrls(signatureHtml, baseUrl), clickBaseUrl);
   const signatureBlock = trackedSignature ? `<div style="margin-top:18px; padding-top:14px; border-top:1px solid #e0e0e0;">${trackedSignature}</div>` : "";
 
   return `<!DOCTYPE html>

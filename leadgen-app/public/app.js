@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.17-15.47";
+const APP_VERSION = "2026.08.18-15.49";
 
 // Every email provider section (Hostinger, Gmail, Bluehost/Titan) shares
 // the same Tracking/History/Alerts/Reports/Campaigns/Setup views, keyed
@@ -1876,8 +1876,9 @@ async function showCampaignCreationForm() {
   document.getElementById("campaignDetailActions").innerHTML = "";
   document.getElementById("campaignDetailTabs").style.display = "none";
 
-  const [nichesRes] = await Promise.all([api("/api/niches")]);
+  const [nichesRes, templatesRes] = await Promise.all([api("/api/niches"), api("/api/settings/email-templates")]);
   const niches = await nichesRes.json();
+  const templatesData = await templatesRes.json();
 
   const body = document.getElementById("campaignDetailBody");
   body.innerHTML = `
@@ -1904,6 +1905,12 @@ async function showCampaignCreationForm() {
         .join("")}
       <label class="campaign-grade-check"><input type="checkbox" data-campaign-grade-checkbox value="UNGRADED" checked><span class="campaign-grade-ungraded-badge">?</span> Ungraded</label>
     </div>
+
+    <label class="site-field-label">Email template <small class="optional">(leave as "None" to send exactly as today - plain text + signature)</small>
+      <select data-campaign-email-template>
+        <option value="">None (plain)</option>
+      </select>
+    </label>
 
     <label class="site-visuals-toggle"><input type="checkbox" data-campaign-require-inspection checked> Inspect uninspected leads first, before writing their email</label>
 
@@ -1970,6 +1977,12 @@ async function showCampaignCreationForm() {
     </div>
     <div class="settings-result" id="campaignFormResult" style="display:none;"></div>
   `;
+
+  const templateSelect = body.querySelector("[data-campaign-email-template]");
+  templateSelect.insertAdjacentHTML(
+    "beforeend",
+    templatesData.templates.map((t) => `<option value="${t.key}">${t.name}${t.isCustomized ? " (customized)" : ""}</option>`).join("")
+  );
 
   body.querySelector("[data-campaign-followup-enabled]").addEventListener("change", (e) => {
     body.querySelector("[data-campaign-followup-fields]").style.display = e.target.checked ? "flex" : "none";
@@ -2082,6 +2095,7 @@ async function showCampaignCreationForm() {
         nicheId: nicheSelect.value || undefined,
         catchLogIds: checkedCityIds.length ? checkedCityIds : undefined,
         fitGrades: checkedGrades().length < 6 ? checkedGrades() : undefined,
+        emailTemplateKey: body.querySelector("[data-campaign-email-template]").value || undefined,
         requireInspection: body.querySelector("[data-campaign-require-inspection]").checked,
         tone: body.querySelector("[data-campaign-tone]").value,
         length: body.querySelector("[data-campaign-length]").value,
@@ -3375,7 +3389,10 @@ async function renderEmailTemplateGallery() {
         ${t.isDefault ? '<span class="email-template-default-badge">DEFAULT</span>' : ""}
       </div>
       <p class="hint" style="min-height:32px;">${t.description}</p>
-      <div class="email-template-preview-frame"><iframe data-template-iframe="${t.key}" title="${t.name} preview" sandbox=""></iframe></div>
+      <div class="email-template-preview-frame">
+        <iframe data-template-iframe="${t.key}" title="${t.name} preview" sandbox=""></iframe>
+        <button type="button" class="email-template-eye-btn" data-action="view-fullsize-template" title="View full size"><i class="bi bi-eye"></i></button>
+      </div>
       <div class="email-template-card-actions">
         ${t.isDefault ? "" : `<button type="button" class="small-btn" data-action="set-default-template">Set as default</button>`}
         <button type="button" class="small-btn" data-action="customize-template">Customize</button>
@@ -3416,7 +3433,31 @@ async function renderEmailTemplateGallery() {
       openTemplateCustomizeModal(key);
     });
   });
+
+  gallery.querySelectorAll('[data-action="view-fullsize-template"]').forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const card = btn.closest("[data-template-key]");
+      openTemplateFullsizeModal(card.dataset.templateKey, card.querySelector(".email-template-name").firstChild.textContent.trim());
+    });
+  });
 }
+
+const tfOverlay = document.getElementById("templateFullsizeOverlay");
+async function openTemplateFullsizeModal(templateKey, templateName) {
+  document.getElementById("tfTitle").textContent = templateName;
+  document.getElementById("tfPreviewIframe").srcdoc = "";
+  tfOverlay.style.display = "flex";
+  const res = await api(`/api/settings/email-templates/${templateKey}/preview`);
+  const data = await res.json();
+  document.getElementById("tfPreviewIframe").srcdoc = data.html;
+}
+document.getElementById("tfCloseBtn").addEventListener("click", () => {
+  tfOverlay.style.display = "none";
+});
+tfOverlay.addEventListener("click", (e) => {
+  if (e.target === tfOverlay) tfOverlay.style.display = "none";
+});
 
 // ---------- Template customization modal ----------
 const tcOverlay = document.getElementById("templateCustomizeOverlay");

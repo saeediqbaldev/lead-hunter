@@ -2,6 +2,7 @@ const express = require("express");
 const db = require("../db");
 const { isValidEmailAddress } = require("../emailValidation");
 const { hasSmtpConfigured, checkForReply, PROVIDERS } = require("../campaignSender");
+const emailTemplates = require("../emailTemplates");
 
 const router = express.Router();
 
@@ -16,6 +17,7 @@ router.post("/", (req, res) => {
     catchLogIds,
     leadIds,
     fitGrades,
+    emailTemplateKey,
     requireInspection,
     tone,
     length,
@@ -41,6 +43,9 @@ router.post("/", (req, res) => {
 
   const provider = sendProvider || "hostinger";
   if (!name || !name.trim()) return res.status(400).json({ error: "Campaign name is required" });
+  if (emailTemplateKey && !emailTemplates.TEMPLATE_PRESETS.some((t) => t.key === emailTemplateKey)) {
+    return res.status(400).json({ error: "Unknown email template" });
+  }
   if (!tone) return res.status(400).json({ error: "Tone is required" });
   if (!hasSmtpConfigured(userId, provider)) {
     const label = PROVIDERS[provider]?.label || provider;
@@ -158,8 +163,8 @@ router.post("/", (req, res) => {
 
   const info = db
     .prepare(
-      `INSERT INTO email_campaigns (user_id, name, niche_id, catch_log_id, catch_log_ids, require_inspection, tone, length, language, cta, meeting, meeting_link, whatsapp, whatsapp_link, ai_provider, max_per_day, min_gap_minutes, max_gap_minutes, followup_enabled, followup_max_count, followup_wait_days, followup_custom_instructions, mute_opened_alerts, mute_clicked_alerts, send_provider)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO email_campaigns (user_id, name, niche_id, catch_log_id, catch_log_ids, require_inspection, tone, length, language, cta, meeting, meeting_link, whatsapp, whatsapp_link, ai_provider, max_per_day, min_gap_minutes, max_gap_minutes, followup_enabled, followup_max_count, followup_wait_days, followup_custom_instructions, mute_opened_alerts, mute_clicked_alerts, send_provider, email_template_key)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       userId,
@@ -186,7 +191,8 @@ router.post("/", (req, res) => {
       followupCustomInstructions || null,
       muteOpenedAlerts ? 1 : 0,
       muteClickedAlerts ? 1 : 0,
-      provider
+      provider,
+      emailTemplateKey || null
     );
   const campaignId = info.lastInsertRowid;
 

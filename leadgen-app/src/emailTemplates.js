@@ -40,9 +40,13 @@ const DEFAULT_TEMPLATE_SETTINGS = {
   headerText: "",
   headerFontSize: 12,
   headerColor: "#666666",
+  headerBandColor: "", // empty = no band (today's plain top); a hex value renders a full-width colored strip behind the logo/header, with light/reversed text
+  cardShadow: false,
+  cardRadius: 10,
   showAccentBar: false,
   showDivider: true,
-  ctaStyle: "plain", // 'plain' | 'colored' | 'button' - how a CTA link inside the body is styled, when one is present
+  ctaText: "Book a free call",
+  ctaStyle: "plain", // 'plain' | 'colored' | 'button' - how the CTA link renders, when one is set in universal links
   showSocialIcons: true,
   footerText: "",
   footerFontSize: 11,
@@ -57,61 +61,76 @@ const TEMPLATE_PRESETS = [
     key: "personal_plus",
     name: "Personal Plus",
     description: "Closest to writing it yourself - generous spacing, no color, no logo emphasis. The safest option for a first-touch cold email.",
-    defaults: { showLogo: false, showAccentBar: false, accentColor: "#666666", showSocialIcons: false },
+    defaults: { showLogo: false, showAccentBar: false, accentColor: "#666666", showSocialIcons: false, cardRadius: 0 },
   },
   {
     key: "clean_professional",
     name: "Clean Professional",
-    description: "One subtle accent color on the signature name and a hairline divider. Nothing else colored.",
-    defaults: { accentColor: "#2F5FD6", showAccentBar: false },
+    description: "A softly elevated card with one refined accent color on the signature and a hairline divider. Nothing else colored.",
+    defaults: { accentColor: "#2F5FD6", showAccentBar: false, cardShadow: true, cardRadius: 14 },
   },
   {
     key: "understated_serif",
     name: "Understated Serif",
-    description: "A serif body font reads as more considered and less templated than sans-serif.",
-    defaults: { fontFamily: "Georgia, 'Times New Roman', serif", showLogo: false, accentColor: "#5A5A5A" },
+    description: "A serif body font and squared-off corners read as a considered, printed letter rather than a template.",
+    defaults: { fontFamily: "Georgia, 'Times New Roman', serif", showLogo: false, accentColor: "#8A6D3B", cardRadius: 2 },
   },
   {
     key: "soft_accent_bar",
     name: "Soft Accent Bar",
-    description: "A thin colored bar down the left edge of the whole message. Distinctive without being loud.",
-    defaults: { showAccentBar: true, accentColor: "#E63329" },
+    description: "A colored edge on a gently floating card - distinctive without a single word of the message looking different.",
+    defaults: { showAccentBar: true, accentColor: "#E63329", cardShadow: true, cardRadius: 10 },
   },
   {
     key: "confident_cta",
     name: "Confident CTA",
-    description: "Identical to Personal Plus, but the call-to-action reads as a real, colored link instead of a bare line.",
-    defaults: { showLogo: false, ctaStyle: "colored", accentColor: "#2F5FD6" },
+    description: "Otherwise plain, but the call-to-action renders as a real, unmistakable button instead of a bare line.",
+    defaults: { showLogo: false, ctaStyle: "button", accentColor: "#2F5FD6", cardShadow: true, cardRadius: 12 },
   },
   {
     key: "minimal_branded",
     name: "Minimal Branded",
-    description: "A small logo at the top, otherwise plain. Present without looking like a marketing banner.",
-    defaults: { showLogo: true, accentColor: "#3B6EE0" },
+    description: "The logo sits on its own soft-tinted band at the top - present without looking like a marketing banner.",
+    defaults: { showLogo: true, accentColor: "#3B6EE0", headerBandColor: "#EEF3FF", headerColor: "#3B6EE0", cardRadius: 12 },
   },
   {
     key: "warm_neutral",
     name: "Warm Neutral",
-    description: "An off-white, cream-toned background instead of pure white - a softer, warmer feel.",
-    defaults: { backgroundColor: "#FAF7F2", accentColor: "#B08050" },
+    description: "An off-white, cream-toned background with soft, rounded corners - a warmer, cozier feel.",
+    defaults: { backgroundColor: "#FAF7F2", accentColor: "#B08050", cardRadius: 18 },
   },
   {
     key: "tight_modern",
     name: "Tight & Modern",
-    description: "A contemporary sans font with tighter spacing - feels current without adding visual elements.",
-    defaults: { fontFamily: "'Inter', sans-serif", fontSize: 13.5, showLogo: false, accentColor: "#1D9E75" },
+    description: "A bold, full-width colored header band with a contemporary sans font - feels like a current SaaS product, not a cold email.",
+    defaults: {
+      fontFamily: "'Inter', sans-serif",
+      fontSize: 13.5,
+      showLogo: true,
+      accentColor: "#1D9E75",
+      headerBandColor: "#0F2E24",
+      cardShadow: true,
+      cardRadius: 8,
+    },
   },
   {
     key: "formal_corporate",
     name: "Formal / Corporate",
-    description: "Traditional serif, conservative spacing - a fit for law, finance, and traditional industries.",
-    defaults: { fontFamily: "Georgia, 'Times New Roman', serif", showLogo: true, accentColor: "#1F3A5F", showSocialIcons: false },
+    description: "A deep navy letterhead band, traditional serif, and sharp corners - a fit for law, finance, and traditional industries.",
+    defaults: {
+      fontFamily: "Georgia, 'Times New Roman', serif",
+      showLogo: true,
+      accentColor: "#1F3A5F",
+      headerBandColor: "#1F3A5F",
+      showSocialIcons: false,
+      cardRadius: 0,
+    },
   },
   {
     key: "founder_note",
     name: "Founder Note",
-    description: "No accent color anywhere - just typography and whitespace, designed to feel like it came directly from a founder.",
-    defaults: { showLogo: false, showAccentBar: false, accentColor: "#444444", showSocialIcons: false, showDivider: false },
+    description: "No accent color, no shadow, sharp corners - just typography and whitespace, designed to feel like it came directly from a founder.",
+    defaults: { showLogo: false, showAccentBar: false, accentColor: "#444444", showSocialIcons: false, showDivider: false, cardRadius: 0 },
   },
 ];
 
@@ -154,16 +173,33 @@ function socialIconSvg(platform, color, size = 20) {
 // email clients don't collapse whitespace the way browsers do by
 // default, so without this the AI's line breaks would either vanish or
 // render as literal blank space depending on the client.
-function paragraphsFromText(text, settings) {
+const URL_PATTERN = /(https?:\/\/[^\s<>")]+)/g;
+
+// Splits into paragraphs on blank lines, HTML-escapes the content (a
+// raw "&" or "<" in AI-generated text would otherwise corrupt the
+// markup), and turns a single newline into a <br>. When a linkRewriter
+// is given, any raw URL found in the text is passed through it and
+// turned into a real <a> tag - this is how campaign-sending code hooks
+// click-tracking into a template-rendered email without this module
+// needing to know anything about how tracking links are built.
+function paragraphsFromText(text, settings, linkRewriter) {
   if (!text) return "";
   return text
     .split(/\n\s*\n/)
     .map((p) => p.trim())
     .filter(Boolean)
-    .map(
-      (p) =>
-        `<p style="margin:0 0 14px; font-family:${settings.fontFamily}; font-size:${settings.fontSize}px; line-height:1.65; color:${settings.textColor};">${p.replace(/\n/g, "<br>")}</p>`
-    )
+    .map((p) => {
+      let escaped = escapeHtml(p).replace(/\n/g, "<br>");
+      if (linkRewriter) {
+        escaped = escaped.replace(URL_PATTERN, (url) => {
+          const trailingMatch = url.match(/[.,;:!?)\]]+$/);
+          const trailing = trailingMatch ? trailingMatch[0] : "";
+          const cleanUrl = trailing ? url.slice(0, -trailing.length) : url;
+          return `<a href="${escapeAttr(linkRewriter(cleanUrl))}">${cleanUrl}</a>${trailing}`;
+        });
+      }
+      return `<p style="margin:0 0 14px; font-family:${settings.fontFamily}; font-size:${settings.fontSize}px; line-height:1.65; color:${settings.textColor};">${escaped}</p>`;
+    })
     .join("\n");
 }
 
@@ -183,19 +219,59 @@ function escapeHtml(str) {
 // Settings. Using one function for both is deliberate: a separate,
 // prettier preview-only version would risk drifting from what actually
 // gets sent, which is a worse failure mode than a plain preview.
-function renderEmailHtml({ templateKey, customSettings, bodyText, signatureHtml, universalLinks = {}, logoUrl }) {
+function renderEmailHtml({ templateKey, customSettings, bodyText, signatureHtml, universalLinks = {}, logoUrl, linkRewriter }) {
   const s = mergeTemplateSettings(templateKey, customSettings);
-  const { facebookLink, instagramLink, linkedinLink, tiktokLink } = universalLinks;
+  const { facebookLink, instagramLink, linkedinLink, tiktokLink, ctaLink } = universalLinks;
 
-  let headerHtml = "";
-  if (s.showLogo && logoUrl) {
-    headerHtml += `<img src="${escapeAttr(logoUrl)}" height="${s.logoHeight}" style="height:${s.logoHeight}px; width:auto; display:block; border:0; margin-bottom:${s.headerText ? "8px" : "22px"};" alt="Logo">`;
-  }
-  if (s.headerText) {
-    headerHtml += `<p style="margin:0 0 22px; font-family:${s.fontFamily}; font-size:${s.headerFontSize}px; color:${s.headerColor};">${escapeHtml(s.headerText)}</p>`;
+  const logoImgHtml = logoUrl
+    ? `<img src="${escapeAttr(logoUrl)}" height="${s.logoHeight}" style="height:${s.logoHeight}px; width:auto; display:block; border:0;" alt="Logo">`
+    : "";
+
+  // A header band is a real full-width colored strip behind the
+  // logo/header text, structurally distinct from the plain white top
+  // every template used to share - not just a color swapped in.
+  let bandHtml = "";
+  if (s.headerBandColor) {
+    const bandLogo = s.showLogo && logoImgHtml ? `<div style="margin-bottom:${s.headerText ? "6px" : "0"};">${logoImgHtml}</div>` : "";
+    const bandText = s.headerText
+      ? `<p style="margin:0; font-family:${s.fontFamily}; font-size:${s.headerFontSize}px; color:#ffffff; opacity:0.9;">${escapeHtml(s.headerText)}</p>`
+      : "";
+    if (bandLogo || bandText) {
+      bandHtml = `<div style="background:${s.headerBandColor}; padding:22px 30px; text-align:${s.showAccentBar ? "left" : "center"};">${bandLogo}${bandText}</div>`;
+    }
   }
 
-  const bodyHtml = paragraphsFromText(bodyText, s);
+  // No band - logo/header render inline at the top of the regular
+  // content area instead, exactly as before this rework.
+  let inlineHeaderHtml = "";
+  if (!bandHtml) {
+    if (s.showLogo && logoImgHtml) inlineHeaderHtml += `<div style="margin-bottom:${s.headerText ? "8px" : "22px"};">${logoImgHtml}</div>`;
+    if (s.headerText) {
+      inlineHeaderHtml += `<p style="margin:0 0 22px; font-family:${s.fontFamily}; font-size:${s.headerFontSize}px; color:${s.headerColor};">${escapeHtml(s.headerText)}</p>`;
+    }
+  }
+
+  const bodyHtml = paragraphsFromText(bodyText, s, linkRewriter);
+
+  // The CTA link is a distinct, account-level link (e.g. a booking
+  // page) - separate from anything the AI wrote, and separate from the
+  // signature. Rendered here, between the body and the signature, only
+  // when one is actually set.
+  let ctaHtml = "";
+  if (ctaLink) {
+    const href = escapeAttr(linkRewriter ? linkRewriter(ctaLink) : ctaLink);
+    const label = escapeHtml(s.ctaText || "Learn more");
+    if (s.ctaStyle === "button") {
+      ctaHtml = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 20px;"><tr>
+        <td style="background:${s.accentColor}; border-radius:6px;">
+          <a href="${href}" style="display:inline-block; padding:11px 22px; font-family:${s.fontFamily}; font-size:${s.fontSize}px; font-weight:600; color:#ffffff; text-decoration:none;">${label}</a>
+        </td>
+      </tr></table>`;
+    } else {
+      const color = s.ctaStyle === "colored" ? s.accentColor : s.textColor;
+      ctaHtml = `<p style="margin:0 0 20px;"><a href="${href}" style="font-family:${s.fontFamily}; font-size:${s.fontSize}px; font-weight:${s.ctaStyle === "colored" ? "600" : "normal"}; color:${color}; text-decoration:underline;">${label}</a></p>`;
+    }
+  }
 
   const socialLinks = [
     { url: facebookLink, key: "facebook" },
@@ -206,10 +282,10 @@ function renderEmailHtml({ templateKey, customSettings, bodyText, signatureHtml,
   let socialHtml = "";
   if (s.showSocialIcons && socialLinks.length) {
     const cells = socialLinks
-      .map(
-        (l) =>
-          `<td style="padding-right:10px;"><a href="${escapeAttr(l.url)}" style="text-decoration:none;">${socialIconSvg(l.key, s.accentColor)}</a></td>`
-      )
+      .map((l) => {
+        const href = linkRewriter ? linkRewriter(l.url) : l.url;
+        return `<td style="padding-right:10px;"><a href="${escapeAttr(href)}" style="text-decoration:none;">${socialIconSvg(l.key, s.accentColor)}</a></td>`;
+      })
       .join("");
     socialHtml = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:16px;"><tr>${cells}</tr></table>`;
   }
@@ -223,7 +299,7 @@ function renderEmailHtml({ templateKey, customSettings, bodyText, signatureHtml,
     ? `<div style="border-top:1px solid #eeeeee; margin-top:18px; padding-top:18px;">${belowDivider}</div>`
     : `<div style="margin-top:18px;">${belowDivider}</div>`;
 
-  const innerContent = `${headerHtml}${bodyHtml}${dividerHtml}`;
+  const innerContent = `${inlineHeaderHtml}${bodyHtml}${ctaHtml}${dividerHtml}`;
 
   // The accent bar (when enabled) is a separate table cell, not a CSS
   // border - a real colored cell survives every email client, where a
@@ -236,10 +312,13 @@ function renderEmailHtml({ templateKey, customSettings, bodyText, signatureHtml,
        </tr></table>`
     : `<div style="padding:32px 30px;">${innerContent}</div>`;
 
+  const shadowStyle = s.cardShadow ? " box-shadow:0 6px 24px rgba(0,0,0,0.10);" : "";
+
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${s.backgroundColor};">
   <tr>
     <td align="center" style="padding:24px 12px;">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%; max-width:600px; background:#ffffff; border-radius:8px;">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%; max-width:600px; background:#ffffff; border-radius:${s.cardRadius}px; overflow:hidden;${shadowStyle}">
+        ${bandHtml ? `<tr><td>${bandHtml}</td></tr>` : ""}
         <tr>
           <td>${contentCell}</td>
         </tr>
@@ -267,10 +346,17 @@ function sanitizeTemplateSettings(incoming) {
   if (sanitized.headerFontSize !== undefined) sanitized.headerFontSize = Math.max(8, Math.min(20, Number(sanitized.headerFontSize) || 12));
   if (sanitized.footerFontSize !== undefined) sanitized.footerFontSize = Math.max(8, Math.min(18, Number(sanitized.footerFontSize) || 11));
   if (sanitized.logoHeight !== undefined) sanitized.logoHeight = Math.max(16, Math.min(80, Number(sanitized.logoHeight) || 32));
+  if (sanitized.cardRadius !== undefined) sanitized.cardRadius = Math.max(0, Math.min(24, Number(sanitized.cardRadius) || 0));
+  if (sanitized.cardShadow !== undefined) sanitized.cardShadow = !!sanitized.cardShadow;
   if (sanitized.fontFamily !== undefined && !EMAIL_TEMPLATE_FONTS.some((f) => f.value === sanitized.fontFamily)) delete sanitized.fontFamily;
   if (sanitized.ctaStyle !== undefined && !["plain", "colored", "button"].includes(sanitized.ctaStyle)) delete sanitized.ctaStyle;
   for (const field of COLOR_FIELDS) {
     if (sanitized[field] !== undefined && !HEX_COLOR_RE.test(sanitized[field])) delete sanitized[field];
+  }
+  // headerBandColor is the one color field allowed to be empty (meaning
+  // "no band") - validated separately from the required-color fields above.
+  if (sanitized.headerBandColor !== undefined && sanitized.headerBandColor !== "" && !HEX_COLOR_RE.test(sanitized.headerBandColor)) {
+    delete sanitized.headerBandColor;
   }
   // headerText/footerText pass through as raw strings here - they're
   // escaped at render time (see escapeHtml above), not at save time, so
