@@ -16,7 +16,7 @@
 <meta name="apple-mobile-web-app-title" content="Xeven Leads" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=1554" />
+<link rel="stylesheet" href="style.css?v=1555" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -1235,8 +1235,13 @@
           <div class="settings-divider"></div>
           <label class="site-visuals-toggle"><input type="checkbox" id="tcShowSocialIcons"> Show social icons</label>
           <label class="site-visuals-toggle"><input type="checkbox" id="tcShowLinkLabels"> Show text label next to each icon</label>
+          <label class="site-visuals-toggle"><input type="checkbox" id="tcUnderlineSocialLinks"> Underline social links</label>
+          <label class="site-field-label">Social icon color <small class="optional">(leave blank to match the accent color)</small>
+            <input type="color" id="tcSocialIconColor">
+            <button type="button" class="small-btn" id="tcSocialIconColorResetBtn" style="margin-top:6px;">Use accent color</button>
+          </label>
           <label class="site-field-label">Footer paragraph <small class="optional">(optional, shown above the icons - e.g. an address or tagline)</small>
-            <input type="text" id="tcFooterText" maxlength="160">
+            <input type="text" id="tcFooterText">
           </label>
           <label class="site-field-label">Footer link <small class="optional">(optional - makes the paragraph above clickable)</small>
             <input type="url" id="tcFooterLink" placeholder="https://xevenpixels.com">
@@ -1278,7 +1283,7 @@
   </div>
 
 
-  <script src="app.js?v=1554"></script>
+  <script src="app.js?v=1555"></script>
   <script src="pwa-install.js"></script>
 </body>
 </html>

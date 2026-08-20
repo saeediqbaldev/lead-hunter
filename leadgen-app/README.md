@@ -6,6 +6,27 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.55
+Three refinements to the footer/social icon controls added last round.
+
+- **No more character limit on the footer paragraph** - verified a
+  500-character value is accepted and saved in full, not silently cut
+  off.
+- **Social icon color is now its own setting**, independent of the
+  general accent color - a "Use accent color" button resets it back to
+  matching whenever wanted. Every existing template keeps its exact
+  current look until this is explicitly touched - verified the default,
+  untouched behavior still resolves to the accent color exactly as
+  before.
+- **An underline toggle for the social links** - applies correctly
+  whether icon labels are showing or not (a harmless no-op on an
+  icon-only link with no text to underline, and visibly applied the
+  moment labels are turned on).
+- All three verified together in a real browser: set a custom icon
+  color and enable underline, confirm both show up live in the
+  preview, save, and confirm - via a fresh API call - that everything
+  persisted correctly.
+
 ## What's in this V15.54
 Six changes, all tested against the real send path, not just previews.
 

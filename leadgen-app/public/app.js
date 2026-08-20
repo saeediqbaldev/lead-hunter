@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.20-15.54";
+const APP_VERSION = "2026.08.20-15.55";
 
 // Every email provider section (Hostinger, Gmail, Bluehost/Titan) shares
 // the same Tracking/History/Alerts/Reports/Campaigns/Setup views, keyed
@@ -3508,6 +3508,9 @@ function applyTemplateSettingsToForm(s) {
   document.getElementById("tcCtaStyle").value = s.ctaStyle;
   document.getElementById("tcShowSocialIcons").checked = !!s.showSocialIcons;
   document.getElementById("tcShowLinkLabels").checked = !!s.showLinkLabels;
+  document.getElementById("tcUnderlineSocialLinks").checked = !!s.underlineSocialLinks;
+  document.getElementById("tcSocialIconColor").value = s.socialIconColor || s.accentColor;
+  document.getElementById("tcSocialIconColor").dataset.customized = s.socialIconColor ? "true" : "false";
   document.getElementById("tcFooterText").value = s.footerText || "";
   document.getElementById("tcFooterLink").value = s.footerLink || "";
   document.getElementById("tcFooterFontFamily").value = s.footerFontFamily || "";
@@ -3533,6 +3536,8 @@ function readTemplateSettingsFromForm() {
     ctaStyle: document.getElementById("tcCtaStyle").value,
     showSocialIcons: document.getElementById("tcShowSocialIcons").checked,
     showLinkLabels: document.getElementById("tcShowLinkLabels").checked,
+    underlineSocialLinks: document.getElementById("tcUnderlineSocialLinks").checked,
+    socialIconColor: document.getElementById("tcSocialIconColor").dataset.customized === "true" ? document.getElementById("tcSocialIconColor").value : "",
     footerText: document.getElementById("tcFooterText").value,
     footerLink: document.getElementById("tcFooterLink").value.trim(),
     footerFontFamily: document.getElementById("tcFooterFontFamily").value,
@@ -3563,6 +3568,16 @@ function scheduleTemplatePreviewUpdate() {
 
 document.querySelectorAll(".template-customize-fields input, .template-customize-fields select").forEach((el) => {
   el.addEventListener("input", scheduleTemplatePreviewUpdate);
+});
+
+document.getElementById("tcSocialIconColor").addEventListener("input", (e) => {
+  e.target.dataset.customized = "true";
+});
+document.getElementById("tcSocialIconColorResetBtn").addEventListener("click", () => {
+  const picker = document.getElementById("tcSocialIconColor");
+  picker.value = document.getElementById("tcAccentColor").value;
+  picker.dataset.customized = "false";
+  scheduleTemplatePreviewUpdate();
 });
 
 document.getElementById("tcCancelBtn").addEventListener("click", () => {

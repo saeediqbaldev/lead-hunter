@@ -48,6 +48,8 @@ const DEFAULT_TEMPLATE_SETTINGS = {
   ctaText: "Book a free call",
   ctaStyle: "plain", // 'plain' | 'colored' | 'button' - how the CTA link renders, when one is set in universal links
   showSocialIcons: true,
+  socialIconColor: "", // empty = inherit accentColor, same fallback pattern as footerFontFamily
+  underlineSocialLinks: false,
   showLinkLabels: false, // when true, each icon shows its text label alongside it (e.g. an envelope + "Email") instead of being icon-only
   footerText: "",
   footerFontFamily: "", // empty = inherit the body font family
@@ -289,6 +291,8 @@ function renderEmailHtml({ templateKey, customSettings, bodyText, signatureHtml,
   ].filter((l) => l.url);
   let socialHtml = "";
   if (s.showSocialIcons && contactLinks.length) {
+    const iconColor = s.socialIconColor || s.accentColor;
+    const textDecoration = s.underlineSocialLinks ? "underline" : "none";
     const cells = contactLinks
       .map((l) => {
         // A mailto: link isn't an http(s) navigation, so it's never
@@ -296,14 +300,14 @@ function renderEmailHtml({ templateKey, customSettings, bodyText, signatureHtml,
         // link tracking already applies to mailto:/tel: links.
         const isMailto = l.url.startsWith("mailto:");
         const href = isMailto ? l.url : linkRewriter ? linkRewriter(l.url) : l.url;
-        const icon = socialIconSvg(l.key, s.accentColor);
+        const icon = socialIconSvg(l.key, iconColor);
         const inner = s.showLinkLabels
           ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
                <td style="padding-right:6px;">${icon}</td>
-               <td style="font-family:${s.fontFamily}; font-size:${Math.max(s.fontSize - 2, 10)}px; color:${s.accentColor}; white-space:nowrap;">${l.label}</td>
+               <td style="font-family:${s.fontFamily}; font-size:${Math.max(s.fontSize - 2, 10)}px; color:${iconColor}; white-space:nowrap; text-decoration:${textDecoration};">${l.label}</td>
              </tr></table>`
           : icon;
-        return `<td style="padding-right:${s.showLinkLabels ? 16 : 10}px;"><a href="${escapeAttr(href)}" style="text-decoration:none;">${inner}</a></td>`;
+        return `<td style="padding-right:${s.showLinkLabels ? 16 : 10}px;"><a href="${escapeAttr(href)}" style="text-decoration:${textDecoration};">${inner}</a></td>`;
       })
       .join("");
     socialHtml = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:16px;"><tr>${cells}</tr></table>`;
@@ -375,6 +379,7 @@ function sanitizeTemplateSettings(incoming) {
   if (sanitized.cardRadius !== undefined) sanitized.cardRadius = Math.max(0, Math.min(24, Number(sanitized.cardRadius) || 0));
   if (sanitized.cardShadow !== undefined) sanitized.cardShadow = !!sanitized.cardShadow;
   if (sanitized.showLinkLabels !== undefined) sanitized.showLinkLabels = !!sanitized.showLinkLabels;
+  if (sanitized.underlineSocialLinks !== undefined) sanitized.underlineSocialLinks = !!sanitized.underlineSocialLinks;
   if (sanitized.fontFamily !== undefined && !EMAIL_TEMPLATE_FONTS.some((f) => f.value === sanitized.fontFamily)) delete sanitized.fontFamily;
   if (sanitized.footerFontFamily !== undefined && sanitized.footerFontFamily !== "" && !EMAIL_TEMPLATE_FONTS.some((f) => f.value === sanitized.footerFontFamily)) {
     delete sanitized.footerFontFamily;
@@ -390,6 +395,9 @@ function sanitizeTemplateSettings(incoming) {
   // "no band") - validated separately from the required-color fields above.
   if (sanitized.headerBandColor !== undefined && sanitized.headerBandColor !== "" && !HEX_COLOR_RE.test(sanitized.headerBandColor)) {
     delete sanitized.headerBandColor;
+  }
+  if (sanitized.socialIconColor !== undefined && sanitized.socialIconColor !== "" && !HEX_COLOR_RE.test(sanitized.socialIconColor)) {
+    delete sanitized.socialIconColor;
   }
   // headerText/footerText pass through as raw strings here - they're
   // escaped at render time (see escapeHtml above), not at save time, so
