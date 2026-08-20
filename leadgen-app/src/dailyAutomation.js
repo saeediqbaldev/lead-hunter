@@ -130,7 +130,8 @@ async function advanceCitySearches() {
       const result = await performSearch(run.user_id, true, {
         keyword: run.niche_name,
         location: city,
-        maxResults: 20,
+        maxResults: 60,
+        includeRatings: true,
         nicheId: run.niche_id,
         country: run.country,
       });
@@ -157,7 +158,13 @@ async function advanceContactScraping() {
     if (!run.country_scrape_job_id) {
       try {
         const job = await startCountryScrape(run.user_id, run.niche_id, run.country);
-        updateRun(run.id, { country_scrape_job_id: job.id, current_step_detail: `Scraping contact details for all leads in ${run.country}` });
+        const jobCityCount = JSON.parse(job.catch_log_ids || "[]").length;
+        updateRun(run.id, {
+          country_scrape_job_id: job.id,
+          current_step_detail: `Scraping contact details for all leads in ${run.country}`,
+          current_city_index: 0,
+          total_cities: jobCityCount,
+        });
         logEvent(run.id, "contact_scrape_started", `Started scraping contact details for every lead found in ${run.country}.`);
       } catch (err) {
         if (err.message.includes("already running")) {
@@ -180,8 +187,29 @@ async function advanceContactScraping() {
     if (!job || job.status === "completed" || job.status === "cancelled") {
       updateRun(run.id, { status: "creating_campaign", current_step_detail: "Contact scraping finished - building the campaign" });
       logEvent(run.id, "contact_scrape_completed", `Finished scraping contact details for ${run.country}.`);
+      continue;
     }
-    // else still running - nothing to do this tick, just wait for it
+
+    // Still running - surface the scraper's own real progress through
+    // its cities, same as the search phase's progress bar, rather than
+    // a static message that never changes until the whole thing finishes.
+    const jobCityIds = JSON.parse(job.catch_log_ids || "[]");
+    const totalJobCities = jobCityIds.length;
+    if (run.current_city_index !== job.current_index || run.total_cities !== totalJobCities) {
+      const currentCatchLogId = jobCityIds[job.current_index];
+      const currentCityName = currentCatchLogId ? db.prepare("SELECT name FROM catch_logs WHERE id = ?").get(currentCatchLogId)?.name : null;
+      updateRun(run.id, {
+        current_city_index: job.current_index,
+        total_cities: totalJobCities,
+        current_step_detail: currentCityName
+          ? `Scraping contacts: city ${job.current_index + 1} of ${totalJobCities} (${currentCityName})`
+          : `Scraping contacts: city ${job.current_index + 1} of ${totalJobCities}`,
+      });
+      if (job.current_index > 0) {
+        logEvent(run.id, "contact_scrape_started", `Finished scraping contacts for city ${job.current_index} of ${totalJobCities} in ${run.country}.`);
+      }
+    }
+    // else no change since the last tick - nothing new to report yet
   }
 }
 
@@ -208,6 +236,7 @@ async function advanceCampaignCreation() {
         emailTemplateKey: userRow?.default_email_template_key || null,
         requireInspection: true,
         tone,
+        length: "Short",
         language,
         cta: true,
         meeting: true,

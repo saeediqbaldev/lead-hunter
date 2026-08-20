@@ -26,9 +26,13 @@ function leadsPulledToday(userId) {
   return row.total;
 }
 
-function firstWordOfLocation(loc) {
-  const word = loc.trim().split(/[\s,]+/)[0];
-  return word || loc.trim();
+// Extracts the full city name from a "City, Country" location string -
+// everything before the first comma, not just the first word. A
+// multi-word city ("New York, United States", "Los Angeles, United
+// States") needs its whole name, not a truncated first token.
+function cityNameFromLocation(loc) {
+  const city = loc.split(",")[0].trim();
+  return city || loc.trim();
 }
 
 // Normalizes a free-text location into a stable key, so "Berlin, Germany"
@@ -128,7 +132,7 @@ async function performSearch(userId, isAdmin, { keyword, location, maxResults, i
     catchLogId = existingCatchLog.id;
     logName = existingCatchLog.name;
   } else {
-    logName = (catchLogName && catchLogName.trim()) || firstWordOfLocation(location);
+    logName = (catchLogName && catchLogName.trim()) || cityNameFromLocation(location);
     const logInfo = db
       .prepare("INSERT INTO catch_logs (niche_id, name, keyword, location, country) VALUES (?, ?, ?, ?, ?)")
       .run(niche.id, logName, keyword, location, (country && country.trim()) || "Unnamed");

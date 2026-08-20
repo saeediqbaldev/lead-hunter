@@ -6,6 +6,39 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.54
+Six changes, all tested against the real send path, not just previews.
+
+- **Fixed a real catch-log naming bug**: multi-word cities were being
+  truncated to their first token only ("New York, United States" became
+  just "New"). Now takes the full city name.
+- **Hunt defaults updated**: 60 leads per search (was 20), "Include
+  ratings & review counts" checked by default - the automation's own
+  searches now match these same defaults too.
+- **Real progress during contact scraping**: the status card used to
+  freeze on a static message for the entire scraping phase. It now
+  shows the actual city being scraped and a live progress bar, the same
+  way the search phase already did.
+- **Automation campaigns now use Short-length emails.**
+- **Obviously-fake placeholder emails are now filtered out**, at both
+  levels asked for: during contact scraping (a website's leftover
+  "your@email.com" or "john@doe.com" template placeholder is never
+  saved as if it were real) and at campaign creation (a defensive
+  second check, in case one ever gets into the database another way).
+  Verified against 19 cases both ways - every placeholder pattern
+  caught, and specifically checked that real names like
+  "johnsmith@realcompany.com" are never falsely flagged just for
+  containing "john."
+- **The footer paragraph is real now, and moved above the icons**:
+  traced through your screenshots and found the actual gap - the
+  paragraph existed as a setting but rendered below the social icons,
+  easy to miss, and had no way to make it a link. It's now positioned
+  above the icons as asked, with its own font family, size, color, and
+  an optional link - verified all the way through the real send
+  pipeline, not just the preview: the exact HTML a recipient would get
+  shows the paragraph, correctly linked and click-tracked, sitting
+  right after the signature and before the icon row.
+
 ## What's in this V15.53
 The Automation page is real and the full daily pipeline is now
 actually running in the background - this completes the feature from

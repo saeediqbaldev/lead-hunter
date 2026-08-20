@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.20-15.53";
+const APP_VERSION = "2026.08.20-15.54";
 
 // Every email provider section (Hostinger, Gmail, Bluehost/Titan) shares
 // the same Tracking/History/Alerts/Reports/Campaigns/Setup views, keyed
@@ -3480,6 +3480,10 @@ async function openTemplateCustomizeModal(templateKey) {
   const fontSelect = document.getElementById("tcFontFamily");
   fontSelect.innerHTML = data.fonts.map((f) => `<option value="${escapeHtmlAttr(f.value)}">${f.label}</option>`).join("");
 
+  const footerFontSelect = document.getElementById("tcFooterFontFamily");
+  footerFontSelect.innerHTML =
+    `<option value="">Same as body font</option>` + data.fonts.map((f) => `<option value="${escapeHtmlAttr(f.value)}">${f.label}</option>`).join("");
+
   applyTemplateSettingsToForm(template.settings);
   tcOverlay.style.display = "flex";
   await updateTemplatePreview();
@@ -3505,6 +3509,8 @@ function applyTemplateSettingsToForm(s) {
   document.getElementById("tcShowSocialIcons").checked = !!s.showSocialIcons;
   document.getElementById("tcShowLinkLabels").checked = !!s.showLinkLabels;
   document.getElementById("tcFooterText").value = s.footerText || "";
+  document.getElementById("tcFooterLink").value = s.footerLink || "";
+  document.getElementById("tcFooterFontFamily").value = s.footerFontFamily || "";
   document.getElementById("tcFooterFontSize").value = s.footerFontSize;
   document.getElementById("tcFooterFontSizeValue").textContent = `${s.footerFontSize}px`;
   document.getElementById("tcFooterColor").value = s.footerColor;
@@ -3528,6 +3534,8 @@ function readTemplateSettingsFromForm() {
     showSocialIcons: document.getElementById("tcShowSocialIcons").checked,
     showLinkLabels: document.getElementById("tcShowLinkLabels").checked,
     footerText: document.getElementById("tcFooterText").value,
+    footerLink: document.getElementById("tcFooterLink").value.trim(),
+    footerFontFamily: document.getElementById("tcFooterFontFamily").value,
     footerFontSize: Number(document.getElementById("tcFooterFontSize").value),
     footerColor: document.getElementById("tcFooterColor").value,
   };
@@ -7671,7 +7679,7 @@ searchForm.addEventListener("submit", async (e) => {
   const keyword = document.getElementById("keyword").value.trim();
   const location = document.getElementById("location").value.trim();
   const country = document.getElementById("huntCountry").value.trim();
-  const maxResults = Number(document.getElementById("maxResults").value) || 20;
+  const maxResults = Number(document.getElementById("maxResults").value) || 60;
   const includeRatings = document.getElementById("includeRatings").checked;
   const catchLogName = catchLogNameInput.value.trim();
 
@@ -8445,10 +8453,11 @@ function renderAutomationStatusCard(run, enabled) {
     : "running";
 
   let progressHtml = "";
-  if (run.status === "searching_cities" && run.total_cities > 0) {
+  if ((run.status === "searching_cities" || run.status === "scraping_contacts") && run.total_cities > 0) {
     const pct = Math.round((run.current_city_index / run.total_cities) * 100);
+    const verb = run.status === "searching_cities" ? "searched" : "scraped";
     progressHtml = `<div class="automation-progress-bar"><div class="automation-progress-fill" style="width:${pct}%;"></div></div>
-      <div class="automation-status-detail" style="margin-top:6px;">${run.current_city_index} / ${run.total_cities} cities searched</div>`;
+      <div class="automation-status-detail" style="margin-top:6px;">${run.current_city_index} / ${run.total_cities} cities ${verb}</div>`;
   }
 
   const headline = run.status === "nothing_to_do" ? "Nothing new to automate today" : `${run.niche_name} - ${run.country}`;

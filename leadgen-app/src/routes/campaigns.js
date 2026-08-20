@@ -1,6 +1,6 @@
 const express = require("express");
 const db = require("../db");
-const { isValidEmailAddress } = require("../emailValidation");
+const { isValidEmailAddress, isDummyEmail } = require("../emailValidation");
 const { hasSmtpConfigured, checkForReply, PROVIDERS } = require("../campaignSender");
 const emailTemplates = require("../emailTemplates");
 
@@ -123,7 +123,8 @@ function createCampaign(userId, options) {
 
   const emailable = candidateLeads.filter((l) => {
     try {
-      return isValidEmailAddress(JSON.parse(l.socials || "{}").email);
+      const email = JSON.parse(l.socials || "{}").email;
+      return isValidEmailAddress(email) && !isDummyEmail(email);
     } catch {
       return false;
     }
@@ -539,7 +540,7 @@ router.post("/:id/leads/:leadRowId/send-followup-now", requireOwnedCampaign, asy
   } catch {
     socials = {};
   }
-  if (!isValidEmailAddress(socials.email)) return res.status(400).json({ error: "No valid email address on file for this lead" });
+  if (!isValidEmailAddress(socials.email) || isDummyEmail(socials.email)) return res.status(400).json({ error: "No valid email address on file for this lead" });
 
   try {
     const sentAtMs = new Date(leadRow.sent_at.replace(" ", "T") + "Z").getTime();

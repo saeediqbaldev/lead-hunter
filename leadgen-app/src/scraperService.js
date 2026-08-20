@@ -2,6 +2,7 @@ const fetch = require("node-fetch");
 const FormData = require("form-data");
 const db = require("./db");
 const { computeBaseFitScore } = require("./fitScore");
+const { isDummyEmail } = require("./emailValidation");
 
 const SCRAPER_BASE_URL = process.env.SCRAPER_SERVICE_URL || "http://scraper:8000";
 const SCRAPER_SECRET = process.env.SCRAPER_API_SECRET || "";
@@ -128,7 +129,7 @@ function mergeScrapedResultsIntoLeads(catchLogId, scrapedBusinesses) {
 
     const existingSocials = lead.socials ? JSON.parse(lead.socials) : {};
     const newSocials = { ...existingSocials };
-    if (biz.email) newSocials.email = biz.email;
+    if (biz.email && !isDummyEmail(biz.email)) newSocials.email = biz.email;
     if (biz.facebook) newSocials.facebook = biz.facebook;
     if (biz.instagram) newSocials.instagram = biz.instagram;
     if (biz.linkedin) newSocials.linkedin = biz.linkedin;

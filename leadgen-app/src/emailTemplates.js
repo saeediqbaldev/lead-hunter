@@ -50,8 +50,10 @@ const DEFAULT_TEMPLATE_SETTINGS = {
   showSocialIcons: true,
   showLinkLabels: false, // when true, each icon shows its text label alongside it (e.g. an envelope + "Email") instead of being icon-only
   footerText: "",
+  footerFontFamily: "", // empty = inherit the body font family
   footerFontSize: 11,
   footerColor: "#999999",
+  footerLink: "", // optional - when set, the footer paragraph becomes a clickable link to this URL
 };
 
 // Ten starting points, each just a partial override of the schema above
@@ -307,11 +309,18 @@ function renderEmailHtml({ templateKey, customSettings, bodyText, signatureHtml,
     socialHtml = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:16px;"><tr>${cells}</tr></table>`;
   }
 
-  const footerTextHtml = s.footerText
-    ? `<p style="margin:12px 0 0; font-family:${s.fontFamily}; font-size:${s.footerFontSize}px; color:${s.footerColor};">${escapeHtml(s.footerText)}</p>`
-    : "";
+  let footerTextHtml = "";
+  if (s.footerText) {
+    const footerFont = s.footerFontFamily || s.fontFamily;
+    const escapedText = escapeHtml(s.footerText);
+    const inner = s.footerLink ? `<a href="${escapeAttr(linkRewriter ? linkRewriter(s.footerLink) : s.footerLink)}" style="color:${s.footerColor}; text-decoration:underline;">${escapedText}</a>` : escapedText;
+    footerTextHtml = `<p style="margin:12px 0; font-family:${footerFont}; font-size:${s.footerFontSize}px; color:${s.footerColor};">${inner}</p>`;
+  }
 
-  const belowDivider = `${signatureHtml || ""}${socialHtml}${footerTextHtml}`;
+  // Footer paragraph sits above the social icons, not below - it's the
+  // sign-off line (an address, a tagline, a "manage preferences" style
+  // link), with the icon row as the very last thing in the email.
+  const belowDivider = `${signatureHtml || ""}${footerTextHtml}${socialHtml}`;
   const dividerHtml = s.showDivider
     ? `<div style="border-top:1px solid #eeeeee; margin-top:18px; padding-top:18px;">${belowDivider}</div>`
     : `<div style="margin-top:18px;">${belowDivider}</div>`;
@@ -367,6 +376,12 @@ function sanitizeTemplateSettings(incoming) {
   if (sanitized.cardShadow !== undefined) sanitized.cardShadow = !!sanitized.cardShadow;
   if (sanitized.showLinkLabels !== undefined) sanitized.showLinkLabels = !!sanitized.showLinkLabels;
   if (sanitized.fontFamily !== undefined && !EMAIL_TEMPLATE_FONTS.some((f) => f.value === sanitized.fontFamily)) delete sanitized.fontFamily;
+  if (sanitized.footerFontFamily !== undefined && sanitized.footerFontFamily !== "" && !EMAIL_TEMPLATE_FONTS.some((f) => f.value === sanitized.footerFontFamily)) {
+    delete sanitized.footerFontFamily;
+  }
+  if (sanitized.footerLink !== undefined && sanitized.footerLink !== "" && !/^https?:\/\//i.test(sanitized.footerLink)) {
+    delete sanitized.footerLink;
+  }
   if (sanitized.ctaStyle !== undefined && !["plain", "colored", "button"].includes(sanitized.ctaStyle)) delete sanitized.ctaStyle;
   for (const field of COLOR_FIELDS) {
     if (sanitized[field] !== undefined && !HEX_COLOR_RE.test(sanitized[field])) delete sanitized[field];
