@@ -8,8 +8,13 @@ const router = express.Router();
 
 // POST /api/campaigns { name, nicheId, catchLogId, leadIds?, requireInspection, tone, length, language, cta, meeting, meetingLink, maxPerDay, minGapMinutes, maxGapMinutes }
 // leadIds omitted -> every lead currently in the given niche/catch-log scope with an email on file
-router.post("/", (req, res) => {
-  const userId = req.session.userId;
+// The actual campaign-creation logic, usable both from the HTTP route
+// below and from the daily automation - one source of truth rather
+// than two copies that could drift apart. Returns the same shape the
+// route used to send directly (including the requiresConfirmation
+// soft-warning case, when a low-grade lead would otherwise be silently
+// included); throws (with an httpStatus hint) on a hard failure.
+function createCampaign(userId, options) {
   const {
     name,
     nicheId,
@@ -39,27 +44,31 @@ router.post("/", (req, res) => {
     muteClickedAlerts,
     sendProvider,
     confirmLowGrade,
-  } = req.body || {};
+  } = options || {};
 
   const provider = sendProvider || "hostinger";
-  if (!name || !name.trim()) return res.status(400).json({ error: "Campaign name is required" });
-  if (emailTemplateKey && !emailTemplates.TEMPLATE_PRESETS.some((t) => t.key === emailTemplateKey)) {
-    return res.status(400).json({ error: "Unknown email template" });
+  if (!name || !name.trim()) {
+    const err = new Error("Campaign name is required");
+    err.httpStatus = 400;
+    throw err;
   }
-  if (!tone) return res.status(400).json({ error: "Tone is required" });
+  if (emailTemplateKey && !emailTemplates.TEMPLATE_PRESETS.some((t) => t.key === emailTemplateKey)) {
+    const err = new Error("Unknown email template");
+    err.httpStatus = 400;
+    throw err;
+  }
+  if (!tone) {
+    const err = new Error("Tone is required");
+    err.httpStatus = 400;
+    throw err;
+  }
   if (!hasSmtpConfigured(userId, provider)) {
     const label = PROVIDERS[provider]?.label || provider;
-    return res.status(400).json({ error: `Set up SMTP on the ${label} Setup page first - a campaign can't send without it.` });
+    const err = new Error(`Set up SMTP on the ${label} Setup page first - a campaign can't send without it.`);
+    err.httpStatus = 400;
+    throw err;
   }
 
-  // Resolve the target lead list - either the explicit list given, or
-  // every lead in the niche/catch-log scope. Either way, only leads with
-  // an email on file can actually be targeted (checked at send time too,
-  // but filtering here means the campaign's lead count is accurate from
-  // Optional fit-grade filter - same UNGRADED-token convention as the
-  // board's own grade filter (see leadsQuery.js), so a lead that simply
-  // hasn't been scored yet isn't silently dropped just because someone
-  // narrowed a campaign down to specific grades.
   function buildFitGradeClause() {
     if (!Array.isArray(fitGrades) || !fitGrades.length) return { sql: "", params: [] };
     const tokens = fitGrades.map((g) => String(g).trim().toUpperCase()).filter(Boolean);
@@ -77,7 +86,6 @@ router.post("/", (req, res) => {
   }
   const fitGradeClause = buildFitGradeClause();
 
-  // the start rather than silently including un-sendable leads).
   let candidateLeads;
   if (Array.isArray(leadIds) && leadIds.length) {
     const placeholders = leadIds.map(() => "?").join(",");
@@ -108,7 +116,9 @@ router.post("/", (req, res) => {
       )
       .all(nicheId, userId, ...fitGradeClause.params);
   } else {
-    return res.status(400).json({ error: "Select a niche, a city, or a specific list of leads to target" });
+    const err = new Error("Select a niche, a city, or a specific list of leads to target");
+    err.httpStatus = 400;
+    throw err;
   }
 
   const emailable = candidateLeads.filter((l) => {
@@ -120,9 +130,6 @@ router.post("/", (req, res) => {
   });
 
   if (emailable.length === 0) {
-    // Distinguish the two different reasons the list ended up empty,
-    // since "no email on file" would be actively misleading for a lead
-    // that has one but was excluded for having already been Won/etc.
     let excludedCount = 0;
     if (Array.isArray(leadIds) && leadIds.length) {
       const placeholders = leadIds.map(() => "?").join(",");
@@ -135,19 +142,15 @@ router.post("/", (req, res) => {
     } else if (nicheId) {
       excludedCount = db.prepare("SELECT COUNT(*) AS c FROM leads l JOIN catch_logs cl ON cl.id = l.catch_log_id WHERE cl.niche_id = ? AND l.outreach_excluded_at IS NOT NULL").get(nicheId).c;
     }
-    if (excludedCount > 0) {
-      return res
-        .status(400)
-        .json({ error: `Every lead in this scope is either missing an email address or already Engaged/Won/Converted (${excludedCount} permanently excluded from outreach) - nothing to send to.` });
-    }
-    return res.status(400).json({ error: "None of the leads in this scope have an email address on file - nothing to send to." });
+    const err = new Error(
+      excludedCount > 0
+        ? `Every lead in this scope is either missing an email address or already Engaged/Won/Converted (${excludedCount} permanently excluded from outreach) - nothing to send to.`
+        : "None of the leads in this scope have an email address on file - nothing to send to."
+    );
+    err.httpStatus = 400;
+    throw err;
   }
 
-  // Soft warning, not a hard block - the person creating the campaign
-  // knows their market better than a score can, so this asks for a
-  // confirmation rather than refusing outright. Only fires once per
-  // creation attempt: the frontend re-submits with confirmLowGrade=true
-  // after the person has seen and accepted the warning.
   if (!confirmLowGrade) {
     const emailableIds = emailable.map((l) => l.id);
     const placeholders = emailableIds.map(() => "?").join(",");
@@ -155,7 +158,7 @@ router.post("/", (req, res) => {
       .prepare(`SELECT COUNT(*) AS c FROM leads WHERE id IN (${placeholders}) AND fit_grade IN ('D', 'F')`)
       .get(...emailableIds).c;
     if (lowGradeCount > 0) {
-      return res.json({ requiresConfirmation: true, lowGradeCount, totalCount: emailable.length });
+      return { requiresConfirmation: true, lowGradeCount, totalCount: emailable.length };
     }
   }
 
@@ -202,7 +205,16 @@ router.post("/", (req, res) => {
   });
   insertMany(emailable);
 
-  res.json({ ok: true, campaignId, leadCount: emailable.length, skippedCount: candidateLeads.length - emailable.length });
+  return { ok: true, campaignId, leadCount: emailable.length, skippedCount: candidateLeads.length - emailable.length };
+}
+
+router.post("/", (req, res) => {
+  try {
+    const result = createCampaign(req.session.userId, req.body);
+    res.json(result);
+  } catch (err) {
+    res.status(err.httpStatus || 500).json({ error: err.message });
+  }
 });
 
 // GET /api/campaigns -> list with progress counts
@@ -699,3 +711,4 @@ router.delete("/:id", requireOwnedCampaign, (req, res) => {
 });
 
 module.exports = router;
+module.exports.createCampaign = createCampaign;

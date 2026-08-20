@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex" />
 <title>Xeven Leads</title>
 <link rel="manifest" href="/manifest.json" />
 <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16.png" />
@@ -15,7 +16,7 @@
 <meta name="apple-mobile-web-app-title" content="Xeven Leads" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=1549" />
+<link rel="stylesheet" href="style.css?v=1553" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -229,6 +230,15 @@
               <span class="nav-section-label">Reports</span>
             </button>
             <button class="nav-section-refresh" data-refresh-section="reports" title="Refresh Reports data"><i class="bi bi-arrow-clockwise"></i></button>
+          </div>
+        </div>
+
+        <div class="nav-section open" id="navSectionAutomation">
+          <div class="nav-section-header-row">
+            <button class="nav-section-header" id="navAutomationBtn" data-section="automation">
+              <i class="bi bi-robot"></i>
+              <span class="nav-section-label">Automation</span>
+            </button>
           </div>
         </div>
 
@@ -523,6 +533,41 @@
           <div class="reports-chart-card reports-line-card">
             <h3>All statuses compared - over the selected time range</h3>
             <canvas id="reportsStatusComparisonChart"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- Automation ---------- -->
+      <section class="panel simple-panel view-hidden" id="automationView">
+        <div class="board-header">
+          <div class="board-header-row-top">
+            <div class="board-header-title-group">
+              <h2>Automation</h2>
+              <div class="scope-line">Runs the whole pipeline by itself, once a day - new niche/country, search, scrape, and a live campaign, with zero review</div>
+            </div>
+            <div class="board-header-actions">
+              <label class="automation-toggle">
+                <input type="checkbox" id="automationEnabledToggle">
+                <span class="automation-toggle-track"><span class="automation-toggle-thumb"></span></span>
+                <span id="automationToggleLabel">Off</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-body">
+          <div class="automation-status-card" id="automationStatusCard">
+            <p class="hint">Loading status…</p>
+          </div>
+
+          <h3 class="settings-subheading" style="margin-top:24px;">Timeline</h3>
+          <div class="automation-timeline" id="automationTimeline">
+            <p class="hint">Nothing has run yet.</p>
+          </div>
+
+          <h3 class="settings-subheading" style="margin-top:24px;">Recent runs</h3>
+          <div class="automation-history" id="automationHistory">
+            <p class="hint">No runs yet.</p>
           </div>
         </div>
       </section>
@@ -1031,6 +1076,8 @@
 
           <div class="email-universal-links-grid">
             <label class="site-field-label">CTA link<input type="url" id="etCtaLink" placeholder="https://xevenpixels.com/book"></label>
+            <label class="site-field-label">Website<input type="url" id="etWebsiteLink" placeholder="https://xevenpixels.com"></label>
+            <label class="site-field-label">Contact email<input type="email" id="etContactEmail" placeholder="contact@xevenpixels.com"></label>
             <label class="site-field-label">Facebook<input type="url" id="etFacebookLink" placeholder="https://facebook.com/..."></label>
             <label class="site-field-label">Instagram<input type="url" id="etInstagramLink" placeholder="https://instagram.com/..."></label>
             <label class="site-field-label">LinkedIn<input type="url" id="etLinkedinLink" placeholder="https://linkedin.com/company/..."></label>
@@ -1187,6 +1234,7 @@
 
           <div class="settings-divider"></div>
           <label class="site-visuals-toggle"><input type="checkbox" id="tcShowSocialIcons"> Show social icons</label>
+          <label class="site-visuals-toggle"><input type="checkbox" id="tcShowLinkLabels"> Show text label next to each icon</label>
           <label class="site-field-label">Footer text <small class="optional">(optional, e.g. an address)</small>
             <input type="text" id="tcFooterText" maxlength="160">
           </label>
@@ -1224,7 +1272,7 @@
   </div>
 
 
-  <script src="app.js?v=1549"></script>
+  <script src="app.js?v=1553"></script>
   <script src="pwa-install.js"></script>
 </body>
 </html>

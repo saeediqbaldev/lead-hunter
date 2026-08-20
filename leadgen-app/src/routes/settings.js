@@ -98,7 +98,7 @@ router.put("/page-size", (req, res) => {
 router.get("/content-links", (req, res) => {
   const row = db
     .prepare(
-      "SELECT meeting_link, website_link, whatsapp_link, cta_link, facebook_link, instagram_link, linkedin_link, tiktok_link, email_logo_path, default_email_template_key FROM users WHERE id = ?"
+      "SELECT meeting_link, website_link, whatsapp_link, cta_link, facebook_link, instagram_link, linkedin_link, tiktok_link, email_logo_path, default_email_template_key, contact_email FROM users WHERE id = ?"
     )
     .get(req.session.userId);
   res.json({
@@ -112,6 +112,7 @@ router.get("/content-links", (req, res) => {
     tiktokLink: row.tiktok_link || "",
     emailLogoUrl: row.email_logo_path || "",
     defaultTemplateKey: row.default_email_template_key || "minimal_branded",
+    contactEmail: row.contact_email || "",
   });
 });
 
@@ -121,7 +122,7 @@ router.get("/content-links", (req, res) => {
 // wiped to null, since existing frontend code only sends a subset of
 // these fields and must not silently erase the rest.
 router.put("/content-links", (req, res) => {
-  const { meetingLink, websiteLink, whatsappLink, ctaLink, facebookLink, instagramLink, linkedinLink, tiktokLink } = req.body || {};
+  const { meetingLink, websiteLink, whatsappLink, ctaLink, facebookLink, instagramLink, linkedinLink, tiktokLink, contactEmail } = req.body || {};
   db.prepare(
     `UPDATE users SET
       meeting_link = COALESCE(?, meeting_link),
@@ -131,7 +132,8 @@ router.put("/content-links", (req, res) => {
       facebook_link = COALESCE(?, facebook_link),
       instagram_link = COALESCE(?, instagram_link),
       linkedin_link = COALESCE(?, linkedin_link),
-      tiktok_link = COALESCE(?, tiktok_link)
+      tiktok_link = COALESCE(?, tiktok_link),
+      contact_email = COALESCE(?, contact_email)
      WHERE id = ?`
   ).run(
     meetingLink !== undefined ? meetingLink || "" : null,
@@ -142,10 +144,11 @@ router.put("/content-links", (req, res) => {
     instagramLink !== undefined ? instagramLink || "" : null,
     linkedinLink !== undefined ? linkedinLink || "" : null,
     tiktokLink !== undefined ? tiktokLink || "" : null,
+    contactEmail !== undefined ? contactEmail || "" : null,
     req.session.userId
   );
   const row = db
-    .prepare("SELECT meeting_link, website_link, whatsapp_link, cta_link, facebook_link, instagram_link, linkedin_link, tiktok_link FROM users WHERE id = ?")
+    .prepare("SELECT meeting_link, website_link, whatsapp_link, cta_link, facebook_link, instagram_link, linkedin_link, tiktok_link, contact_email FROM users WHERE id = ?")
     .get(req.session.userId);
   res.json({
     meetingLink: row.meeting_link || "",
@@ -156,6 +159,7 @@ router.put("/content-links", (req, res) => {
     instagramLink: row.instagram_link || "",
     linkedinLink: row.linkedin_link || "",
     tiktokLink: row.tiktok_link || "",
+    contactEmail: row.contact_email || "",
   });
 });
 
@@ -367,7 +371,9 @@ router.put("/default-email-template", (req, res) => {
 // what a recipient actually gets.
 function buildTemplatePreviewContext(userId) {
   const userRow = db
-    .prepare("SELECT signature, signature_font_family, signature_font_size, email_logo_path, facebook_link, instagram_link, linkedin_link, tiktok_link FROM users WHERE id = ?")
+    .prepare(
+      "SELECT signature, signature_font_family, signature_font_size, email_logo_path, facebook_link, instagram_link, linkedin_link, tiktok_link, website_link, contact_email, cta_link FROM users WHERE id = ?"
+    )
     .get(userId);
   const { wrapSignatureWithFont, DEFAULT_SIGNATURE } = require("../outreachContent");
   return {
@@ -378,6 +384,9 @@ function buildTemplatePreviewContext(userId) {
       instagramLink: userRow?.instagram_link,
       linkedinLink: userRow?.linkedin_link,
       tiktokLink: userRow?.tiktok_link,
+      websiteLink: userRow?.website_link,
+      contactEmail: userRow?.contact_email,
+      ctaLink: userRow?.cta_link,
     },
     logoUrl: userRow?.email_logo_path,
   };

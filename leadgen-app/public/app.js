@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.18-15.49";
+const APP_VERSION = "2026.08.20-15.53";
 
 // Every email provider section (Hostinger, Gmail, Bluehost/Titan) shares
 // the same Tracking/History/Alerts/Reports/Campaigns/Setup views, keyed
@@ -3272,6 +3272,8 @@ async function loadEmailTemplateSettings() {
     const res = await api("/api/settings/content-links");
     const data = await res.json();
     document.getElementById("etCtaLink").value = data.ctaLink || "";
+    document.getElementById("etWebsiteLink").value = data.websiteLink || "";
+    document.getElementById("etContactEmail").value = data.contactEmail || "";
     document.getElementById("etFacebookLink").value = data.facebookLink || "";
     document.getElementById("etInstagramLink").value = data.instagramLink || "";
     document.getElementById("etLinkedinLink").value = data.linkedinLink || "";
@@ -3306,6 +3308,8 @@ document.getElementById("etSaveLinksBtn").addEventListener("click", async () => 
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ctaLink: document.getElementById("etCtaLink").value.trim(),
+        websiteLink: document.getElementById("etWebsiteLink").value.trim(),
+        contactEmail: document.getElementById("etContactEmail").value.trim(),
         facebookLink: document.getElementById("etFacebookLink").value.trim(),
         instagramLink: document.getElementById("etInstagramLink").value.trim(),
         linkedinLink: document.getElementById("etLinkedinLink").value.trim(),
@@ -3499,6 +3503,7 @@ function applyTemplateSettingsToForm(s) {
   document.getElementById("tcShowDivider").checked = !!s.showDivider;
   document.getElementById("tcCtaStyle").value = s.ctaStyle;
   document.getElementById("tcShowSocialIcons").checked = !!s.showSocialIcons;
+  document.getElementById("tcShowLinkLabels").checked = !!s.showLinkLabels;
   document.getElementById("tcFooterText").value = s.footerText || "";
   document.getElementById("tcFooterFontSize").value = s.footerFontSize;
   document.getElementById("tcFooterFontSizeValue").textContent = `${s.footerFontSize}px`;
@@ -3521,6 +3526,7 @@ function readTemplateSettingsFromForm() {
     showDivider: document.getElementById("tcShowDivider").checked,
     ctaStyle: document.getElementById("tcCtaStyle").value,
     showSocialIcons: document.getElementById("tcShowSocialIcons").checked,
+    showLinkLabels: document.getElementById("tcShowLinkLabels").checked,
     footerText: document.getElementById("tcFooterText").value,
     footerFontSize: Number(document.getElementById("tcFooterFontSize").value),
     footerColor: document.getElementById("tcFooterColor").value,
@@ -4785,12 +4791,14 @@ window.addEventListener("popstate", (e) => {
 
 function setContentView(view) {
   if (view !== "contacted-campaign-detail") stopCampaignDetailPolling();
+  if (view !== "automation") stopAutomationPolling();
   closeMobileNav();
   state.contentView = view;
   const ALL_VIEWS = {
     huntForm: huntFormPanel,
     board: boardPanel,
     reports: reportsPanel,
+    automation: document.getElementById("automationView"),
     "settings-api": document.getElementById("settingsApiView"),
     "settings-gemini": document.getElementById("settingsGeminiView"),
     "settings-groq": document.getElementById("settingsGroqView"),
@@ -5102,6 +5110,13 @@ document.querySelectorAll(".nav-section-header").forEach((btn) => {
     if (section === "reports") {
       state.lastNavSection = "reports";
       setContentView("reports");
+      return;
+    }
+
+    if (section === "automation") {
+      state.lastNavSection = "automation";
+      setContentView("automation");
+      loadAutomationPage();
       return;
     }
 
@@ -8336,6 +8351,181 @@ goToTopBtn.addEventListener("click", () => {
   const panel = currentVisiblePanel();
   if (panel) panel.scrollTo({ top: 0, behavior: "smooth" });
   window.scrollTo({ top: 0, behavior: "smooth" });
+});
+
+// ---------- Automation page ----------
+let automationPollTimer = null;
+function stopAutomationPolling() {
+  if (automationPollTimer) clearInterval(automationPollTimer);
+  automationPollTimer = null;
+}
+
+const AUTOMATION_STATUS_LABELS = {
+  starting: "Starting",
+  searching_cities: "Searching cities",
+  scraping_contacts: "Scraping contacts",
+  creating_campaign: "Creating campaign",
+  starting_campaign: "Starting campaign",
+  completed: "Completed",
+  failed: "Failed",
+  nothing_to_do: "Nothing to do",
+};
+
+// Maps each backend event_type to an icon + color, so the timeline
+// reads at a glance - a completed step, a transient wait, or a real
+// failure look visually distinct without reading every line of text.
+const AUTOMATION_EVENT_ICONS = {
+  started: { icon: "bi-play-fill", cls: "info" },
+  nothing_to_do: { icon: "bi-check2", cls: "info" },
+  city_search_completed: { icon: "bi-geo-alt-fill", cls: "ok" },
+  city_search_failed: { icon: "bi-exclamation-triangle", cls: "fail" },
+  contact_scrape_started: { icon: "bi-arrow-repeat", cls: "info" },
+  contact_scrape_waiting: { icon: "bi-hourglass-split", cls: "wait" },
+  contact_scrape_skipped: { icon: "bi-skip-forward", cls: "wait" },
+  contact_scrape_completed: { icon: "bi-check2-circle", cls: "ok" },
+  contact_scrape_failed: { icon: "bi-x-circle", cls: "fail" },
+  campaign_created: { icon: "bi-send-check", cls: "ok" },
+  campaign_creation_failed: { icon: "bi-x-circle", cls: "fail" },
+  campaign_start_failed: { icon: "bi-x-circle", cls: "fail" },
+  completed: { icon: "bi-flag-fill", cls: "ok" },
+};
+
+function timeAgo(isoTimeStr) {
+  if (!isoTimeStr) return "";
+  const then = new Date(isoTimeStr.replace(" ", "T") + "Z").getTime();
+  const diffSec = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  if (diffSec < 60) return "just now";
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+  return `${Math.floor(diffSec / 86400)}d ago`;
+}
+
+async function loadAutomationPage() {
+  await refreshAutomationStatus();
+  stopAutomationPolling();
+  automationPollTimer = setInterval(refreshAutomationStatus, 4000);
+}
+
+async function refreshAutomationStatus() {
+  let data;
+  try {
+    const res = await api("/api/automation/status");
+    data = await res.json();
+  } catch (err) {
+    console.error("Failed to load automation status:", err);
+    return;
+  }
+
+  const toggle = document.getElementById("automationEnabledToggle");
+  const label = document.getElementById("automationToggleLabel");
+  // Avoid clobbering the checkbox mid-interaction if a poll lands right
+  // as the user is clicking it.
+  if (document.activeElement !== toggle) toggle.checked = data.enabled;
+  label.textContent = data.enabled ? "On" : "Off";
+
+  renderAutomationStatusCard(data.currentRun, data.enabled);
+  renderAutomationTimeline(data.currentRun?.timeline || []);
+  renderAutomationHistory(data.recentRuns || []);
+}
+
+function renderAutomationStatusCard(run, enabled) {
+  const card = document.getElementById("automationStatusCard");
+  if (!run) {
+    card.innerHTML = `<p class="hint" style="margin:0;">${enabled ? "Enabled - will start its first run on the next check (within about 30 seconds)." : "Turn on the toggle above to let it start working automatically."}</p>`;
+    return;
+  }
+
+  const statusLabel = AUTOMATION_STATUS_LABELS[run.status] || run.status;
+  const badgeClass = ["completed"].includes(run.status)
+    ? "completed"
+    : ["failed"].includes(run.status)
+    ? "failed"
+    : ["nothing_to_do"].includes(run.status)
+    ? "idle"
+    : "running";
+
+  let progressHtml = "";
+  if (run.status === "searching_cities" && run.total_cities > 0) {
+    const pct = Math.round((run.current_city_index / run.total_cities) * 100);
+    progressHtml = `<div class="automation-progress-bar"><div class="automation-progress-fill" style="width:${pct}%;"></div></div>
+      <div class="automation-status-detail" style="margin-top:6px;">${run.current_city_index} / ${run.total_cities} cities searched</div>`;
+  }
+
+  const headline = run.status === "nothing_to_do" ? "Nothing new to automate today" : `${run.niche_name} - ${run.country}`;
+
+  card.innerHTML = `
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+      <div class="automation-status-headline">${headline}</div>
+      <span class="automation-status-badge ${badgeClass}">${statusLabel}</span>
+    </div>
+    ${run.current_step_detail ? `<div class="automation-status-detail" style="margin-top:6px;">${run.current_step_detail}</div>` : ""}
+    ${progressHtml}
+    ${run.campaign_id ? `<button class="small-btn" style="margin-top:12px;" data-action="view-automation-campaign" data-campaign-id="${run.campaign_id}">View campaign</button>` : ""}
+    ${run.error ? `<div class="automation-status-detail" style="margin-top:8px; color:#E5484D;">${run.error}</div>` : ""}
+  `;
+
+  const viewBtn = card.querySelector('[data-action="view-automation-campaign"]');
+  if (viewBtn) {
+    viewBtn.addEventListener("click", () => {
+      // loadCampaignDetail already switches to the campaign detail view
+      // itself - no need to click through the Contacted section first.
+      loadCampaignDetail(Number(viewBtn.dataset.campaignId));
+    });
+  }
+}
+
+function renderAutomationTimeline(timeline) {
+  const el = document.getElementById("automationTimeline");
+  if (!timeline.length) {
+    el.innerHTML = `<p class="hint">Nothing has run yet.</p>`;
+    return;
+  }
+  el.innerHTML = timeline
+    .map((event) => {
+      const iconInfo = AUTOMATION_EVENT_ICONS[event.event_type] || { icon: "bi-dot", cls: "info" };
+      return `
+      <div class="automation-timeline-item">
+        <div class="automation-timeline-icon ${iconInfo.cls}"><i class="bi ${iconInfo.icon}"></i></div>
+        <div>
+          <div class="automation-timeline-message">${event.message}</div>
+          <div class="automation-timeline-time">${timeAgo(event.created_at)}</div>
+        </div>
+      </div>`;
+    })
+    .join("");
+}
+
+function renderAutomationHistory(runs) {
+  const el = document.getElementById("automationHistory");
+  if (!runs.length) {
+    el.innerHTML = `<p class="hint">No runs yet.</p>`;
+    return;
+  }
+  el.innerHTML = runs
+    .map((run) => {
+      const statusLabel = AUTOMATION_STATUS_LABELS[run.status] || run.status;
+      const label = run.status === "nothing_to_do" ? "Nothing to do" : `${run.niche_name} - ${run.country}`;
+      return `<div class="automation-history-row"><span>${label}</span><span class="hint">${run.run_date} · ${statusLabel}</span></div>`;
+    })
+    .join("");
+}
+
+document.getElementById("automationEnabledToggle").addEventListener("change", async (e) => {
+  const enabled = e.target.checked;
+  document.getElementById("automationToggleLabel").textContent = enabled ? "On" : "Off";
+  try {
+    await api("/api/automation/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    });
+    showToast(enabled ? "Automation turned on" : "Automation turned off", "success");
+    await refreshAutomationStatus();
+  } catch (err) {
+    e.target.checked = !enabled;
+    document.getElementById("automationToggleLabel").textContent = !enabled ? "On" : "Off";
+    showToast(`Could not update: ${err.message}`, "error");
+  }
 });
 
 (async function init() {

@@ -303,7 +303,7 @@ async function processCampaignLead(campaign, campaignLeadRow) {
   let logoUrl = null;
   if (campaign.email_template_key) {
     const userLinksRow = db
-      .prepare("SELECT facebook_link, instagram_link, linkedin_link, tiktok_link, email_logo_path FROM users WHERE id = ?")
+      .prepare("SELECT facebook_link, instagram_link, linkedin_link, tiktok_link, website_link, contact_email, cta_link, email_logo_path FROM users WHERE id = ?")
       .get(campaign.user_id);
     const customRow = db.prepare("SELECT settings FROM email_templates WHERE user_id = ? AND template_key = ?").get(campaign.user_id, campaign.email_template_key);
     templateSettings = customRow ? JSON.parse(customRow.settings) : null;
@@ -312,6 +312,9 @@ async function processCampaignLead(campaign, campaignLeadRow) {
       instagramLink: userLinksRow?.instagram_link,
       linkedinLink: userLinksRow?.linkedin_link,
       tiktokLink: userLinksRow?.tiktok_link,
+      websiteLink: userLinksRow?.website_link,
+      contactEmail: userLinksRow?.contact_email,
+      ctaLink: userLinksRow?.cta_link,
     };
     logoUrl = userLinksRow?.email_logo_path;
   }

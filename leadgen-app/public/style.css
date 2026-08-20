@@ -561,6 +561,53 @@ body {
 .template-customize-fields input[type="color"] { width: 100%; height: 32px; margin-top: 4px; padding: 2px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel-raised); cursor: pointer; }
 .template-customize-color-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .template-customize-preview { position: sticky; top: 0; }
+
+/* ---------- Automation page ---------- */
+.automation-toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
+.automation-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+.automation-toggle-track {
+  width: 42px; height: 24px; border-radius: 12px; background: var(--border); position: relative; transition: background 0.2s; flex-shrink: 0;
+}
+.automation-toggle-thumb {
+  position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+.automation-toggle input:checked + .automation-toggle-track { background: var(--accent); }
+.automation-toggle input:checked + .automation-toggle-track .automation-toggle-thumb { transform: translateX(18px); }
+#automationToggleLabel { font-size: 13px; font-weight: 600; min-width: 26px; }
+
+.automation-status-card { border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; background: var(--panel-raised); }
+.automation-status-headline { font-family: var(--font-display); font-size: 16px; margin-bottom: 4px; }
+.automation-status-detail { font-size: 13px; color: var(--text-muted); }
+.automation-progress-bar { height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; margin-top: 12px; }
+.automation-progress-fill { height: 100%; background: var(--accent); transition: width 0.4s; }
+.automation-status-badge { font-size: 10.5px; font-weight: 700; padding: 2px 9px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.03em; }
+.automation-status-badge.running { color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); }
+.automation-status-badge.completed { color: #2FAE60; background: rgba(47,174,96,0.12); }
+.automation-status-badge.failed { color: #E5484D; background: rgba(229,72,77,0.12); }
+.automation-status-badge.idle { color: var(--text-muted); background: rgba(255,255,255,0.06); }
+
+.automation-timeline { display: flex; flex-direction: column; margin-top: 14px; }
+.automation-timeline-item { display: flex; gap: 14px; position: relative; padding-bottom: 22px; }
+.automation-timeline-item:last-child { padding-bottom: 0; }
+.automation-timeline-item:not(:last-child)::before {
+  content: ""; position: absolute; left: 13px; top: 26px; bottom: 0; width: 1px; background: var(--border);
+}
+.automation-timeline-icon {
+  width: 27px; height: 27px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 13px; background: var(--panel-raised); border: 1px solid var(--border); z-index: 1;
+}
+.automation-timeline-icon.ok { color: #2FAE60; border-color: rgba(47,174,96,0.4); }
+.automation-timeline-icon.fail { color: #E5484D; border-color: rgba(229,72,77,0.4); }
+.automation-timeline-icon.wait { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.automation-timeline-icon.info { color: var(--text-muted); }
+.automation-timeline-message { font-size: 13px; line-height: 1.5; padding-top: 3px; }
+.automation-timeline-time { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+.automation-history-row {
+  display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; font-size: 13px;
+}
+.automation-history-row .hint { margin: 0; }
+
 @media (max-width: 760px) {
   .template-customize-layout { grid-template-columns: 1fr; }
   .template-customize-preview { position: static; }

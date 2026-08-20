@@ -353,6 +353,7 @@ if (!leadsTableExists) {
   }
   if (!userCols.includes("email_logo_path")) db.exec("ALTER TABLE users ADD COLUMN email_logo_path TEXT");
   if (!userCols.includes("default_email_template_key")) db.exec("ALTER TABLE users ADD COLUMN default_email_template_key TEXT DEFAULT 'minimal_branded'");
+  if (!userCols.includes("contact_email")) db.exec("ALTER TABLE users ADD COLUMN contact_email TEXT");
   if (!userCols.includes("preferred_content_provider")) db.exec("ALTER TABLE users ADD COLUMN preferred_content_provider TEXT DEFAULT ''");
   if (!userCols.includes("preferred_inspection_provider")) db.exec("ALTER TABLE users ADD COLUMN preferred_inspection_provider TEXT DEFAULT ''");
 }
@@ -859,6 +860,52 @@ CREATE TABLE IF NOT EXISTS country_scrape_jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_country_scrape_jobs_status ON country_scrape_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_country_scrape_jobs_user ON country_scrape_jobs(user_id);
+
+-- Master on/off switch for the daily automation, one row per user.
+CREATE TABLE IF NOT EXISTS automation_settings (
+  user_id INTEGER PRIMARY KEY,
+  enabled INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+-- One row per automation cycle (one (niche, country) pair, start to
+-- finish). run_date enforces "max 1 per day" - a new cycle is only
+-- ever started if no row already exists for today. status tracks where
+-- in the pipeline this cycle currently is; current_step_detail is a
+-- short human-readable line ("Searching city 5 of 20: Munich, Germany")
+-- the UI shows as the "what's happening right now" line above the
+-- timeline.
+CREATE TABLE IF NOT EXISTS automation_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  run_date TEXT NOT NULL,
+  niche_id INTEGER NOT NULL,
+  niche_name TEXT NOT NULL,
+  country TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'starting',
+  current_step_detail TEXT,
+  current_city_index INTEGER NOT NULL DEFAULT 0,
+  total_cities INTEGER NOT NULL DEFAULT 0,
+  country_scrape_job_id INTEGER,
+  campaign_id INTEGER,
+  error TEXT,
+  started_at TEXT DEFAULT (datetime('now')),
+  completed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_automation_runs_user_date ON automation_runs(user_id, run_date);
+CREATE INDEX IF NOT EXISTS idx_automation_runs_status ON automation_runs(status);
+
+-- Append-only log of individual, human-readable events within a run -
+-- this is what the timeline UI actually renders, one entry per row,
+-- oldest first.
+CREATE TABLE IF NOT EXISTS automation_timeline_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id INTEGER NOT NULL,
+  event_type TEXT NOT NULL,
+  message TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_automation_timeline_run ON automation_timeline_events(run_id);
 `);
 
 {

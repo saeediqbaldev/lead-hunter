@@ -48,6 +48,7 @@ const DEFAULT_TEMPLATE_SETTINGS = {
   ctaText: "Book a free call",
   ctaStyle: "plain", // 'plain' | 'colored' | 'button' - how the CTA link renders, when one is set in universal links
   showSocialIcons: true,
+  showLinkLabels: false, // when true, each icon shows its text label alongside it (e.g. an envelope + "Email") instead of being icon-only
   footerText: "",
   footerFontSize: 11,
   footerColor: "#999999",
@@ -160,6 +161,9 @@ const SOCIAL_ICON_PATHS = {
     "M6.94 5a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM3.5 8.5h3.9V21H3.5V8.5zm6.5 0h3.7v1.7h.05c.52-.98 1.78-2 3.66-2 3.9 0 4.63 2.57 4.63 5.9V21h-3.9v-6.06c0-1.44-.03-3.3-2.01-3.3-2.02 0-2.33 1.58-2.33 3.2V21h-3.9V8.5z",
   tiktok:
     "M16.5 2h-3.2v13.3a2.6 2.6 0 1 1-2.6-2.7c.24 0 .48.03.7.08V9.4a6 6 0 1 0 5.1 5.9V8.6a7.6 7.6 0 0 0 4.5 1.5V6.9a4.3 4.3 0 0 1-4.5-4.9z",
+  website:
+    "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm7.94 9h-3.05c-.1-2.2-.62-4.15-1.4-5.6A8.02 8.02 0 0 1 19.94 11zM12 4.06c.9 1.1 1.67 3.2 1.83 5.94h-3.66c.16-2.74.93-4.84 1.83-5.94zM8.51 5.4c-.78 1.45-1.3 3.4-1.4 5.6H4.06A8.02 8.02 0 0 1 8.51 5.4zM4.06 13h3.05c.1 2.2.62 4.15 1.4 5.6A8.02 8.02 0 0 1 4.06 13zM12 19.94c-.9-1.1-1.67-3.2-1.83-5.94h3.66c-.16 2.74-.93 4.84-1.83 5.94zm2.49-1.34c.78-1.45 1.3-3.4 1.4-5.6h3.05a8.02 8.02 0 0 1-4.45 5.6z",
+  email: "M3 5h18a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm1.4 2L12 12.5 19.6 7H4.4zM20 8.4l-7.4 5.4a1 1 0 0 1-1.2 0L4 8.4V17h16V8.4z",
 };
 
 function socialIconSvg(platform, color, size = 20) {
@@ -221,7 +225,7 @@ function escapeHtml(str) {
 // gets sent, which is a worse failure mode than a plain preview.
 function renderEmailHtml({ templateKey, customSettings, bodyText, signatureHtml, universalLinks = {}, logoUrl, linkRewriter }) {
   const s = mergeTemplateSettings(templateKey, customSettings);
-  const { facebookLink, instagramLink, linkedinLink, tiktokLink, ctaLink } = universalLinks;
+  const { facebookLink, instagramLink, linkedinLink, tiktokLink, ctaLink, websiteLink, contactEmail } = universalLinks;
 
   const logoImgHtml = logoUrl
     ? `<img src="${escapeAttr(logoUrl)}" height="${s.logoHeight}" style="height:${s.logoHeight}px; width:auto; display:block; border:0;" alt="Logo">`
@@ -273,18 +277,31 @@ function renderEmailHtml({ templateKey, customSettings, bodyText, signatureHtml,
     }
   }
 
-  const socialLinks = [
-    { url: facebookLink, key: "facebook" },
-    { url: instagramLink, key: "instagram" },
-    { url: linkedinLink, key: "linkedin" },
-    { url: tiktokLink, key: "tiktok" },
+  const contactLinks = [
+    { url: facebookLink, key: "facebook", label: "Facebook" },
+    { url: instagramLink, key: "instagram", label: "Instagram" },
+    { url: linkedinLink, key: "linkedin", label: "LinkedIn" },
+    { url: tiktokLink, key: "tiktok", label: "TikTok" },
+    { url: websiteLink, key: "website", label: "Website" },
+    { url: contactEmail ? `mailto:${contactEmail}` : null, key: "email", label: "Email" },
   ].filter((l) => l.url);
   let socialHtml = "";
-  if (s.showSocialIcons && socialLinks.length) {
-    const cells = socialLinks
+  if (s.showSocialIcons && contactLinks.length) {
+    const cells = contactLinks
       .map((l) => {
-        const href = linkRewriter ? linkRewriter(l.url) : l.url;
-        return `<td style="padding-right:10px;"><a href="${escapeAttr(href)}" style="text-decoration:none;">${socialIconSvg(l.key, s.accentColor)}</a></td>`;
+        // A mailto: link isn't an http(s) navigation, so it's never
+        // passed through click-tracking - same rule the signature's own
+        // link tracking already applies to mailto:/tel: links.
+        const isMailto = l.url.startsWith("mailto:");
+        const href = isMailto ? l.url : linkRewriter ? linkRewriter(l.url) : l.url;
+        const icon = socialIconSvg(l.key, s.accentColor);
+        const inner = s.showLinkLabels
+          ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+               <td style="padding-right:6px;">${icon}</td>
+               <td style="font-family:${s.fontFamily}; font-size:${Math.max(s.fontSize - 2, 10)}px; color:${s.accentColor}; white-space:nowrap;">${l.label}</td>
+             </tr></table>`
+          : icon;
+        return `<td style="padding-right:${s.showLinkLabels ? 16 : 10}px;"><a href="${escapeAttr(href)}" style="text-decoration:none;">${inner}</a></td>`;
       })
       .join("");
     socialHtml = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:16px;"><tr>${cells}</tr></table>`;
@@ -348,6 +365,7 @@ function sanitizeTemplateSettings(incoming) {
   if (sanitized.logoHeight !== undefined) sanitized.logoHeight = Math.max(16, Math.min(80, Number(sanitized.logoHeight) || 32));
   if (sanitized.cardRadius !== undefined) sanitized.cardRadius = Math.max(0, Math.min(24, Number(sanitized.cardRadius) || 0));
   if (sanitized.cardShadow !== undefined) sanitized.cardShadow = !!sanitized.cardShadow;
+  if (sanitized.showLinkLabels !== undefined) sanitized.showLinkLabels = !!sanitized.showLinkLabels;
   if (sanitized.fontFamily !== undefined && !EMAIL_TEMPLATE_FONTS.some((f) => f.value === sanitized.fontFamily)) delete sanitized.fontFamily;
   if (sanitized.ctaStyle !== undefined && !["plain", "colored", "button"].includes(sanitized.ctaStyle)) delete sanitized.ctaStyle;
   for (const field of COLOR_FIELDS) {

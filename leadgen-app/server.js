@@ -19,6 +19,8 @@ const backupRoute = require("./src/routes/backup");
 const trackerRoute = require("./src/routes/tracker");
 const campaignsRoute = require("./src/routes/campaigns");
 const notificationsRoute = require("./src/routes/notifications");
+const automationRoute = require("./src/routes/automation");
+const dailyAutomation = require("./src/dailyAutomation");
 const campaignScheduler = require("./src/campaignScheduler");
 const replyChecker = require("./src/replyChecker");
 const countryScrapeOrchestrator = require("./src/countryScrapeOrchestrator");
@@ -28,6 +30,19 @@ const app = express();
 
 // Behind Coolify/Traefik's reverse proxy - needed for correct protocol/IP detection
 app.set("trust proxy", 1);
+
+// This is a private, internal lead-gen tool - never meant to appear in
+// search results. X-Robots-Tag is the most reliable way to enforce
+// this: unlike robots.txt (which only asks crawlers not to visit, and
+// can't stop a page that's already been linked to from elsewhere from
+// getting indexed anyway), this header actively tells search engines
+// not to index whatever they do see. Applied first, before any route,
+// so it covers every response - API endpoints, static assets, and the
+// login page alike.
+app.use((req, res, next) => {
+  res.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive, nosnippet, noimageindex");
+  next();
+});
 
 app.use(express.json({ limit: "25mb" })); // backup imports can be large for accounts with lots of leads
 
@@ -106,6 +121,7 @@ app.use("/", trackerPublicRoute);
 app.use("/api/tracker", requireAuth, trackerRoute);
 app.use("/api/campaigns", requireAuth, campaignsRoute);
 app.use("/api/notifications", requireAuth, notificationsRoute);
+app.use("/api/automation", requireAuth, automationRoute);
 
 app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
 
@@ -129,6 +145,8 @@ app.listen(PORT, "0.0.0.0", () => {
 
   countryScrapeOrchestrator.startOrchestrator();
   console.log("[country-scrape] Started - checking every 10s for country-wide scrape jobs in progress.");
+
+  dailyAutomation.startScheduler();
 
   const REPLY_CHECK_INTERVAL_MS = 15 * 60 * 1000; // every 15 minutes - a live IMAP connection per user, doesn't need second-level freshness
   setInterval(() => {

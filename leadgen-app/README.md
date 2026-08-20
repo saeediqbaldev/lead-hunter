@@ -6,6 +6,119 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.53
+The Automation page is real and the full daily pipeline is now
+actually running in the background - this completes the feature from
+your last several messages.
+
+- **A new "Automation" page**, its own top-level sidebar entry - an
+  on/off toggle, a live status card (current niche/country, progress
+  through the 20 cities, current step), the agent-style vertical
+  timeline you asked for, and a short history of past runs.
+- **The scheduler is now genuinely running** alongside the campaign
+  scheduler and the other background jobs - confirmed in the startup
+  log. It stays completely inactive for every account until the toggle
+  is switched on, so nothing about how the app behaves changes unless
+  you turn it on yourself.
+- Verified the whole page directly in a browser: the toggle saves and
+  persists (checked via a fresh API call, not just what the page
+  shows), and - the actual point of this page - seeded a realistic
+  in-progress run and confirmed the timeline renders every event with
+  the right icon and color (a successful city search, a failed one, the
+  starting event), the progress bar shows correctly, and the "View
+  campaign" link works once a campaign exists.
+- Caught and fixed a real bug before it shipped: an early draft of the
+  "View campaign" button referenced a function that didn't exist
+  anywhere in the codebase - found by checking rather than assuming,
+  and fixed before any of the browser testing above.
+
+## What's in this V15.52
+The full automation pipeline is complete and verified end to end -
+search through scrape through campaign creation through actually
+starting it. Still no UI and still not wired into the running server -
+that's the last piece.
+
+- **Refactored campaign creation into a reusable function** the same
+  way search was refactored last round - verified the manual campaign
+  creation flow (including the low-grade warning) still works
+  identically via HTTP after the change.
+- **The contact-scraping handoff to the existing country-wide scraper**
+  is built and handles its real constraints correctly: that system only
+  allows one scrape running at a time globally, so a conflict there
+  waits and retries rather than failing the whole day's run; a country
+  where none of the 20 cities turned up a website to scrape correctly
+  skips straight to campaign creation instead of waiting forever.
+- **Verified the complete, most important path end to end**: a
+  finished scrape correctly triggers campaign creation with every
+  specific setting checked directly - the campaign named
+  "{Niche} - {Country}", only A/B/C/ungraded leads included (a
+  deliberately-seeded F-grade lead was correctly excluded), the
+  country's mapped language, the exact CTA and WhatsApp links, 2
+  follow-ups 2 days apart, a randomized tone, and the campaign actually
+  flipped to running with no review step - exactly as specified.
+- Failures at any stage (no SMTP configured, a lead scope with nothing
+  sendable) are caught, logged clearly, and stop that one run rather
+  than crashing silently or leaving it stuck.
+
+## What's in this V15.51
+The real orchestration engine for the daily automation - niche/country
+selection and the full city-search phase, tested end to end. Not wired
+into the running server yet, and there's no UI to see or turn any of
+this on - that's still ahead. Nothing changes for how the app behaves
+today.
+
+- **Refactored the core search logic into a reusable function** so the
+  automation can call the exact same code the manual Hunt flow already
+  uses, rather than a risky separate copy - verified the existing
+  manual search still works identically after the refactor, and that
+  the new function also works correctly when called directly, outside
+  a browser request.
+- **The selection logic finds the next untried (niche, country) pair**
+  correctly skips anything already covered - by a previous automation
+  run OR a manual hunt from before automation existed - and correctly
+  reports when there's genuinely nothing left to do.
+- **"Max one per day" is enforced and verified** - a second tick on the
+  same day never starts a second run.
+- **The city-search phase processes exactly one city per tick**, so
+  progress is never lost to a restart mid-run - verified a full run
+  through all cities of a country, correctly transitioning to the next
+  phase once every city was searched.
+- **A hand-curated dataset of top cities for your 30 specified
+  countries** (555 cities total), and a country-to-language mapping
+  constrained to what the AI content system actually supports - worth
+  knowing directly: several countries' native languages (Dutch,
+  Swedish, Danish, Norwegian, Finnish, Japanese, Korean, Polish, Czech)
+  aren't supported at all, so those fall back to English. This is
+  flagged clearly rather than picked silently, since Japan and South
+  Korea specifically tend to have lower business English proficiency
+  than the Nordic/Dutch fallbacks.
+
+## What's in this V15.50
+Search engines fully blocked, and Website/Email joined the icon-based
+contact links - with a real send-path bug caught and fixed along the
+way.
+
+- **leads.xevenpixels.com is now blocked from indexing three ways**: an
+  X-Robots-Tag header on every single response (verified on the login
+  page, static files, and API routes individually), a corrected
+  robots.txt (found a stale, unrelated leftover file silently
+  overriding what was being built here - fixed), and a meta robots tag
+  in both HTML pages.
+- **Website and Email are now real universal links**, right alongside
+  the four social platforms - each with its own icon (globe and
+  envelope), and an email renders as a proper mailto: link.
+- **A "show text label next to each icon" toggle**, per template - any
+  of the six contact icons can show its name next to it instead of
+  being icon-only. Verified live in the customization editor's preview.
+- **Found and fixed a real bug while wiring this in**: the actual
+  campaign-sending code was never fetching the CTA link, website link,
+  or contact email from the database at all - meaning last round's CTA
+  button feature, though correctly built and tested in isolation, would
+  never have actually appeared in a real sent email. The disconnect was
+  between the database and the send call itself. Fixed and verified
+  directly against real account data that all three now flow correctly
+  into an actual send.
+
 ## What's in this V15.49
 The 10 templates actually look different from each other now - real
 structural variety, not just color and font swapped on an identical
