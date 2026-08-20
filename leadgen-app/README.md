@@ -6,6 +6,28 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.56
+A deep investigation into the missing footer/icons, with an honest
+answer: the send code itself is correct.
+
+- **Traced this all the way to the real, wire-level email**: mocked
+  the actual SMTP layer and decoded the real raw MIME message the
+  campaign scheduler would hand to a mail server - not the in-app
+  preview, the literal bytes. With a footer paragraph and social links
+  configured, they're both present, correctly linked, and
+  click-tracked. With them left unconfigured, the email ends right
+  after the signature - and that second case is an exact match for the
+  screenshot. The footer and icons are opt-in fields that default to
+  empty/off, and this specific account's template hadn't had them
+  filled in yet - not a bug in the sending pipeline.
+- **What actually needed fixing was the confusion itself**: the
+  customize editor gave no indication of *why* nothing was showing.
+  There's now a live status line right under "Show social icons"
+  naming exactly which of the six possible links are configured and
+  which are missing, with a jump-to link straight to where to fix it -
+  verified showing the right message with zero links set, and correctly
+  updating to name the specific missing ones once some are filled in.
+
 ## What's in this V15.55
 Three refinements to the footer/social icon controls added last round.
 

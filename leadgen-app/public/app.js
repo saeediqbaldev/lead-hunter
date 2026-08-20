@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.20-15.55";
+const APP_VERSION = "2026.08.20-15.56";
 
 // Every email provider section (Hostinger, Gmail, Bluehost/Titan) shares
 // the same Tracking/History/Alerts/Reports/Campaigns/Setup views, keyed
@@ -3485,6 +3485,33 @@ async function openTemplateCustomizeModal(templateKey) {
     `<option value="">Same as body font</option>` + data.fonts.map((f) => `<option value="${escapeHtmlAttr(f.value)}">${f.label}</option>`).join("");
 
   applyTemplateSettingsToForm(template.settings);
+
+  const linksRes = await api("/api/settings/content-links");
+  const links = await linksRes.json();
+  const linkChecks = [
+    ["Facebook", links.facebookLink],
+    ["Instagram", links.instagramLink],
+    ["LinkedIn", links.linkedinLink],
+    ["TikTok", links.tiktokLink],
+    ["Website", links.websiteLink],
+    ["Email", links.contactEmail],
+  ];
+  const configuredCount = linkChecks.filter(([, v]) => v).length;
+  const statusEl = document.getElementById("tcSocialLinksStatus");
+  if (configuredCount === 0) {
+    statusEl.innerHTML = `No icon links are configured yet, so none will show regardless of this toggle - fill in at least one under <a href="#" data-action="jump-to-universal-links">Universal links</a> above.`;
+  } else {
+    const missing = linkChecks.filter(([, v]) => !v).map(([label]) => label);
+    statusEl.textContent = `${configuredCount} of 6 configured${missing.length ? ` - missing: ${missing.join(", ")}` : " - all set"}. Only a configured link shows its icon.`;
+  }
+  const jumpLink = statusEl.querySelector('[data-action="jump-to-universal-links"]');
+  if (jumpLink) {
+    jumpLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      tcOverlay.style.display = "none";
+      document.getElementById("etFacebookLink")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }
   tcOverlay.style.display = "flex";
   await updateTemplatePreview();
 }
