@@ -608,6 +608,62 @@ body {
 }
 .automation-history-row .hint { margin: 0; }
 
+/* ---------- Reports tab bar (Overview / Map Overview) ---------- */
+.reports-tab-bar { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin: 4px 0 0; }
+.reports-tab-btn {
+  background: none; border: none; padding: 10px 16px; font-size: 13px; font-weight: 600; color: var(--text-muted);
+  cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color 0.15s, border-color 0.15s;
+}
+.reports-tab-btn:hover { color: var(--text); }
+.reports-tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* ---------- Map Overview ---------- */
+.map-overview-body { padding-top: 18px; }
+.map-overview-header-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+.map-overview-header-row .scope-line { margin: 0; }
+
+.map-view-toggle { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; flex-shrink: 0; }
+.map-view-toggle-btn {
+  background: var(--panel-raised); border: none; width: 38px; height: 34px; display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted); cursor: pointer; font-size: 15px; transition: background 0.15s, color 0.15s;
+}
+.map-view-toggle-btn:not(:last-child) { border-right: 1px solid var(--border); }
+.map-view-toggle-btn:hover { color: var(--text); }
+.map-view-toggle-btn.active { background: var(--accent); color: #fff; }
+
+/* Full width in the content area, as specified */
+.map-overview-stage {
+  position: relative; width: 100%; height: 640px; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--panel-raised); overflow: hidden;
+}
+.map-overview-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.map-overview-svg { width: 100%; height: 100%; display: block; cursor: grab; }
+.map-overview-svg:active { cursor: grabbing; }
+.map-overview-globe-container { width: 100%; height: 100%; cursor: grab; }
+.map-overview-globe-container:active { cursor: grabbing; }
+
+/* Country fills - theme-driven: unhunted countries use a muted neutral,
+   hunted ones use the accent color, with a lighter hover state so a
+   highlighted country visibly responds without needing the tooltip to
+   already be open. */
+.map-country { stroke: var(--panel-raised); stroke-width: 0.5; fill: color-mix(in srgb, var(--border) 55%, transparent); transition: fill 0.15s; }
+.map-country.hunted { fill: color-mix(in srgb, var(--accent) 55%, transparent); cursor: pointer; }
+.map-country.hunted:hover { fill: var(--accent); }
+
+.map-overview-tooltip {
+  position: fixed; z-index: 50; pointer-events: none; opacity: 0; transition: opacity 0.1s;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35); font-size: 12.5px; min-width: 180px;
+}
+.map-overview-tooltip.visible { opacity: 1; }
+.map-overview-tooltip-title { font-weight: 700; font-size: 13.5px; margin-bottom: 6px; color: var(--text); }
+.map-overview-tooltip-row { display: flex; justify-content: space-between; gap: 16px; padding: 2px 0; color: var(--text-muted); }
+.map-overview-tooltip-row strong { color: var(--text); font-weight: 600; }
+
+.map-overview-legend { display: flex; align-items: center; gap: 18px; margin-top: 12px; flex-wrap: wrap; font-size: 12px; color: var(--text-muted); }
+.map-overview-legend-item { display: flex; align-items: center; gap: 6px; }
+.map-overview-legend-swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
 @media (max-width: 760px) {
   .template-customize-layout { grid-template-columns: 1fr; }
   .template-customize-preview { position: static; }

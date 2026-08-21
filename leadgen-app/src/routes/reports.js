@@ -1,6 +1,7 @@
 const express = require("express");
 const db = require("../db");
 const apiKeys = require("../apiKeys");
+const { getCountryFunnelStats } = require("../mapOverview");
 const { buildReportsCsv, buildReportsPdf } = require("../export");
 
 const router = express.Router();
@@ -266,6 +267,13 @@ router.post("/export/pdf", (req, res) => {
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename="xeven-leads-reports-${range}.pdf"`);
   doc.pipe(res);
+});
+
+// GET /api/reports/map-stats -> per-country lead funnel counts, for
+// every country that's actually been hunted (has at least one catch
+// log) - powers the Map Overview page.
+router.get("/map-stats", (req, res) => {
+  res.json({ countries: getCountryFunnelStats(req.session.userId) });
 });
 
 module.exports = router;

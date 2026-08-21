@@ -6,6 +6,32 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.58
+The first working half of Map Overview - a new tab inside Reports with
+a fully functional 2D flat world map. The 3D globe toggle is visible
+but honestly disabled ("coming soon") rather than showing a broken
+view - that's the next round.
+
+- **New "Map Overview" tab inside Reports**, full width in the content
+  area, built entirely from theme CSS variables so it automatically
+  follows whatever color palette is active.
+- **Real world country boundaries**, from a properly, permissively
+  (ISC) licensed dataset - verified the license directly rather than
+  assuming. Hunted countries (anywhere you've actually run a hunt) are
+  highlighted in the theme's accent color; everywhere else stays a
+  muted neutral.
+- **Hovering a highlighted country shows exactly what was asked for**:
+  country name, leads scraped, contacted, engaged, and converted -
+  verified directly, including catching and fixing a real display bug
+  where the tooltip initially showed the map data's internal country
+  name ("United States of America") instead of the name used
+  everywhere else in the app ("United States").
+- **The funnel counts are cumulative, not per-stage** - a lead that's
+  since been won still correctly counts toward "contacted," since it
+  undeniably was. Verified against data spanning the full pipeline.
+- Pan and zoom on the flat map, and a legend showing how many countries
+  are hunted so far.
+
 ## What's in this V15.57
 Both issues were real - found and fixed, verified against the actual
 raw email bytes, not just the in-app preview.

@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.20-15.57";
+const APP_VERSION = "2026.08.21-15.58";
 
 // Every email provider section (Hostinger, Gmail, Bluehost/Titan) shares
 // the same Tracking/History/Alerts/Reports/Campaigns/Setup views, keyed
@@ -8576,6 +8576,124 @@ document.getElementById("automationEnabledToggle").addEventListener("change", as
     e.target.checked = !enabled;
     document.getElementById("automationToggleLabel").textContent = !enabled ? "On" : "Off";
     showToast(`Could not update: ${err.message}`, "error");
+  }
+});
+
+// ---------- Reports: Map Overview ----------
+let mapOverviewData = null; // { geojson, statsByName } once loaded
+let mapOverviewLoaded = false;
+
+document.getElementById("reportsOverviewTabBtn").addEventListener("click", () => switchReportsTab("overview"));
+document.getElementById("reportsMapOverviewTabBtn").addEventListener("click", () => switchReportsTab("map"));
+
+function switchReportsTab(tab) {
+  document.getElementById("reportsOverviewTabBtn").classList.toggle("active", tab === "overview");
+  document.getElementById("reportsMapOverviewTabBtn").classList.toggle("active", tab === "map");
+  document.getElementById("reportsOverviewTab").classList.toggle("view-hidden", tab !== "overview");
+  document.getElementById("reportsMapOverviewTab").classList.toggle("view-hidden", tab !== "map");
+  if (tab === "map" && !mapOverviewLoaded) {
+    mapOverviewLoaded = true;
+    loadMapOverview();
+  }
+}
+
+async function loadMapOverview() {
+  const loadingEl = document.getElementById("mapOverviewLoading");
+  try {
+    const [topoRes, statsRes] = await Promise.all([fetch("/data/world-countries-50m.json"), api("/api/reports/map-stats")]);
+    const topology = await topoRes.json();
+    const statsData = await statsRes.json();
+
+    const geojson = topojson.feature(topology, topology.objects.countries);
+    const statsByName = {};
+    statsData.countries.forEach((c) => {
+      statsByName[c.worldAtlasName] = c;
+    });
+
+    mapOverviewData = { geojson, statsByName };
+    loadingEl.style.display = "none";
+    renderMapOverviewFlat();
+    renderMapOverviewLegend(statsData.countries.length);
+  } catch (err) {
+    console.error("Failed to load map overview:", err);
+    loadingEl.innerHTML = `<p class="hint">Could not load the map. ${escapeHtmlAttr(err.message)}</p>`;
+  }
+}
+
+function renderMapOverviewFlat() {
+  const svg = d3.select("#mapOverviewFlatSvg");
+  svg.selectAll("*").remove();
+  const stage = document.getElementById("mapOverviewStage");
+  const width = stage.clientWidth || 900;
+  const height = stage.clientHeight || 640;
+  svg.attr("viewBox", `0 0 ${width} ${height}`);
+
+  const projection = d3.geoNaturalEarth1().fitSize([width - 24, height - 24], mapOverviewData.geojson);
+  const path = d3.geoPath(projection);
+
+  const g = svg.append("g").attr("transform", "translate(12,12)");
+
+  const countryPaths = g
+    .selectAll("path")
+    .data(mapOverviewData.geojson.features)
+    .join("path")
+    .attr("d", path)
+    .attr("class", (d) => "map-country" + (mapOverviewData.statsByName[d.properties.name] ? " hunted" : ""));
+
+  countryPaths.on("mousemove", (event, d) => {
+    const stat = mapOverviewData.statsByName[d.properties.name];
+    if (stat) showMapTooltip(event, stat.country, stat);
+  });
+  countryPaths.on("mouseleave", hideMapTooltip);
+
+  // Pan/zoom - standard D3 drag+wheel interaction, gives a "scrollable" feel to the flat map.
+  const zoom = d3
+    .zoom()
+    .scaleExtent([1, 8])
+    .on("zoom", (event) => g.attr("transform", event.transform));
+  svg.call(zoom);
+}
+
+function showMapTooltip(event, countryName, stat) {
+  const tooltip = document.getElementById("mapOverviewTooltip");
+  tooltip.innerHTML = `
+    <div class="map-overview-tooltip-title">${escapeHtmlAttr(countryName)}</div>
+    <div class="map-overview-tooltip-row"><span>Leads scraped</span><strong>${stat.leadsScraped}</strong></div>
+    <div class="map-overview-tooltip-row"><span>Contacted</span><strong>${stat.contacted}</strong></div>
+    <div class="map-overview-tooltip-row"><span>Engaged</span><strong>${stat.engaged}</strong></div>
+    <div class="map-overview-tooltip-row"><span>Converted</span><strong>${stat.converted}</strong></div>
+  `;
+  tooltip.style.left = `${event.clientX + 16}px`;
+  tooltip.style.top = `${event.clientY + 16}px`;
+  tooltip.classList.add("visible");
+  tooltip.setAttribute("aria-hidden", "false");
+}
+function hideMapTooltip() {
+  const tooltip = document.getElementById("mapOverviewTooltip");
+  tooltip.classList.remove("visible");
+  tooltip.setAttribute("aria-hidden", "true");
+}
+
+function renderMapOverviewLegend(huntedCount) {
+  document.getElementById("mapOverviewLegend").innerHTML = `
+    <div class="map-overview-legend-item"><span class="map-overview-legend-swatch" style="background:var(--accent);"></span>Hunted (${huntedCount} ${huntedCount === 1 ? "country" : "countries"})</div>
+    <div class="map-overview-legend-item"><span class="map-overview-legend-swatch" style="background:var(--border);"></span>Not yet hunted</div>
+  `;
+}
+
+// The 3D globe view isn't built yet - kept as a clearly-disabled button
+// with an explanatory title rather than a click that silently reverts,
+// so the "coming soon" state is honest rather than confusing.
+const mapViewGlobeBtn = document.getElementById("mapViewGlobeBtn");
+mapViewGlobeBtn.disabled = true;
+mapViewGlobeBtn.setAttribute("aria-disabled", "true");
+mapViewGlobeBtn.title = "3D Globe view - coming soon";
+mapViewGlobeBtn.style.opacity = "0.4";
+mapViewGlobeBtn.style.cursor = "not-allowed";
+
+window.addEventListener("resize", () => {
+  if (mapOverviewData && !document.getElementById("reportsMapOverviewTab").classList.contains("view-hidden")) {
+    renderMapOverviewFlat();
   }
 });
 
