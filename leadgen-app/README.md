@@ -6,6 +6,36 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.57
+Both issues were real - found and fixed, verified against the actual
+raw email bytes, not just the in-app preview.
+
+- **Found the real cause of the missing social icons**: they were
+  built as inline SVG, which has poor, inconsistent support across
+  real email clients - Outlook doesn't render inline SVG at all, and
+  Gmail's support isn't reliable either, which explains why they were
+  invisible across every client checked. Icons are now genuine PNG
+  images, rendered on demand server-side (still fully respecting your
+  custom per-template icon color) and cached so repeat requests are
+  instant. Verified by decoding the actual raw MIME message a real send
+  produces: real `<img>` tags pointing to real, absolute image URLs,
+  not inline SVG markup.
+- **Fixed the width issue** - the email was capped at a fixed 600px
+  width, including a raw HTML `width="600"` attribute that Outlook
+  specifically enforces even when every other client would have
+  respected a more flexible CSS rule. Removed the cap entirely on both
+  the templated and plain email paths, and added the email-safe head
+  section that was missing before (viewport meta for correct mobile
+  scaling, text-size-adjust resets, and an Outlook-specific block) -
+  verified directly in the generated HTML.
+- **New dependency worth knowing about**: `sharp`, for the PNG
+  rendering above. Unlike everything else in this app, it's a
+  natively-compiled package - `npm install` needs to build or download
+  it fresh. This works automatically on virtually all standard
+  Docker/Node deployments (this app's own Dockerfile included), but if
+  your deploy step ever behaves unusually after this update, this
+  dependency is the first thing worth checking.
+
 ## What's in this V15.56
 A deep investigation into the missing footer/icons, with an honest
 answer: the send code itself is correct.

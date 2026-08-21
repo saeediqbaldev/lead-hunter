@@ -54,6 +54,27 @@ function trackSignatureLinks(signatureHtml, clickBaseUrl) {
 
 const { renderEmailHtml } = require("./emailTemplates");
 
+const EMAIL_HEAD = `<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<!--[if mso]>
+<noscript>
+<xml>
+<o:OfficeDocumentSettings>
+<o:PixelsPerInch>96</o:PixelsPerInch>
+</o:OfficeDocumentSettings>
+</xml>
+</noscript>
+<style>table { border-collapse: collapse; } td, th, div, p, a { font-family: Arial, sans-serif; }</style>
+<![endif]-->
+<style>
+  body, table, td { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+  body { margin: 0; padding: 0; width: 100% !important; }
+  table { border-collapse: collapse; }
+</style>
+</head>`;
+
 function buildTrackedHtmlEmail({ bodyText, signatureHtml, pixelUrl, clickBaseUrl, baseUrl, templateKey, templateSettings, universalLinks, logoUrl }) {
   // Returns just the tracked URL - both call sites below build their own
   // <a> tag from it, since the template path (emailTemplates.js) and the
@@ -75,17 +96,20 @@ function buildTrackedHtmlEmail({ bodyText, signatureHtml, pixelUrl, clickBaseUrl
       universalLinks,
       logoUrl: logoUrl && logoUrl.startsWith("/") ? `${baseUrl}${logoUrl}` : logoUrl,
       linkRewriter: rewriteUrlForTracking,
+      baseUrl,
     });
     return `<!DOCTYPE html>
 <html>
-<body style="margin:0; padding:0;">
+${EMAIL_HEAD}
+<body style="margin:0; padding:0; width:100%;">
 ${templateHtml}
 <img src="${pixelUrl}" width="1" height="1" alt="" style="display:none; width:1px; height:1px; border:0;" />
 </body>
 </html>`;
   }
 
-  // Plain path - completely unchanged from before templates existed.
+  // Plain path - same tracking and content as always, but now genuinely
+  // fills the available width instead of capping at a fixed 600px.
   const paragraphs = String(bodyText || "")
     .split(/\n{2,}/)
     .map((block) => {
@@ -102,7 +126,8 @@ ${templateHtml}
 
   return `<!DOCTYPE html>
 <html>
-<body style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; color: #222; line-height: 1.5; max-width: 600px;">
+${EMAIL_HEAD}
+<body style="margin:0; padding:16px; width:100%; font-family: Arial, Helvetica, sans-serif; font-size: 14px; color: #222; line-height: 1.5;">
 ${paragraphs}
 ${signatureBlock}
 <img src="${pixelUrl}" width="1" height="1" alt="" style="display:none; width:1px; height:1px; border:0;" />

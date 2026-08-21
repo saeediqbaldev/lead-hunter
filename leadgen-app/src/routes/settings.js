@@ -9,6 +9,7 @@ const { testApiKey: testGeminiKey } = require("../gemini");
 const { groqClient, deepseekClient, opencodeClient } = require("../openaiCompatible");
 const apiKeys = require("../apiKeys");
 const emailTemplates = require("../emailTemplates");
+const { getSetting } = require("../settingsStore");
 const { SIGNATURE_FONT_OPTIONS, DEFAULT_SIGNATURE_FONT_FAMILY, DEFAULT_SIGNATURE_FONT_SIZE, SIGNATURE_FONTS, GOOGLE_FONTS_IMPORT_URL } = require("../signatureFonts");
 const db = require("../db");
 
@@ -389,6 +390,7 @@ function buildTemplatePreviewContext(userId) {
       ctaLink: userRow?.cta_link,
     },
     logoUrl: userRow?.email_logo_path,
+    baseUrl: getSetting("app_base_url") || "http://localhost:3000",
   };
 }
 
