@@ -3,14 +3,20 @@
 // an equirectangular D3 projection onto a canvas, which maps directly
 // and simply to sphere UV coordinates (u = longitude, v = latitude).
 //
-// Hover detection: raycast from the pointer into the scene, find where
-// it hits the sphere, convert that 3D point back to latitude/longitude
-// (the exact inverse of the UV mapping below - verified by round-trip
-// testing against many reference points before this was written), then
-// reuse the same GeoJSON country polygons the flat map already has via
-// d3.geoContains to find which country (if any) contains that point.
-// This avoids needing separate, complex 3D country meshes just for
-// hit-testing - one flat data source drives both views.
+// Country hover detection: raycast from the pointer into the scene,
+// find where it hits the sphere, convert that 3D point back to
+// latitude/longitude (the exact inverse of the UV mapping below -
+// verified by round-trip testing against many reference points before
+// this was written), then reuse the same GeoJSON country polygons the
+// flat map already has via d3.geoContains to find which country (if
+// any) contains that point. This avoids needing separate, complex 3D
+// country meshes just for hit-testing - one flat data source drives
+// both views.
+//
+// City markers are real small 3D meshes (not part of the texture),
+// positioned with the forward version of that same verified formula,
+// and raycast directly - checked before the country surface, since
+// they're the smaller, more specific target sitting on top of it.
 
 import * as THREE from "./vendor/three/three.module.min.js";
 import { OrbitControls } from "./vendor/three/OrbitControls.js";
@@ -24,6 +30,9 @@ function cssVar(name, fallback) {
 // projection - u (0..1) maps linearly to longitude (-180..180), v
 // (0..1) maps linearly to latitude (+90..-90), which is exactly what
 // this texture needs to align correctly with the sphere geometry.
+// Borders are stroked after every country is filled, deliberately more
+// prominent than the city marker styling below - establishes the same
+// visual hierarchy (country outline >> city dot) the flat map uses.
 function buildGlobeTexture(geojson, statsByName) {
   const canvas = document.createElement("canvas");
   canvas.width = 2048;
@@ -33,6 +42,7 @@ function buildGlobeTexture(geojson, statsByName) {
   const oceanColor = cssVar("--panel-raised", "#221e1a");
   const landColor = cssVar("--border", "#33302a");
   const huntedColor = cssVar("--accent", "#ff6a3d");
+  const borderColor = cssVar("--text-muted", "#948d80");
 
   ctx.fillStyle = oceanColor;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -46,16 +56,27 @@ function buildGlobeTexture(geojson, statsByName) {
     path(feature);
     ctx.fillStyle = isHunted ? huntedColor : landColor;
     ctx.fill();
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = borderColor;
+    ctx.stroke();
   });
 
   return canvas;
 }
 
-// The exact inverse of Three.js's SphereGeometry vertex formula
-// (theta = u*2pi, phi = v*pi; x=-cos(theta)sin(phi), y=cos(phi),
-// z=sin(theta)sin(phi)) combined with this texture's own u/v <-> lon/lat
-// mapping above. Verified by round-trip testing against reference
-// points (poles, equator, several real cities) before being used here.
+// Forward: lat/lon -> XYZ on a unit sphere. The exact inverse of
+// xyzToLatLon below - both verified together by round-trip testing
+// against many reference points (poles, equator, several real cities)
+// before either was used here.
+function latLonToXYZ(lat, lon, radius = 1) {
+  const u = (lon + 180) / 360;
+  const v = (90 - lat) / 180;
+  const theta = u * 2 * Math.PI;
+  const phi = v * Math.PI;
+  return new THREE.Vector3(-radius * Math.cos(theta) * Math.sin(phi), radius * Math.cos(phi), radius * Math.sin(theta) * Math.sin(phi));
+}
+
+// Inverse: XYZ -> lat/lon.
 function xyzToLatLon(x, y, z) {
   const phi = Math.acos(Math.max(-1, Math.min(1, y)));
   let theta = Math.atan2(z, -x);
@@ -65,14 +86,40 @@ function xyzToLatLon(x, y, z) {
   return { lat: 90 - v * 180, lon: u * 360 - 180 };
 }
 
-let scene, camera, renderer, controls, globeMesh, animationId;
-let currentGeojson, currentStatsByName, onHoverCb, onLeaveCb;
-let resizeObserver;
+const DEFAULT_CAMERA_POS = { x: 0, y: 0, z: 2.6 };
 
-function initGlobe(container, geojson, statsByName, { onHover, onLeave } = {}) {
+let scene, camera, renderer, controls, globeMesh, animationId;
+let currentGeojson, currentStatsByName, onHoverCb, onCityHoverCb, onLeaveCb;
+let resizeObserver;
+let cityMarkers = []; // [{ mesh, city }]
+let cityMarkerGeometry, cityMarkerMaterial;
+
+function buildCityMarkers(cities) {
+  cityMarkers.forEach((m) => globeMesh.remove(m.mesh));
+  cityMarkers = [];
+  if (!cities || !cities.length) return;
+
+  cityMarkerGeometry = cityMarkerGeometry || new THREE.SphereGeometry(0.012, 12, 12);
+  const markerColor = cssVar("--accent", "#ff6a3d");
+  cityMarkerMaterial = cityMarkerMaterial || new THREE.MeshBasicMaterial({ color: markerColor });
+
+  cities
+    .filter((c) => c.lat != null && c.lng != null)
+    .forEach((city) => {
+      const mesh = new THREE.Mesh(cityMarkerGeometry, cityMarkerMaterial);
+      const pos = latLonToXYZ(city.lat, city.lng, 1.01); // sits just above the surface - avoids z-fighting with the sphere itself
+      mesh.position.copy(pos);
+      mesh.userData.city = city;
+      globeMesh.add(mesh);
+      cityMarkers.push({ mesh, city });
+    });
+}
+
+function initGlobe(container, geojson, statsByName, cities, { onHover, onCityHover, onLeave } = {}) {
   currentGeojson = geojson;
   currentStatsByName = statsByName;
   onHoverCb = onHover;
+  onCityHoverCb = onCityHover;
   onLeaveCb = onLeave;
 
   const width = container.clientWidth || 900;
@@ -80,7 +127,7 @@ function initGlobe(container, geojson, statsByName, { onHover, onLeave } = {}) {
 
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
-  camera.position.set(0, 0, 2.6);
+  camera.position.set(DEFAULT_CAMERA_POS.x, DEFAULT_CAMERA_POS.y, DEFAULT_CAMERA_POS.z);
 
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setSize(width, height);
@@ -100,6 +147,8 @@ function initGlobe(container, geojson, statsByName, { onHover, onLeave } = {}) {
   globeMesh = new THREE.Mesh(geometry, material);
   scene.add(globeMesh);
 
+  buildCityMarkers(cities);
+
   controls = new OrbitControls(camera, renderer.domElement);
   window.__mapGlobeDebug = { mesh: globeMesh, controls, camera };
   controls.enablePan = false;
@@ -112,21 +161,33 @@ function initGlobe(container, geojson, statsByName, { onHover, onLeave } = {}) {
   controls.dampingFactor = 0.08;
 
   const raycaster = new THREE.Raycaster();
+  raycaster.params.Mesh.threshold = 0.02; // slightly forgiving hit radius for the small city markers
   const pointer = new THREE.Vector2();
   let userInteracted = false;
 
-  function findCountryAtPointer(clientX, clientY) {
+  // City markers are checked first (smaller, more specific target sitting
+  // on top of the country surface), falling back to the country lookup.
+  function findHoverTargetAtPointer(clientX, clientY) {
     const rect = renderer.domElement.getBoundingClientRect();
     pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
     pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(pointer, camera);
+
+    if (cityMarkers.length) {
+      const cityHits = raycaster.intersectObjects(cityMarkers.map((m) => m.mesh));
+      if (cityHits.length) {
+        const hitMesh = cityHits[0].object;
+        const found = cityMarkers.find((m) => m.mesh === hitMesh);
+        if (found) return { type: "city", data: found.city };
+      }
+    }
+
     const hits = raycaster.intersectObject(globeMesh);
     if (!hits.length) return null;
-
     const localPoint = globeMesh.worldToLocal(hits[0].point.clone());
     const { lat, lon } = xyzToLatLon(localPoint.x, localPoint.y, localPoint.z);
     const feature = currentGeojson.features.find((f) => currentStatsByName[f.properties.name] && d3.geoContains(f, [lon, lat]));
-    return feature ? currentStatsByName[feature.properties.name] : null;
+    return feature ? { type: "country", data: currentStatsByName[feature.properties.name] } : null;
   }
 
   function onPointerMove(event) {
@@ -134,8 +195,9 @@ function initGlobe(container, geojson, statsByName, { onHover, onLeave } = {}) {
       userInteracted = true;
       controls.autoRotate = false; // stop auto-rotating the moment the person shows interest
     }
-    const stat = findCountryAtPointer(event.clientX, event.clientY);
-    if (stat && onHoverCb) onHoverCb(event, stat);
+    const target = findHoverTargetAtPointer(event.clientX, event.clientY);
+    if (target && target.type === "city" && onCityHoverCb) onCityHoverCb(event, target.data);
+    else if (target && target.type === "country" && onHoverCb) onHoverCb(event, target.data);
     else if (onLeaveCb) onLeaveCb();
   }
   function onPointerLeave() {
@@ -168,6 +230,22 @@ function initGlobe(container, geojson, statsByName, { onHover, onLeave } = {}) {
   resizeObserver.observe(container);
 
   return {
+    resetView() {
+      controls.autoRotate = true;
+      userInteracted = false;
+      camera.position.set(DEFAULT_CAMERA_POS.x, DEFAULT_CAMERA_POS.y, DEFAULT_CAMERA_POS.z);
+      controls.target.set(0, 0, 0);
+      globeMesh.rotation.set(0, 0, 0);
+      controls.update();
+    },
+    setDensityFilter(active) {
+      if (!cityMarkers.length) return;
+      const maxLeads = Math.max(1, ...cityMarkers.map((m) => m.city.leadsScraped));
+      cityMarkers.forEach((m) => {
+        const scale = active ? 0.6 + (m.city.leadsScraped / maxLeads) * 2.2 : 1;
+        m.mesh.scale.setScalar(scale);
+      });
+    },
     destroy() {
       cancelAnimationFrame(animationId);
       if (resizeObserver) resizeObserver.disconnect();
@@ -178,9 +256,14 @@ function initGlobe(container, geojson, statsByName, { onHover, onLeave } = {}) {
       geometry.dispose();
       material.dispose();
       texture.dispose();
+      if (cityMarkerGeometry) cityMarkerGeometry.dispose();
+      if (cityMarkerMaterial) cityMarkerMaterial.dispose();
+      cityMarkerGeometry = null;
+      cityMarkerMaterial = null;
+      cityMarkers = [];
       renderer.dispose();
     },
   };
 }
 
-window.MapGlobe = { initGlobe, xyzToLatLon };
+window.MapGlobe = { initGlobe, xyzToLatLon, latLonToXYZ };

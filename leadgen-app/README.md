@@ -6,6 +6,34 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.60
+Every piece of the latest map request, built and verified on both the
+flat map and the 3D globe - including catching and fixing a real bug
+along the way.
+
+- **Country borders are now genuinely more prominent**, and city
+  markers use a deliberately subtler border - the same visual hierarchy
+  on both views.
+- **Every city is its own interactive marker** with real coordinates
+  (the centroid of that city's actual scraped leads), hovering shows
+  its own funnel stats - verified this exact way on the globe
+  specifically, which was the harder case: computed the marker's exact
+  on-screen projected position using Three.js's own math and confirmed
+  hovering it shows the city, not just the country underneath it.
+- **Flags now show in every tooltip**, country or city, generated from
+  a country-to-flag mapping - no image files needed.
+- **A reset-view button** (bottom right, as specified) - snaps the flat
+  map's pan/zoom or the globe's camera and rotation back to default.
+- **A density filter toggle** (also bottom right) - when on, city
+  markers scale by how many leads were actually scraped there, making
+  the most-worked areas visually obvious at a glance. Verified the
+  scaling math directly: a city with double the leads rendered visibly
+  larger than one with fewer.
+- **Found and fixed a real bug before it shipped**: the city data
+  coming back from the server was silently never being stored on the
+  frontend, meaning every city marker built in this round would have
+  rendered nothing at all. Caught in testing, not left for later.
+
 ## What's in this V15.59
 The 3D globe is now fully proven and set as the default view. Also lays
 the real data foundation for the newest set of map requests (prominent

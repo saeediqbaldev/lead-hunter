@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.21-15.59";
+const APP_VERSION = "2026.08.22-15.60";
 
 // Every email provider section (Hostinger, Gmail, Bluehost/Titan) shares
 // the same Tracking/History/Alerts/Reports/Campaigns/Setup views, keyed
@@ -8583,6 +8583,32 @@ document.getElementById("automationEnabledToggle").addEventListener("change", as
 let mapOverviewData = null; // { geojson, statsByName } once loaded
 let mapOverviewLoaded = false;
 
+// Maps a country name (as stored in catch_logs.country) to its ISO
+// 3166-1 alpha-2 code, used to build a flag emoji via the standard
+// regional-indicator-symbol Unicode technique - no flag image assets
+// needed. Covers the 30 automation-supported countries plus a broad set
+// of others that could appear from a manual hunt.
+const COUNTRY_ISO2 = {
+  "United States": "US", Australia: "AU", Canada: "CA", "United Kingdom": "GB", Germany: "DE",
+  Netherlands: "NL", "New Zealand": "NZ", Ireland: "IE", France: "FR", Switzerland: "CH",
+  Sweden: "SE", Denmark: "DK", Norway: "NO", Austria: "AT", Belgium: "BE", Singapore: "SG",
+  "United Arab Emirates": "AE", "South Africa": "ZA", Spain: "ES", Portugal: "PT", Italy: "IT",
+  Finland: "FI", Japan: "JP", "South Korea": "KR", Brazil: "BR", Mexico: "MX", Poland: "PL",
+  "Czech Republic": "CZ", Luxembourg: "LU", "Saudi Arabia": "SA",
+  India: "IN", China: "CN", Russia: "RU", Turkey: "TR", Greece: "GR", Hungary: "HU", Romania: "RO",
+  Israel: "IL", Egypt: "EG", Argentina: "AR", Chile: "CL", Colombia: "CO", Indonesia: "ID",
+  Malaysia: "MY", Philippines: "PH", Thailand: "TH", Vietnam: "VN", Pakistan: "PK", Nigeria: "NG",
+  Kenya: "KE", Morocco: "MA", Qatar: "QA", Kuwait: "KW", Bahrain: "BH", Oman: "OM", Jordan: "JO",
+  Ukraine: "UA", Iceland: "IS", Croatia: "HR", Slovenia: "SI", Slovakia: "SK", Bulgaria: "BG",
+  Estonia: "EE", Latvia: "LV", Lithuania: "LT", Malta: "MT", Cyprus: "CY", Vatican: "VA",
+};
+
+function countryFlagEmoji(countryName) {
+  const iso2 = COUNTRY_ISO2[countryName];
+  if (!iso2) return "";
+  return iso2.replace(/./g, (c) => String.fromCodePoint(0x1f1e6 + c.charCodeAt(0) - 65));
+}
+
 document.getElementById("reportsOverviewTabBtn").addEventListener("click", () => switchReportsTab("overview"));
 document.getElementById("reportsMapOverviewTabBtn").addEventListener("click", () => switchReportsTab("map"));
 
@@ -8610,7 +8636,7 @@ async function loadMapOverview() {
       statsByName[c.worldAtlasName] = c;
     });
 
-    mapOverviewData = { geojson, statsByName };
+    mapOverviewData = { geojson, statsByName, cities: statsData.cities || [] };
     loadingEl.style.display = "none";
     initMapGlobeView();
     renderMapOverviewLegend(statsData.countries.length);
@@ -8619,6 +8645,9 @@ async function loadMapOverview() {
     loadingEl.innerHTML = `<p class="hint">Could not load the map. ${escapeHtmlAttr(err.message)}</p>`;
   }
 }
+
+let mapFlatZoomBehavior = null; // stored so the reset button can restore the default pan/zoom
+let mapDensityFilterActive = false;
 
 function renderMapOverviewFlat() {
   const svg = d3.select("#mapOverviewFlatSvg");
@@ -8633,6 +8662,8 @@ function renderMapOverviewFlat() {
 
   const g = svg.append("g").attr("transform", "translate(12,12)");
 
+  // Country borders - deliberately more prominent than city marker
+  // borders, so the visual hierarchy reads correctly at a glance.
   const countryPaths = g
     .selectAll("path")
     .data(mapOverviewData.geojson.features)
@@ -8646,18 +8677,44 @@ function renderMapOverviewFlat() {
   });
   countryPaths.on("mouseleave", hideMapTooltip);
 
+  renderFlatCityMarkers(g, projection);
+
   // Pan/zoom - standard D3 drag+wheel interaction, gives a "scrollable" feel to the flat map.
-  const zoom = d3
+  mapFlatZoomBehavior = d3
     .zoom()
     .scaleExtent([1, 8])
     .on("zoom", (event) => g.attr("transform", event.transform));
-  svg.call(zoom);
+  svg.call(mapFlatZoomBehavior);
 }
 
-function showMapTooltip(event, countryName, stat) {
+function renderFlatCityMarkers(g, projection) {
+  const cities = (mapOverviewData.cities || []).filter((c) => c.lat != null && c.lng != null);
+  const maxLeads = Math.max(1, ...cities.map((c) => c.leadsScraped));
+
+  const markers = g
+    .append("g")
+    .attr("class", "map-city-markers")
+    .selectAll("circle")
+    .data(cities)
+    .join("circle")
+    .attr("class", "map-city-marker")
+    .attr("cx", (d) => projection([d.lng, d.lat])[0])
+    .attr("cy", (d) => projection([d.lng, d.lat])[1])
+    .attr("r", (d) => (mapDensityFilterActive ? 3 + (d.leadsScraped / maxLeads) * 9 : 4));
+
+  markers.on("mousemove", (event, d) => {
+    showMapTooltip(event, d.city, d, { flagCountry: d.country, subtitle: d.country });
+  });
+  markers.on("mouseleave", hideMapTooltip);
+}
+
+function showMapTooltip(event, title, stat, options = {}) {
   const tooltip = document.getElementById("mapOverviewTooltip");
+  const flag = countryFlagEmoji(options.flagCountry || title);
+  const subtitle = options.subtitle ? `<div class="map-overview-tooltip-subtitle">${escapeHtmlAttr(options.subtitle)}</div>` : "";
   tooltip.innerHTML = `
-    <div class="map-overview-tooltip-title">${escapeHtmlAttr(countryName)}</div>
+    <div class="map-overview-tooltip-title">${flag ? `<span class="map-overview-tooltip-flag">${flag}</span> ` : ""}${escapeHtmlAttr(title)}</div>
+    ${subtitle}
     <div class="map-overview-tooltip-row"><span>Leads scraped</span><strong>${stat.leadsScraped}</strong></div>
     <div class="map-overview-tooltip-row"><span>Contacted</span><strong>${stat.contacted}</strong></div>
     <div class="map-overview-tooltip-row"><span>Engaged</span><strong>${stat.engaged}</strong></div>
@@ -8691,8 +8748,9 @@ function initMapGlobeView() {
     return;
   }
   const container = document.getElementById("mapOverviewGlobeContainer");
-  mapGlobeInstance = window.MapGlobe.initGlobe(container, mapOverviewData.geojson, mapOverviewData.statsByName, {
+  mapGlobeInstance = window.MapGlobe.initGlobe(container, mapOverviewData.geojson, mapOverviewData.statsByName, mapOverviewData.cities || [], {
     onHover: (event, stat) => showMapTooltip(event, stat.country, stat),
+    onCityHover: (event, city) => showMapTooltip(event, city.city, city, { flagCountry: city.country, subtitle: city.country }),
     onLeave: hideMapTooltip,
   });
 }
@@ -8707,7 +8765,10 @@ function destroyMapGlobeView() {
 document.getElementById("mapViewFlatBtn").addEventListener("click", () => switchMapView("flat"));
 document.getElementById("mapViewGlobeBtn").addEventListener("click", () => switchMapView("globe"));
 
+let mapOverviewCurrentView = "globe"; // matches the default active view
+
 function switchMapView(view) {
+  mapOverviewCurrentView = view;
   document.getElementById("mapViewFlatBtn").classList.toggle("active", view === "flat");
   document.getElementById("mapViewFlatBtn").setAttribute("aria-pressed", view === "flat");
   document.getElementById("mapViewGlobeBtn").classList.toggle("active", view === "globe");
@@ -8723,6 +8784,22 @@ function switchMapView(view) {
     if (view === "flat" && mapOverviewData) renderMapOverviewFlat();
   }
 }
+
+document.getElementById("mapResetViewBtn").addEventListener("click", () => {
+  if (mapOverviewCurrentView === "flat" && mapFlatZoomBehavior) {
+    d3.select("#mapOverviewFlatSvg").transition().duration(300).call(mapFlatZoomBehavior.transform, d3.zoomIdentity);
+  } else if (mapOverviewCurrentView === "globe" && mapGlobeInstance) {
+    mapGlobeInstance.resetView();
+  }
+});
+
+document.getElementById("mapDensityFilterBtn").addEventListener("click", (e) => {
+  mapDensityFilterActive = !mapDensityFilterActive;
+  e.currentTarget.classList.toggle("active", mapDensityFilterActive);
+  e.currentTarget.setAttribute("aria-pressed", mapDensityFilterActive);
+  if (mapOverviewCurrentView === "flat") renderMapOverviewFlat();
+  else if (mapOverviewCurrentView === "globe" && mapGlobeInstance) mapGlobeInstance.setDensityFilter(mapDensityFilterActive);
+});
 
 window.addEventListener("resize", () => {
   const tabVisible = mapOverviewData && !document.getElementById("reportsMapOverviewTab").classList.contains("view-hidden");
