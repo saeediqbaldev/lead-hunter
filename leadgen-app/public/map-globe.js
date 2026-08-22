@@ -42,13 +42,24 @@ function buildGlobeTexture(geojson, statsByName) {
   const oceanColor = cssVar("--panel-raised", "#221e1a");
   const landColor = cssVar("--border", "#33302a");
   const huntedColor = cssVar("--accent", "#ff6a3d");
-  const borderColor = cssVar("--text-muted", "#948d80");
+  const borderColor = oceanColor;
+  const graticuleColor = cssVar("--text-muted", "#948d80");
 
   ctx.fillStyle = oceanColor;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   const projection = d3.geoEquirectangular().fitSize([canvas.width, canvas.height], { type: "Sphere" });
   const path = d3.geoPath(projection, ctx);
+
+  // Graticule (lat/lon grid) drawn first, under the country fills - shows
+  // through over open ocean, matching the reference's classic globe look.
+  ctx.beginPath();
+  path(d3.geoGraticule10());
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = graticuleColor;
+  ctx.globalAlpha = 0.35;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
 
   geojson.features.forEach((feature) => {
     const isHunted = !!statsByName[feature.properties.name];
@@ -140,12 +151,18 @@ function initGlobe(container, geojson, statsByName, cities, { onHover, onCityHov
   texture.needsUpdate = true;
 
   const geometry = new THREE.SphereGeometry(1, 64, 64);
-  // Unlit material - deliberate choice, matches the flat, theme-driven
-  // aesthetic used everywhere else rather than simulating planetary
-  // lighting, which would fight with an arbitrary user-chosen theme.
-  const material = new THREE.MeshBasicMaterial({ map: texture });
+  const material = new THREE.MeshStandardMaterial({ map: texture, roughness: 1, metalness: 0 });
   globeMesh = new THREE.Mesh(geometry, material);
   scene.add(globeMesh);
+
+  // Real lighting for genuine visible 3D depth (a soft shading gradient
+  // toward the globe's edge), rather than a flat, unlit sphere. Ambient
+  // is kept fairly strong so the theme's own colors stay clearly
+  // recognizable rather than washing out into heavy shadow.
+  scene.add(new THREE.AmbientLight(0xffffff, 1.1));
+  const keyLight = new THREE.DirectionalLight(0xffffff, 1.1);
+  keyLight.position.set(3, 2, 4);
+  scene.add(keyLight);
 
   buildCityMarkers(cities);
 

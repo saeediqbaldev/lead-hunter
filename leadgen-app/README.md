@@ -6,6 +6,27 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.61
+Restyled both map views after the amCharts reference, verified visually
+on both.
+
+- **A visible lat/lon graticule** on both the globe and flat map, using
+  D3's built-in generator - matches the reference's classic globe look.
+- **Solid, saturated country fills** instead of the previous translucent
+  ones, and crisper borders that read as countries being cleanly "cut
+  out" from the background, the same technique the reference uses.
+- **Real lighting on the 3D globe** - switched from a flat, unlit
+  material to one that actually responds to a real light source, giving
+  genuine visible depth (a soft shading gradient across the sphere)
+  instead of looking like a flat image wrapped around a ball.
+- **One judgment call worth being upfront about**: the reference uses a
+  fixed blue-and-white palette, but your original spec asked the map to
+  follow the active theme. I kept the visual *techniques* (graticule,
+  solid fills, lighting, crisp borders) while keeping your theme's own
+  colors, so it fits the rest of the dark UI rather than clashing with
+  it. If you specifically want the exact blue/gray/white palette from
+  the reference regardless of theme, say so and I'll build that instead.
+
 ## What's in this V15.60
 Every piece of the latest map request, built and verified on both the
 flat map and the 3D globe - including catching and fixing a real bug

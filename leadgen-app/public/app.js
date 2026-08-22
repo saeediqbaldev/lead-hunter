@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.22-15.60";
+const APP_VERSION = "2026.08.22-15.61";
 
 // Every email provider section (Hostinger, Gmail, Bluehost/Titan) shares
 // the same Tracking/History/Alerts/Reports/Campaigns/Setup views, keyed
@@ -8662,10 +8662,13 @@ function renderMapOverviewFlat() {
 
   const g = svg.append("g").attr("transform", "translate(12,12)");
 
+  // Graticule (lat/lon grid) - same technique as the globe, for visual consistency between both views.
+  g.append("path").datum(d3.geoGraticule10()).attr("class", "map-graticule").attr("d", path);
+
   // Country borders - deliberately more prominent than city marker
   // borders, so the visual hierarchy reads correctly at a glance.
   const countryPaths = g
-    .selectAll("path")
+    .selectAll("path.map-country")
     .data(mapOverviewData.geojson.features)
     .join("path")
     .attr("d", path)

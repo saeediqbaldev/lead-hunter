@@ -646,9 +646,10 @@ body {
    hunted ones use the accent color, with a lighter hover state so a
    highlighted country visibly responds without needing the tooltip to
    already be open. */
-.map-country { stroke: var(--text-muted); stroke-width: 1.1; fill: color-mix(in srgb, var(--border) 55%, transparent); transition: fill 0.15s; }
-.map-country.hunted { fill: color-mix(in srgb, var(--accent) 55%, transparent); cursor: pointer; }
+.map-country { stroke: var(--panel-raised); stroke-width: 1.1; fill: var(--border); transition: fill 0.15s; }
+.map-country.hunted { fill: color-mix(in srgb, var(--accent) 75%, var(--border)); cursor: pointer; }
 .map-country.hunted:hover { fill: var(--accent); }
+.map-graticule { fill: none; stroke: var(--text-muted); stroke-width: 1; opacity: 0.35; pointer-events: none; }
 
 /* City markers - deliberately subtler border than country borders above,
    establishing a clear visual hierarchy (country outline >> city dot). */
