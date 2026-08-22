@@ -42,7 +42,7 @@ function buildGlobeTexture(geojson, statsByName) {
   const oceanColor = cssVar("--panel-raised", "#221e1a");
   const landColor = cssVar("--border", "#33302a");
   const huntedColor = cssVar("--accent", "#ff6a3d");
-  const borderColor = cssVar("--text", "#ece7dd");
+  const borderColor = cssVar("--map-border-color", "#ffffff");
   const graticuleColor = cssVar("--text-muted", "#948d80");
 
   ctx.fillStyle = oceanColor;
@@ -67,7 +67,7 @@ function buildGlobeTexture(geojson, statsByName) {
     path(feature);
     ctx.fillStyle = isHunted ? huntedColor : landColor;
     ctx.fill();
-    ctx.lineWidth = 4;
+    ctx.lineWidth = 1.75;
     ctx.strokeStyle = borderColor;
     ctx.stroke();
   });

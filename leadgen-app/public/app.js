@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.22-15.62";
+const APP_VERSION = "2026.08.22-15.63";
 
 // Every email provider section (Hostinger, Gmail, Bluehost/Titan) shares
 // the same Tracking/History/Alerts/Reports/Campaigns/Setup views, keyed
@@ -3962,6 +3962,7 @@ const DARK_THEME_DEFAULTS = {
   "--good": "#7fb88a",
   "--warn": "#e0b355",
   "--danger": "#d95d5d",
+  "--map-border-color": "#ffffff",
 };
 
 const LIGHT_THEME_DEFAULTS = {
@@ -3976,6 +3977,7 @@ const LIGHT_THEME_DEFAULTS = {
   "--good": "#297e48",
   "--warn": "#94640d",
   "--danger": "#b83b3b",
+  "--map-border-color": "#000000",
 };
 
 let currentTheme = { mode: "dark", colors: { ...DARK_THEME_DEFAULTS } };

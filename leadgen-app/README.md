@@ -6,6 +6,36 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.63
+Three of your four requests, verified in a real browser. The fourth
+(city/state borders) needed real, honest investigation before I could
+build it responsibly - explained below rather than guessed at.
+
+- **Globe borders are sharper and narrower** - reduced the line width
+  now that the texture resolution from last round gives room to draw
+  thinner without looking jagged.
+- **Borders are now genuinely theme-adaptive**: literal white in dark
+  mode, literal black in light mode, on both the flat map and the
+  globe. Added a dedicated color specifically for this (not reusing the
+  theme's own slightly-off-white/off-black text color) and verified the
+  actual rendered border color switches correctly when toggling
+  theme - checked in the browser, not just the CSS variable in
+  isolation.
+- **The map now fills the available viewport height** instead of a
+  fixed 640px - verified it doesn't overflow at three different window
+  heights, and that a sensible minimum kicks in on very short screens
+  rather than the map becoming unusably small.
+- **City/state borders**: I looked for this properly rather than
+  skipping it or faking it. `world-atlas` (what the whole feature is
+  built on) only has whole-country outlines. I checked three other
+  candidate datasets specifically for worldwide state/province
+  boundaries - none of them actually had it once I opened them up and
+  looked (one only covered 4 countries as a special case, not general
+  admin-1 data). I didn't want to bolt on an unverified or
+  wrong-license data source just to say this was done. This one's
+  still open - happy to keep looking, or if you have a specific dataset
+  in mind, point me to it and I'll verify and wire it in properly.
+
 ## What's in this V15.62
 Every issue from the last round of map feedback, verified in a real
 browser - including two real bugs caught specifically by testing rather
