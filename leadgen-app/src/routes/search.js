@@ -140,12 +140,12 @@ async function performSearch(userId, isAdmin, { keyword, location, maxResults, i
   }
 
   const insert = db.prepare(`
-      INSERT INTO leads (catch_log_id, place_id, name, address, phone, website, rating, review_count, business_status, needs, socials, fit_score, fit_grade, fit_source)
-      VALUES (@catch_log_id, @place_id, @name, @address, @phone, @website, @rating, @review_count, @business_status, @needs, @socials, @fit_score, @fit_grade, @fit_source)
+      INSERT INTO leads (catch_log_id, place_id, name, address, phone, website, rating, review_count, business_status, needs, socials, fit_score, fit_grade, fit_source, lat, lng)
+      VALUES (@catch_log_id, @place_id, @name, @address, @phone, @website, @rating, @review_count, @business_status, @needs, @socials, @fit_score, @fit_grade, @fit_source, @lat, @lng)
       ON CONFLICT(catch_log_id, place_id) DO UPDATE SET
         name=excluded.name, address=excluded.address, phone=excluded.phone,
         website=excluded.website, rating=excluded.rating, review_count=excluded.review_count,
-        business_status=excluded.business_status, needs=excluded.needs,
+        business_status=excluded.business_status, needs=excluded.needs, lat=excluded.lat, lng=excluded.lng,
         fit_score = CASE WHEN fit_source = 'ai' THEN fit_score ELSE excluded.fit_score END,
         fit_grade = CASE WHEN fit_source = 'ai' THEN fit_grade ELSE excluded.fit_grade END,
         fit_source = CASE WHEN fit_source = 'ai' THEN fit_source ELSE excluded.fit_source END

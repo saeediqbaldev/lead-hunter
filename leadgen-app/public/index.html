@@ -16,7 +16,7 @@
 <meta name="apple-mobile-web-app-title" content="Xeven Leads" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=1558" />
+<link rel="stylesheet" href="style.css?v=1559" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 <script src="vendor/d3.min.js"></script>
@@ -547,10 +547,10 @@
           <div class="map-overview-header-row">
             <div class="scope-line">Countries you've hunted leads in - hover a highlighted country for its funnel counts</div>
             <div class="map-view-toggle" role="group" aria-label="Map view">
-              <button type="button" class="map-view-toggle-btn" id="mapViewGlobeBtn" data-map-view="globe" title="3D Globe view" aria-pressed="false">
+              <button type="button" class="map-view-toggle-btn active" id="mapViewGlobeBtn" data-map-view="globe" title="3D Globe view" aria-pressed="true">
                 <i class="bi bi-globe2"></i>
               </button>
-              <button type="button" class="map-view-toggle-btn active" id="mapViewFlatBtn" data-map-view="flat" title="2D Flat view" aria-pressed="true">
+              <button type="button" class="map-view-toggle-btn" id="mapViewFlatBtn" data-map-view="flat" title="2D Flat view" aria-pressed="false">
                 <i class="bi bi-map"></i>
               </button>
             </div>
@@ -558,8 +558,8 @@
 
           <div class="map-overview-stage" id="mapOverviewStage">
             <div class="map-overview-loading" id="mapOverviewLoading"><p class="hint">Loading map…</p></div>
-            <svg id="mapOverviewFlatSvg" class="map-overview-svg"></svg>
-            <div id="mapOverviewGlobeContainer" class="map-overview-globe-container view-hidden"></div>
+            <svg id="mapOverviewFlatSvg" class="map-overview-svg view-hidden"></svg>
+            <div id="mapOverviewGlobeContainer" class="map-overview-globe-container"></div>
           </div>
 
           <div class="map-overview-tooltip" id="mapOverviewTooltip" role="tooltip" aria-hidden="true"></div>
@@ -1315,7 +1315,8 @@
   </div>
 
 
-  <script src="app.js?v=1558"></script>
+  <script type="module" src="map-globe.js?v=1559"></script>
+  <script src="app.js?v=1559"></script>
   <script src="pwa-install.js"></script>
 </body>
 </html>

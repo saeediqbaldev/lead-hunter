@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.21-15.58";
+const APP_VERSION = "2026.08.21-15.59";
 
 // Every email provider section (Hostinger, Gmail, Bluehost/Titan) shares
 // the same Tracking/History/Alerts/Reports/Campaigns/Setup views, keyed
@@ -8612,7 +8612,7 @@ async function loadMapOverview() {
 
     mapOverviewData = { geojson, statsByName };
     loadingEl.style.display = "none";
-    renderMapOverviewFlat();
+    initMapGlobeView();
     renderMapOverviewLegend(statsData.countries.length);
   } catch (err) {
     console.error("Failed to load map overview:", err);
@@ -8681,20 +8681,53 @@ function renderMapOverviewLegend(huntedCount) {
   `;
 }
 
-// The 3D globe view isn't built yet - kept as a clearly-disabled button
-// with an explanatory title rather than a click that silently reverts,
-// so the "coming soon" state is honest rather than confusing.
-const mapViewGlobeBtn = document.getElementById("mapViewGlobeBtn");
-mapViewGlobeBtn.disabled = true;
-mapViewGlobeBtn.setAttribute("aria-disabled", "true");
-mapViewGlobeBtn.title = "3D Globe view - coming soon";
-mapViewGlobeBtn.style.opacity = "0.4";
-mapViewGlobeBtn.style.cursor = "not-allowed";
+// ---------- 3D Globe ----------
+let mapGlobeInstance = null; // { destroy() } from map-globe.js's initGlobe, once created
+
+function initMapGlobeView() {
+  if (!window.MapGlobe) {
+    showToast("The 3D globe failed to load - try refreshing the page.", "error");
+    switchMapView("flat");
+    return;
+  }
+  const container = document.getElementById("mapOverviewGlobeContainer");
+  mapGlobeInstance = window.MapGlobe.initGlobe(container, mapOverviewData.geojson, mapOverviewData.statsByName, {
+    onHover: (event, stat) => showMapTooltip(event, stat.country, stat),
+    onLeave: hideMapTooltip,
+  });
+}
+
+function destroyMapGlobeView() {
+  if (mapGlobeInstance) {
+    mapGlobeInstance.destroy();
+    mapGlobeInstance = null;
+  }
+}
+
+document.getElementById("mapViewFlatBtn").addEventListener("click", () => switchMapView("flat"));
+document.getElementById("mapViewGlobeBtn").addEventListener("click", () => switchMapView("globe"));
+
+function switchMapView(view) {
+  document.getElementById("mapViewFlatBtn").classList.toggle("active", view === "flat");
+  document.getElementById("mapViewFlatBtn").setAttribute("aria-pressed", view === "flat");
+  document.getElementById("mapViewGlobeBtn").classList.toggle("active", view === "globe");
+  document.getElementById("mapViewGlobeBtn").setAttribute("aria-pressed", view === "globe");
+  document.getElementById("mapOverviewFlatSvg").classList.toggle("view-hidden", view !== "flat");
+  document.getElementById("mapOverviewGlobeContainer").classList.toggle("view-hidden", view !== "globe");
+  hideMapTooltip();
+
+  if (view === "globe" && mapOverviewData) {
+    if (!mapGlobeInstance) initMapGlobeView();
+  } else {
+    destroyMapGlobeView(); // tear down the WebGL scene whenever it's not visible - avoids leaking GPU resources every toggle
+    if (view === "flat" && mapOverviewData) renderMapOverviewFlat();
+  }
+}
 
 window.addEventListener("resize", () => {
-  if (mapOverviewData && !document.getElementById("reportsMapOverviewTab").classList.contains("view-hidden")) {
-    renderMapOverviewFlat();
-  }
+  const tabVisible = mapOverviewData && !document.getElementById("reportsMapOverviewTab").classList.contains("view-hidden");
+  const flatActive = !document.getElementById("mapOverviewFlatSvg").classList.contains("view-hidden");
+  if (tabVisible && flatActive) renderMapOverviewFlat();
 });
 
 (async function init() {

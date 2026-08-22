@@ -1,7 +1,7 @@
 const express = require("express");
 const db = require("../db");
 const apiKeys = require("../apiKeys");
-const { getCountryFunnelStats } = require("../mapOverview");
+const { getCountryFunnelStats, getCityFunnelStats } = require("../mapOverview");
 const { buildReportsCsv, buildReportsPdf } = require("../export");
 
 const router = express.Router();
@@ -273,7 +273,7 @@ router.post("/export/pdf", (req, res) => {
 // every country that's actually been hunted (has at least one catch
 // log) - powers the Map Overview page.
 router.get("/map-stats", (req, res) => {
-  res.json({ countries: getCountryFunnelStats(req.session.userId) });
+  res.json({ countries: getCountryFunnelStats(req.session.userId), cities: getCityFunnelStats(req.session.userId) });
 });
 
 module.exports = router;

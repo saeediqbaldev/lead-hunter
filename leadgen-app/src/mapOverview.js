@@ -59,4 +59,46 @@ function getCountryFunnelStats(userId) {
   }));
 }
 
-module.exports = { toWorldAtlasName, getCountryFunnelStats, WORLD_ATLAS_NAME_OVERRIDES };
+// Per-city funnel stats, one row per catch log (hunted city) that has
+// at least one lead with real coordinates - a city's marker position is
+// the centroid (simple average) of its own leads' actual Places API
+// coordinates, not a guessed or looked-up city center. A catch log
+// searched before coordinate capture existed has no geocoded leads yet
+// and is honestly left out here, rather than plotted somewhere
+// misleading - it starts appearing once it's searched again.
+function getCityFunnelStats(userId) {
+  const rows = db
+    .prepare(
+      `SELECT
+         cl.id AS catch_log_id,
+         cl.name AS city_name,
+         cl.country AS country,
+         AVG(l.lat) AS lat,
+         AVG(l.lng) AS lng,
+         COUNT(*) AS leads_scraped,
+         SUM(CASE WHEN l.status IN (${CONTACTED_OR_LATER.map(() => "?").join(",")}) THEN 1 ELSE 0 END) AS contacted,
+         SUM(CASE WHEN l.status IN (${ENGAGED_OR_LATER.map(() => "?").join(",")}) THEN 1 ELSE 0 END) AS engaged,
+         SUM(CASE WHEN l.status IN (${CONVERTED_STATUSES.map(() => "?").join(",")}) THEN 1 ELSE 0 END) AS converted
+       FROM leads l
+       JOIN catch_logs cl ON cl.id = l.catch_log_id
+       JOIN niches n ON n.id = cl.niche_id
+       WHERE n.user_id = ? AND l.lat IS NOT NULL AND l.lng IS NOT NULL
+         AND cl.country IS NOT NULL AND cl.country != '' AND cl.country != 'Unnamed'
+       GROUP BY cl.id`
+    )
+    .all(...CONTACTED_OR_LATER, ...ENGAGED_OR_LATER, ...CONVERTED_STATUSES, userId);
+
+  return rows.map((r) => ({
+    catchLogId: r.catch_log_id,
+    city: r.city_name,
+    country: r.country,
+    lat: r.lat,
+    lng: r.lng,
+    leadsScraped: r.leads_scraped,
+    contacted: r.contacted,
+    engaged: r.engaged,
+    converted: r.converted,
+  }));
+}
+
+module.exports = { toWorldAtlasName, getCountryFunnelStats, getCityFunnelStats, WORLD_ATLAS_NAME_OVERRIDES };

@@ -35,6 +35,7 @@ const ESSENTIALS_FIELDS = [
   "places.internationalPhoneNumber",
   "places.websiteUri",
   "places.businessStatus",
+  "places.location",
   "nextPageToken",
 ].join(",");
 
@@ -94,6 +95,8 @@ function mapPlace(p) {
     rating: typeof p.rating === "number" ? p.rating : null,
     review_count: typeof p.userRatingCount === "number" ? p.userRatingCount : null,
     business_status: p.businessStatus || null,
+    lat: p.location && typeof p.location.latitude === "number" ? p.location.latitude : null,
+    lng: p.location && typeof p.location.longitude === "number" ? p.location.longitude : null,
   };
 }
 

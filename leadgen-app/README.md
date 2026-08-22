@@ -6,6 +6,32 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.59
+The 3D globe is now fully proven and set as the default view. Also lays
+the real data foundation for the newest set of map requests (prominent
+country borders, interactive city markers, flags, a reset button, and
+a lead-density filter) - but that frontend work is still ahead; this
+round is the groundwork underneath it.
+
+- **Finally got the clean, end-to-end proof the globe was missing**: by
+  positioning the camera exactly along the ray through a known
+  country's real coordinates - the same movement mechanism
+  auto-rotation and drag both use - hovering the actual rendered globe
+  correctly showed Germany's exact funnel numbers in the tooltip. The
+  3D globe is now the default view.
+- **Real coordinates are now captured for every new lead** - added the
+  location field to the Places API request (free tier, no cost change)
+  and verified end to end that real latitude/longitude gets saved.
+  This didn't exist before at all, and it's the foundation the
+  requested city markers need - a city's marker position will be the
+  genuine average of its own leads' real coordinates, not a guess.
+- **Built and verified the per-city funnel stats** a city marker will
+  need - checked the centroid math directly against known coordinates
+  and confirmed it's exact.
+- Older, already-hunted cities won't have coordinates until they're
+  searched again, since this data didn't exist before now - worth
+  knowing plainly rather than discovering as a gap later.
+
 ## What's in this V15.58
 The first working half of Map Overview - a new tab inside Reports with
 a fully functional 2D flat world map. The 3D globe toggle is visible
