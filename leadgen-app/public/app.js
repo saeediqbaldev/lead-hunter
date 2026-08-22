@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.22-15.61";
+const APP_VERSION = "2026.08.22-15.62";
 
 // Every email provider section (Hostinger, Gmail, Bluehost/Titan) shares
 // the same Tracking/History/Alerts/Reports/Campaigns/Setup views, keyed
@@ -8589,18 +8589,40 @@ let mapOverviewLoaded = false;
 // needed. Covers the 30 automation-supported countries plus a broad set
 // of others that could appear from a manual hunt.
 const COUNTRY_ISO2 = {
-  "United States": "US", Australia: "AU", Canada: "CA", "United Kingdom": "GB", Germany: "DE",
-  Netherlands: "NL", "New Zealand": "NZ", Ireland: "IE", France: "FR", Switzerland: "CH",
-  Sweden: "SE", Denmark: "DK", Norway: "NO", Austria: "AT", Belgium: "BE", Singapore: "SG",
-  "United Arab Emirates": "AE", "South Africa": "ZA", Spain: "ES", Portugal: "PT", Italy: "IT",
-  Finland: "FI", Japan: "JP", "South Korea": "KR", Brazil: "BR", Mexico: "MX", Poland: "PL",
-  "Czech Republic": "CZ", Luxembourg: "LU", "Saudi Arabia": "SA",
-  India: "IN", China: "CN", Russia: "RU", Turkey: "TR", Greece: "GR", Hungary: "HU", Romania: "RO",
-  Israel: "IL", Egypt: "EG", Argentina: "AR", Chile: "CL", Colombia: "CO", Indonesia: "ID",
-  Malaysia: "MY", Philippines: "PH", Thailand: "TH", Vietnam: "VN", Pakistan: "PK", Nigeria: "NG",
-  Kenya: "KE", Morocco: "MA", Qatar: "QA", Kuwait: "KW", Bahrain: "BH", Oman: "OM", Jordan: "JO",
-  Ukraine: "UA", Iceland: "IS", Croatia: "HR", Slovenia: "SI", Slovakia: "SK", Bulgaria: "BG",
-  Estonia: "EE", Latvia: "LV", Lithuania: "LT", Malta: "MT", Cyprus: "CY", Vatican: "VA",
+  Afghanistan: "AF", Albania: "AL", Algeria: "DZ", "American Samoa": "AS", Andorra: "AD", Angola: "AO", Anguilla: "AI",
+  "Antigua and Barb.": "AG", Argentina: "AR", Armenia: "AM", Aruba: "AW", Australia: "AU", Austria: "AT", Azerbaijan: "AZ",
+  Bahamas: "BS", Bahrain: "BH", Bangladesh: "BD", Barbados: "BB", Belarus: "BY", Belgium: "BE", Belize: "BZ", Benin: "BJ",
+  Bermuda: "BM", Bhutan: "BT", Bolivia: "BO", "Bosnia and Herz.": "BA", Botswana: "BW", Brazil: "BR",
+  "British Virgin Is.": "VG", Brunei: "BN", Bulgaria: "BG", "Burkina Faso": "BF", Burundi: "BI", "Cabo Verde": "CV",
+  Cambodia: "KH", Cameroon: "CM", Canada: "CA", "Cayman Is.": "KY", "Central African Rep.": "CF", Chad: "TD", Chile: "CL",
+  China: "CN", Colombia: "CO", Comoros: "KM", Congo: "CG", "Cook Is.": "CK", "Costa Rica": "CR", Croatia: "HR", Cuba: "CU",
+  "Curaçao": "CW", Cyprus: "CY", Czechia: "CZ", "Czech Republic": "CZ", "Côte d'Ivoire": "CI", "Dem. Rep. Congo": "CD",
+  Denmark: "DK", Djibouti: "DJ", Dominica: "DM", "Dominican Rep.": "DO", Ecuador: "EC", Egypt: "EG", "El Salvador": "SV",
+  "Eq. Guinea": "GQ", Eritrea: "ER", Estonia: "EE", eSwatini: "SZ", Ethiopia: "ET", "Faeroe Is.": "FO",
+  "Falkland Is.": "FK", Fiji: "FJ", Finland: "FI", "Fr. Polynesia": "PF", France: "FR", Gabon: "GA", Gambia: "GM",
+  Georgia: "GE", Germany: "DE", Ghana: "GH", Greece: "GR", Greenland: "GL", Grenada: "GD", Guam: "GU", Guatemala: "GT",
+  Guernsey: "GG", Guinea: "GN", "Guinea-Bissau": "GW", Guyana: "GY", Haiti: "HT", Honduras: "HN", "Hong Kong": "HK",
+  Hungary: "HU", Iceland: "IS", India: "IN", Indonesia: "ID", Iran: "IR", Iraq: "IQ", Ireland: "IE", "Isle of Man": "IM",
+  Israel: "IL", Italy: "IT", Jamaica: "JM", Japan: "JP", Jersey: "JE", Jordan: "JO", Kazakhstan: "KZ", Kenya: "KE",
+  Kiribati: "KI", Kuwait: "KW", Kyrgyzstan: "KG", Laos: "LA", Latvia: "LV", Lebanon: "LB", Lesotho: "LS", Liberia: "LR",
+  Libya: "LY", Liechtenstein: "LI", Lithuania: "LT", Luxembourg: "LU", Macao: "MO", Macedonia: "MK", Madagascar: "MG",
+  Malawi: "MW", Malaysia: "MY", Maldives: "MV", Mali: "ML", Malta: "MT", "Marshall Is.": "MH", Mauritania: "MR",
+  Mauritius: "MU", Mexico: "MX", Micronesia: "FM", Moldova: "MD", Monaco: "MC", Mongolia: "MN", Montenegro: "ME",
+  Montserrat: "MS", Morocco: "MA", Mozambique: "MZ", Myanmar: "MM", "N. Mariana Is.": "MP", Namibia: "NA", Nauru: "NR",
+  Nepal: "NP", Netherlands: "NL", "New Caledonia": "NC", "New Zealand": "NZ", Nicaragua: "NI", Niger: "NE", Nigeria: "NG",
+  Niue: "NU", "North Korea": "KP", Norway: "NO", Oman: "OM", Pakistan: "PK", Palau: "PW", Panama: "PA",
+  "Papua New Guinea": "PG", Paraguay: "PY", Peru: "PE", Philippines: "PH", Poland: "PL", Portugal: "PT",
+  "Puerto Rico": "PR", Qatar: "QA", Romania: "RO", Russia: "RU", Rwanda: "RW", "Saint Helena": "SH", "Saint Lucia": "LC",
+  Samoa: "WS", "San Marino": "SM", "Saudi Arabia": "SA", Senegal: "SN", Serbia: "RS", Seychelles: "SC",
+  "Sierra Leone": "SL", Singapore: "SG", "Sint Maarten": "SX", Slovakia: "SK", Slovenia: "SI", "Solomon Is.": "SB",
+  Somalia: "SO", "South Africa": "ZA", "South Korea": "KR", Spain: "ES", "Sri Lanka": "LK", "St. Kitts and Nevis": "KN",
+  "St. Pierre and Miquelon": "PM", "St. Vin. and Gren.": "VC", "St-Martin": "MF", "St-Barthélemy": "BL", Sudan: "SD", "S. Sudan": "SS", Suriname: "SR",
+  Sweden: "SE", Switzerland: "CH", Syria: "SY", "São Tomé and Principe": "ST", Taiwan: "TW", Tajikistan: "TJ",
+  Tanzania: "TZ", Thailand: "TH", "Timor-Leste": "TL", Togo: "TG", Tonga: "TO", "Trinidad and Tobago": "TT",
+  Tunisia: "TN", Turkey: "TR", Turkmenistan: "TM", "Turks and Caicos Is.": "TC", "U.S. Virgin Is.": "VI", Uganda: "UG",
+  Ukraine: "UA", "United Arab Emirates": "AE", "United Kingdom": "GB", "United States": "US",
+  "United States of America": "US", Uruguay: "UY", Uzbekistan: "UZ", Vanuatu: "VU", Vatican: "VA", Venezuela: "VE",
+  Vietnam: "VN", "Wallis and Futuna Is.": "WF", Yemen: "YE", Zambia: "ZM", Zimbabwe: "ZW", "Åland": "AX",
 };
 
 function countryFlagEmoji(countryName) {
@@ -8662,9 +8684,6 @@ function renderMapOverviewFlat() {
 
   const g = svg.append("g").attr("transform", "translate(12,12)");
 
-  // Graticule (lat/lon grid) - same technique as the globe, for visual consistency between both views.
-  g.append("path").datum(d3.geoGraticule10()).attr("class", "map-graticule").attr("d", path);
-
   // Country borders - deliberately more prominent than city marker
   // borders, so the visual hierarchy reads correctly at a glance.
   const countryPaths = g
@@ -8677,6 +8696,7 @@ function renderMapOverviewFlat() {
   countryPaths.on("mousemove", (event, d) => {
     const stat = mapOverviewData.statsByName[d.properties.name];
     if (stat) showMapTooltip(event, stat.country, stat);
+    else showMapTooltipMinimal(event, d.properties.name);
   });
   countryPaths.on("mouseleave", hideMapTooltip);
 
@@ -8690,25 +8710,58 @@ function renderMapOverviewFlat() {
   svg.call(mapFlatZoomBehavior);
 }
 
+// Small, deterministic pseudo-random generator seeded on a city's own
+// id - the same city always gets the same scattered dot pattern rather
+// than reshuffling every time the map re-renders.
+function seededRandom(seed) {
+  let s = seed % 2147483647;
+  if (s <= 0) s += 2147483646;
+  return () => {
+    s = (s * 16807) % 2147483647;
+    return (s - 1) / 2147483646;
+  };
+}
+
 function renderFlatCityMarkers(g, projection) {
   const cities = (mapOverviewData.cities || []).filter((c) => c.lat != null && c.lng != null);
-  const maxLeads = Math.max(1, ...cities.map((c) => c.leadsScraped));
 
-  const markers = g
-    .append("g")
-    .attr("class", "map-city-markers")
-    .selectAll("circle")
+  const layer = g.append("g").attr("class", "map-city-markers");
+
+  const markers = layer
+    .selectAll("circle.map-city-marker")
     .data(cities)
     .join("circle")
     .attr("class", "map-city-marker")
     .attr("cx", (d) => projection([d.lng, d.lat])[0])
     .attr("cy", (d) => projection([d.lng, d.lat])[1])
-    .attr("r", (d) => (mapDensityFilterActive ? 3 + (d.leadsScraped / maxLeads) * 9 : 4));
+    .attr("r", 4.5);
 
   markers.on("mousemove", (event, d) => {
     showMapTooltip(event, d.city, d, { flagCountry: d.country, subtitle: d.country });
   });
   markers.on("mouseleave", hideMapTooltip);
+
+  if (mapDensityFilterActive) {
+    cities.forEach((city) => {
+      const [cx, cy] = projection([city.lng, city.lat]);
+      const dotCount = Math.min(24, Math.ceil(city.leadsScraped / 2));
+      const rand = seededRandom(city.catchLogId * 7919);
+      const dots = [];
+      for (let i = 0; i < dotCount; i++) {
+        const angle = rand() * Math.PI * 2;
+        const dist = 6 + rand() * 16;
+        dots.push({ x: cx + Math.cos(angle) * dist, y: cy + Math.sin(angle) * dist });
+      }
+      layer
+        .selectAll(null)
+        .data(dots)
+        .join("circle")
+        .attr("class", "map-density-dot")
+        .attr("cx", (p) => p.x)
+        .attr("cy", (p) => p.y)
+        .attr("r", 2);
+    });
+  }
 }
 
 function showMapTooltip(event, title, stat, options = {}) {
@@ -8723,6 +8776,16 @@ function showMapTooltip(event, title, stat, options = {}) {
     <div class="map-overview-tooltip-row"><span>Engaged</span><strong>${stat.engaged}</strong></div>
     <div class="map-overview-tooltip-row"><span>Converted</span><strong>${stat.converted}</strong></div>
   `;
+  tooltip.style.left = `${event.clientX + 16}px`;
+  tooltip.style.top = `${event.clientY + 16}px`;
+  tooltip.classList.add("visible");
+  tooltip.setAttribute("aria-hidden", "false");
+}
+
+function showMapTooltipMinimal(event, countryName) {
+  const tooltip = document.getElementById("mapOverviewTooltip");
+  const flag = countryFlagEmoji(countryName);
+  tooltip.innerHTML = `<div class="map-overview-tooltip-title">${flag ? `<span class="map-overview-tooltip-flag">${flag}</span> ` : ""}${escapeHtmlAttr(countryName)}</div>`;
   tooltip.style.left = `${event.clientX + 16}px`;
   tooltip.style.top = `${event.clientY + 16}px`;
   tooltip.classList.add("visible");
@@ -8754,6 +8817,7 @@ function initMapGlobeView() {
   mapGlobeInstance = window.MapGlobe.initGlobe(container, mapOverviewData.geojson, mapOverviewData.statsByName, mapOverviewData.cities || [], {
     onHover: (event, stat) => showMapTooltip(event, stat.country, stat),
     onCityHover: (event, city) => showMapTooltip(event, city.city, city, { flagCountry: city.country, subtitle: city.country }),
+    onCountryEmptyHover: (event, countryName) => showMapTooltipMinimal(event, countryName),
     onLeave: hideMapTooltip,
   });
 }

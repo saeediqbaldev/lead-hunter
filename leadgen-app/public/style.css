@@ -646,17 +646,17 @@ body {
    hunted ones use the accent color, with a lighter hover state so a
    highlighted country visibly responds without needing the tooltip to
    already be open. */
-.map-country { stroke: var(--panel-raised); stroke-width: 1.1; fill: var(--border); transition: fill 0.15s; }
-.map-country.hunted { fill: color-mix(in srgb, var(--accent) 75%, var(--border)); cursor: pointer; }
+.map-country { stroke: var(--panel-raised); stroke-width: 0.6; vector-effect: non-scaling-stroke; fill: var(--border); transition: fill 0.15s; cursor: pointer; }
+.map-country.hunted { fill: color-mix(in srgb, var(--accent) 75%, var(--border)); }
 .map-country.hunted:hover { fill: var(--accent); }
-.map-graticule { fill: none; stroke: var(--text-muted); stroke-width: 1; opacity: 0.35; pointer-events: none; }
 
 /* City markers - deliberately subtler border than country borders above,
    establishing a clear visual hierarchy (country outline >> city dot). */
 .map-city-marker {
-  fill: var(--accent); stroke: var(--panel); stroke-width: 1; cursor: pointer; opacity: 0.9; transition: opacity 0.15s, r 0.2s;
+  fill: var(--accent); stroke: var(--panel); stroke-width: 1; vector-effect: non-scaling-stroke; cursor: pointer; opacity: 0.9; transition: opacity 0.15s, r 0.2s;
 }
 .map-city-marker:hover { opacity: 1; stroke-width: 1.5; }
+.map-density-dot { fill: var(--accent); opacity: 0.55; pointer-events: none; }
 
 .map-overview-tooltip-flag { font-size: 15px; }
 .map-overview-tooltip-subtitle { font-size: 11px; color: var(--text-muted); margin: -4px 0 6px; }

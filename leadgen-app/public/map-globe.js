@@ -35,14 +35,14 @@ function cssVar(name, fallback) {
 // visual hierarchy (country outline >> city dot) the flat map uses.
 function buildGlobeTexture(geojson, statsByName) {
   const canvas = document.createElement("canvas");
-  canvas.width = 2048;
-  canvas.height = 1024;
+  canvas.width = 4096;
+  canvas.height = 2048;
   const ctx = canvas.getContext("2d");
 
   const oceanColor = cssVar("--panel-raised", "#221e1a");
   const landColor = cssVar("--border", "#33302a");
   const huntedColor = cssVar("--accent", "#ff6a3d");
-  const borderColor = oceanColor;
+  const borderColor = cssVar("--text", "#ece7dd");
   const graticuleColor = cssVar("--text-muted", "#948d80");
 
   ctx.fillStyle = oceanColor;
@@ -67,7 +67,7 @@ function buildGlobeTexture(geojson, statsByName) {
     path(feature);
     ctx.fillStyle = isHunted ? huntedColor : landColor;
     ctx.fill();
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 4;
     ctx.strokeStyle = borderColor;
     ctx.stroke();
   });
@@ -100,7 +100,7 @@ function xyzToLatLon(x, y, z) {
 const DEFAULT_CAMERA_POS = { x: 0, y: 0, z: 2.6 };
 
 let scene, camera, renderer, controls, globeMesh, animationId;
-let currentGeojson, currentStatsByName, onHoverCb, onCityHoverCb, onLeaveCb;
+let currentGeojson, currentStatsByName, currentCities, onHoverCb, onCityHoverCb, onCountryEmptyHoverCb, onLeaveCb;
 let resizeObserver;
 let cityMarkers = []; // [{ mesh, city }]
 let cityMarkerGeometry, cityMarkerMaterial;
@@ -126,11 +126,54 @@ function buildCityMarkers(cities) {
     });
 }
 
-function initGlobe(container, geojson, statsByName, cities, { onHover, onCityHover, onLeave } = {}) {
+// Same deterministic pseudo-random generator the flat map uses, seeded
+// on a city's own id - the same city always gets the same scattered
+// dot pattern rather than reshuffling on every toggle.
+function seededRandom(seed) {
+  let s = seed % 2147483647;
+  if (s <= 0) s += 2147483646;
+  return () => {
+    s = (s * 16807) % 2147483647;
+    return (s - 1) / 2147483646;
+  };
+}
+
+let densityDotMeshes = [];
+let densityDotGeometry, densityDotMaterial;
+
+function setDensityDots(cities, active) {
+  densityDotMeshes.forEach((m) => globeMesh.remove(m));
+  densityDotMeshes = [];
+  if (!active) return;
+
+  densityDotGeometry = densityDotGeometry || new THREE.SphereGeometry(0.006, 6, 6);
+  densityDotMaterial = densityDotMaterial || new THREE.MeshBasicMaterial({ color: cssVar("--accent", "#ff6a3d"), transparent: true, opacity: 0.55 });
+
+  cities
+    .filter((c) => c.lat != null && c.lng != null)
+    .forEach((city) => {
+      const dotCount = Math.min(24, Math.ceil(city.leadsScraped / 2));
+      const rand = seededRandom(city.catchLogId * 7919);
+      for (let i = 0; i < dotCount; i++) {
+        // Small offsets in lat/lon degrees - a reasonable approximation
+        // of a local tangent-plane scatter for offsets this small.
+        const offsetLat = city.lat + (rand() - 0.5) * 3;
+        const offsetLon = city.lng + (rand() - 0.5) * 3;
+        const mesh = new THREE.Mesh(densityDotGeometry, densityDotMaterial);
+        mesh.position.copy(latLonToXYZ(offsetLat, offsetLon, 1.008));
+        globeMesh.add(mesh);
+        densityDotMeshes.push(mesh);
+      }
+    });
+}
+
+function initGlobe(container, geojson, statsByName, cities, { onHover, onCityHover, onCountryEmptyHover, onLeave } = {}) {
   currentGeojson = geojson;
   currentStatsByName = statsByName;
+  currentCities = cities;
   onHoverCb = onHover;
   onCityHoverCb = onCityHover;
+  onCountryEmptyHoverCb = onCountryEmptyHover;
   onLeaveCb = onLeave;
 
   const width = container.clientWidth || 900;
@@ -148,6 +191,7 @@ function initGlobe(container, geojson, statsByName, cities, { onHover, onCityHov
 
   const texture = new THREE.CanvasTexture(buildGlobeTexture(geojson, statsByName));
   texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
   texture.needsUpdate = true;
 
   const geometry = new THREE.SphereGeometry(1, 64, 64);
@@ -203,8 +247,10 @@ function initGlobe(container, geojson, statsByName, cities, { onHover, onCityHov
     if (!hits.length) return null;
     const localPoint = globeMesh.worldToLocal(hits[0].point.clone());
     const { lat, lon } = xyzToLatLon(localPoint.x, localPoint.y, localPoint.z);
-    const feature = currentGeojson.features.find((f) => currentStatsByName[f.properties.name] && d3.geoContains(f, [lon, lat]));
-    return feature ? { type: "country", data: currentStatsByName[feature.properties.name] } : null;
+    const feature = currentGeojson.features.find((f) => d3.geoContains(f, [lon, lat]));
+    if (!feature) return null;
+    const stat = currentStatsByName[feature.properties.name];
+    return stat ? { type: "country", data: stat } : { type: "country-empty", data: feature.properties.name };
   }
 
   function onPointerMove(event) {
@@ -215,6 +261,7 @@ function initGlobe(container, geojson, statsByName, cities, { onHover, onCityHov
     const target = findHoverTargetAtPointer(event.clientX, event.clientY);
     if (target && target.type === "city" && onCityHoverCb) onCityHoverCb(event, target.data);
     else if (target && target.type === "country" && onHoverCb) onHoverCb(event, target.data);
+    else if (target && target.type === "country-empty" && onCountryEmptyHoverCb) onCountryEmptyHoverCb(event, target.data);
     else if (onLeaveCb) onLeaveCb();
   }
   function onPointerLeave() {
@@ -256,12 +303,7 @@ function initGlobe(container, geojson, statsByName, cities, { onHover, onCityHov
       controls.update();
     },
     setDensityFilter(active) {
-      if (!cityMarkers.length) return;
-      const maxLeads = Math.max(1, ...cityMarkers.map((m) => m.city.leadsScraped));
-      cityMarkers.forEach((m) => {
-        const scale = active ? 0.6 + (m.city.leadsScraped / maxLeads) * 2.2 : 1;
-        m.mesh.scale.setScalar(scale);
-      });
+      setDensityDots(currentCities || [], active);
     },
     destroy() {
       cancelAnimationFrame(animationId);
@@ -278,6 +320,11 @@ function initGlobe(container, geojson, statsByName, cities, { onHover, onCityHov
       cityMarkerGeometry = null;
       cityMarkerMaterial = null;
       cityMarkers = [];
+      if (densityDotGeometry) densityDotGeometry.dispose();
+      if (densityDotMaterial) densityDotMaterial.dispose();
+      densityDotGeometry = null;
+      densityDotMaterial = null;
+      densityDotMeshes = [];
       renderer.dispose();
     },
   };

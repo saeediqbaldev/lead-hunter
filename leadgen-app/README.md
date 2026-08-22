@@ -6,6 +6,42 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.62
+Every issue from the last round of map feedback, verified in a real
+browser - including two real bugs caught specifically by testing rather
+than assumed away.
+
+- **Coordinate lines removed from the flat map** (kept on the globe).
+- **Sharper, narrower borders that don't distort when zooming** - traced
+  the pixelation to borders scaling up in thickness along with the zoom
+  level (a well-known SVG quirk unless told otherwise) and fixed it at
+  the source, not just visually.
+- **Every country is now interactive** - hovering one with no scraped
+  leads shows a minimal flag + name tooltip; a hunted one still shows
+  full stats. Caught a real bug while wiring this up: the globe uses a
+  different internal name for the US and Czech Republic than the rest
+  of the app, which would have silently broken their flags specifically
+  - fixed before it shipped.
+- **The density filter is rebuilt from scratch** - the old version
+  technically worked (verified the math was correct) but a single
+  circle subtly resizing was never going to look like "dotted
+  notations." It's now literal scattered dots around each city, sized
+  by how many leads were actually found there, on both views.
+- **Flags now cover 226 of 241 countries and territories** (94%) -
+  found the old list only covered about 65 and expanded it to
+  essentially the whole world. What's left out are genuinely obscure,
+  uninhabited, or disputed territories without a real assigned code
+  (Antarctica, a few tiny island territories, and a small number of
+  disputed regions).
+- **Globe borders are now clearly, accessibly visible** - doubled the
+  underlying texture resolution (fixing the "noisy" aliased look) and
+  switched to a genuinely high-contrast border color, since the
+  previous approach blended into the similarly-dark land color.
+- **Caught a second real bug in testing**: a variable was being used
+  without ever being declared, which would have thrown an error and
+  broken the entire globe the moment anyone tried the new density
+  filter. Fixed before packaging, not left for you to find.
+
 ## What's in this V15.61
 Restyled both map views after the amCharts reference, verified visually
 on both.
