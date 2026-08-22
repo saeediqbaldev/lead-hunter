@@ -6,6 +6,31 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.65
+Cities and state/province borders removed, and the underlying hover
+interaction on the globe rebuilt to actually be smooth - not just
+visually simplified back down.
+
+- **Cities are gone** - markers, tooltips, and the density filter
+  (which had no purpose without them) all removed from both views. The
+  floating filter button is gone too; only reset remains.
+- **State/province borders reverted** - back to countries only, on both
+  the flat map and the globe. The now-unused boundary data file was
+  removed rather than left behind unused.
+- **The backend stopped doing the extra work too** - the map's stats
+  endpoint no longer computes or returns city-level data on every
+  load, which also means a smaller response to download every time the
+  map opens.
+- **Found and fixed the actual source of the choppy feeling**: every
+  raw mouse-move on the globe was triggering a full raycast plus a
+  country lookup, synchronously, and fast mouse movement can fire that
+  event many times within a single rendered frame - so the interaction
+  was doing several times more work than it needed to. Hover is now
+  gated to once per frame instead, verified directly: simulated a rapid
+  burst of pointer movement and confirmed it still resolves to the
+  correct country afterward, just without the redundant repeated work
+  in between.
+
 ## What's in this V15.64
 State and province borders, worldwide, on both map views - the piece
 that took real, honest effort to source properly.

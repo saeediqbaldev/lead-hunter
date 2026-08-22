@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.22-15.64";
+const APP_VERSION = "2026.08.22-15.65";
 
 // Every email provider section (Hostinger, Gmail, Bluehost/Titan) shares
 // the same Tracking/History/Alerts/Reports/Campaigns/Setup views, keyed
@@ -8650,29 +8650,17 @@ function switchReportsTab(tab) {
 async function loadMapOverview() {
   const loadingEl = document.getElementById("mapOverviewLoading");
   try {
-    // State/province boundaries: Natural Earth 1:10m Admin-1 data, via
-    // github.com/martynafford/natural-earth-geojson (CC0-1.0 / public
-    // domain - attribution not legally required, included as good
-    // practice). Stripped to essential properties and simplified with
-    // mapshaper before bundling, to bring a 63MB source file down to a
-    // web-friendly size without losing any of its 4,594 features.
-    const [topoRes, statesRes, statsRes] = await Promise.all([
-      fetch("/data/world-countries-50m.json"),
-      fetch("/data/world-states-provinces-10m.json"),
-      api("/api/reports/map-stats"),
-    ]);
+    const [topoRes, statsRes] = await Promise.all([fetch("/data/world-countries-50m.json"), api("/api/reports/map-stats")]);
     const topology = await topoRes.json();
-    const statesTopology = await statesRes.json();
     const statsData = await statsRes.json();
 
     const geojson = topojson.feature(topology, topology.objects.countries);
-    const statesGeojson = topojson.feature(statesTopology, statesTopology.objects[Object.keys(statesTopology.objects)[0]]);
     const statsByName = {};
     statsData.countries.forEach((c) => {
       statsByName[c.worldAtlasName] = c;
     });
 
-    mapOverviewData = { geojson, statesGeojson, statsByName, cities: statsData.cities || [] };
+    mapOverviewData = { geojson, statsByName };
     loadingEl.style.display = "none";
     initMapGlobeView();
     renderMapOverviewLegend(statsData.countries.length);
@@ -8683,7 +8671,6 @@ async function loadMapOverview() {
 }
 
 let mapFlatZoomBehavior = null; // stored so the reset button can restore the default pan/zoom
-let mapDensityFilterActive = false;
 
 function renderMapOverviewFlat() {
   const svg = d3.select("#mapOverviewFlatSvg");
@@ -8698,8 +8685,6 @@ function renderMapOverviewFlat() {
 
   const g = svg.append("g").attr("transform", "translate(12,12)");
 
-  // Country borders - deliberately more prominent than city marker
-  // borders, so the visual hierarchy reads correctly at a glance.
   const countryPaths = g
     .selectAll("path.map-country")
     .data(mapOverviewData.geojson.features)
@@ -8714,86 +8699,12 @@ function renderMapOverviewFlat() {
   });
   countryPaths.on("mouseleave", hideMapTooltip);
 
-  if (mapOverviewData.statesGeojson) {
-    g.append("g")
-      .attr("class", "map-state-borders")
-      .selectAll("path")
-      .data(mapOverviewData.statesGeojson.features)
-      .join("path")
-      .attr("d", path)
-      .attr("class", "map-state-border");
-  }
-
-  renderFlatCityMarkers(g, projection);
-
   // Pan/zoom - standard D3 drag+wheel interaction, gives a "scrollable" feel to the flat map.
   mapFlatZoomBehavior = d3
     .zoom()
     .scaleExtent([1, 8])
     .on("zoom", (event) => g.attr("transform", event.transform));
   svg.call(mapFlatZoomBehavior);
-}
-
-// Small, deterministic pseudo-random generator seeded on a city's own
-// id - the same city always gets the same scattered dot pattern rather
-// than reshuffling every time the map re-renders.
-function seededRandom(seed) {
-  let s = seed % 2147483647;
-  if (s <= 0) s += 2147483646;
-  return () => {
-    s = (s * 16807) % 2147483647;
-    return (s - 1) / 2147483646;
-  };
-}
-
-function renderFlatCityMarkers(g, projection) {
-  const cities = (mapOverviewData.cities || []).filter((c) => c.lat != null && c.lng != null);
-
-  d3.select("#mapOverviewFlatSvg").classed("density-mode", mapDensityFilterActive);
-
-  const layer = g.append("g").attr("class", "map-city-markers");
-
-  const markers = layer
-    .selectAll("circle.map-city-marker")
-    .data(cities)
-    .join("circle")
-    .attr("class", "map-city-marker")
-    .attr("cx", (d) => projection([d.lng, d.lat])[0])
-    .attr("cy", (d) => projection([d.lng, d.lat])[1])
-    .attr("r", 4.5);
-
-  markers.on("mousemove", (event, d) => {
-    showMapTooltip(event, d.city, d, { flagCountry: d.country, subtitle: d.country });
-  });
-  markers.on("mouseleave", hideMapTooltip);
-
-  if (mapDensityFilterActive) {
-    cities.forEach((city) => {
-      const [cx, cy] = projection([city.lng, city.lat]);
-      // A genuine stippled-area look, not a small decorative cluster -
-      // more dots, spread across a much wider radius, roughly one dot
-      // per lead (capped for sanity on very high-volume cities).
-      const dotCount = Math.min(140, Math.max(6, city.leadsScraped));
-      const rand = seededRandom(city.catchLogId * 7919);
-      const dots = [];
-      for (let i = 0; i < dotCount; i++) {
-        const angle = rand() * Math.PI * 2;
-        // Bias toward the center (sqrt of a uniform random) so dots
-        // cluster naturally around the city rather than forming a hard-
-        // edged ring - reads like an organic area highlight.
-        const dist = Math.sqrt(rand()) * 42;
-        dots.push({ x: cx + Math.cos(angle) * dist, y: cy + Math.sin(angle) * dist });
-      }
-      layer
-        .selectAll(null)
-        .data(dots)
-        .join("circle")
-        .attr("class", "map-density-dot")
-        .attr("cx", (p) => p.x)
-        .attr("cy", (p) => p.y)
-        .attr("r", 1.6);
-    });
-  }
 }
 
 function showMapTooltip(event, title, stat, options = {}) {
@@ -8846,9 +8757,8 @@ function initMapGlobeView() {
     return;
   }
   const container = document.getElementById("mapOverviewGlobeContainer");
-  mapGlobeInstance = window.MapGlobe.initGlobe(container, mapOverviewData.geojson, mapOverviewData.statesGeojson, mapOverviewData.statsByName, mapOverviewData.cities || [], {
+  mapGlobeInstance = window.MapGlobe.initGlobe(container, mapOverviewData.geojson, mapOverviewData.statsByName, {
     onHover: (event, stat) => showMapTooltip(event, stat.country, stat),
-    onCityHover: (event, city) => showMapTooltip(event, city.city, city, { flagCountry: city.country, subtitle: city.country }),
     onCountryEmptyHover: (event, countryName) => showMapTooltipMinimal(event, countryName),
     onLeave: hideMapTooltip,
   });
@@ -8890,14 +8800,6 @@ document.getElementById("mapResetViewBtn").addEventListener("click", () => {
   } else if (mapOverviewCurrentView === "globe" && mapGlobeInstance) {
     mapGlobeInstance.resetView();
   }
-});
-
-document.getElementById("mapDensityFilterBtn").addEventListener("click", (e) => {
-  mapDensityFilterActive = !mapDensityFilterActive;
-  e.currentTarget.classList.toggle("active", mapDensityFilterActive);
-  e.currentTarget.setAttribute("aria-pressed", mapDensityFilterActive);
-  if (mapOverviewCurrentView === "flat") renderMapOverviewFlat();
-  else if (mapOverviewCurrentView === "globe" && mapGlobeInstance) mapGlobeInstance.setDensityFilter(mapDensityFilterActive);
 });
 
 window.addEventListener("resize", () => {
