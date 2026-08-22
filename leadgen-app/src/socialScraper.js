@@ -64,13 +64,30 @@ function isNoise(url) {
   return NOISE_PATTERNS.some((p) => p.test(url));
 }
 
+// A source site's mailto: href or visible text can carry URL-encoded
+// characters that were never meant to be part of the address itself -
+// most commonly a stray "%20" (encoded space) from a CMS or page
+// builder mishandling the href. Decoding recovers the real, deliverable
+// address ("%20%20info@x.com" -> "info@x.com") instead of either
+// sending the broken string as-is or discarding what's otherwise a
+// perfectly good lead. If decodeURIComponent throws, the string wasn't
+// actually valid percent-encoding, so falling back to it trimmed as-is
+// is safe - isValidEmailAddress downstream still has the final say.
+function decodeAndCleanEmail(raw) {
+  try {
+    return decodeURIComponent(raw).trim();
+  } catch {
+    return raw.trim();
+  }
+}
+
 function findEmail(html) {
   // Prefer explicit mailto: links first - much more reliable than scanning
   // raw text, which turns up false positives from scripts/analytics tags.
   const mailtoMatches = html.match(/mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/gi);
   if (mailtoMatches) {
     for (const m of mailtoMatches) {
-      const email = m.replace(/^mailto:/i, "").split("?")[0];
+      const email = decodeAndCleanEmail(m.replace(/^mailto:/i, "").split("?")[0]);
       if (!NOISE_EMAIL_PATTERNS.some((p) => p.test(email))) return email;
     }
   }
@@ -78,7 +95,7 @@ function findEmail(html) {
   // Fall back to a plain-text scan of the visible HTML.
   const textMatches = html.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g);
   if (textMatches) {
-    const clean = textMatches.find((e) => !NOISE_EMAIL_PATTERNS.some((p) => p.test(e)));
+    const clean = textMatches.map(decodeAndCleanEmail).find((e) => !NOISE_EMAIL_PATTERNS.some((p) => p.test(e)));
     if (clean) return clean;
   }
 

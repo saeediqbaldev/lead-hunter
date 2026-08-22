@@ -7,7 +7,7 @@
 // syntax check on their end, not a deliverability/reputation issue, so
 // catching it before we ever hand the address to SMTP avoids the failure
 // (and the campaign-wide pause it triggers) entirely.
-const EMAIL_PATTERN = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+const EMAIL_PATTERN = /^[a-zA-Z0-9._+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
 function isValidEmailAddress(email) {
   if (!email || typeof email !== "string") return false;

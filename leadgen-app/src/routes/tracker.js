@@ -188,12 +188,45 @@ router.post("/emails/:id/clear-reply", (req, res) => {
 });
 
 // DELETE /api/tracker/emails/:id
+// Deletes a tracked email and everything that actually references it -
+// its open/click event log, any notifications generated from it, and
+// clears (not deletes) the campaign-lead row's reference to it. This is
+// done explicitly rather than relying on the schema's ON DELETE CASCADE
+// declarations, because SQLite only enforces foreign keys when
+// PRAGMA foreign_keys=ON is set per-connection - this app never sets
+// it, so those cascade declarations are inert and a plain DELETE FROM
+// tracked_emails alone leaves orphaned rows behind in every one of
+// those tables.
+function deleteTrackedEmailsCompletely(ids, userId) {
+  const placeholders = ids.map(() => "?").join(",");
+  const ownedIds = db
+    .prepare(`SELECT id FROM tracked_emails WHERE id IN (${placeholders}) AND user_id = ?`)
+    .all(...ids, userId)
+    .map((r) => r.id);
+  if (!ownedIds.length) return 0;
+
+  const ownedPlaceholders = ownedIds.map(() => "?").join(",");
+  const run = db.transaction(() => {
+    db.prepare(`DELETE FROM tracked_opens WHERE email_id IN (${ownedPlaceholders})`).run(...ownedIds);
+    db.prepare(`DELETE FROM tracked_clicks WHERE email_id IN (${ownedPlaceholders})`).run(...ownedIds);
+    db.prepare(`DELETE FROM tracked_notifications WHERE email_id IN (${ownedPlaceholders})`).run(...ownedIds);
+    // Clear the dangling reference rather than deleting the row itself -
+    // it's the campaign's own send/follow-up history, and removing it
+    // outright could make the scheduler think this lead was never
+    // contacted and send to them again.
+    db.prepare(`UPDATE email_campaign_leads SET tracked_email_id = NULL WHERE tracked_email_id IN (${ownedPlaceholders})`).run(...ownedIds);
+    const info = db.prepare(`DELETE FROM tracked_emails WHERE id IN (${ownedPlaceholders})`).run(...ownedIds);
+    return info.changes;
+  });
+  return run();
+}
+
 router.delete("/emails/:id", (req, res) => {
   const { id } = req.params;
   const userId = req.session.userId;
   try {
-    const info = db.prepare("DELETE FROM tracked_emails WHERE id = ? AND user_id = ?").run(id, userId);
-    if (info.changes === 0) return res.status(404).json({ error: "Not found" });
+    const deleted = deleteTrackedEmailsCompletely([id], userId);
+    if (deleted === 0) return res.status(404).json({ error: "Not found" });
     res.json({ ok: true, id });
   } catch (err) {
     console.error("Failed to delete email:", err);
@@ -208,9 +241,8 @@ router.post("/emails/bulk-delete", (req, res) => {
   if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "ids must be a non-empty array" });
 
   try {
-    const placeholders = ids.map(() => "?").join(",");
-    const info = db.prepare(`DELETE FROM tracked_emails WHERE id IN (${placeholders}) AND user_id = ?`).run(...ids, userId);
-    res.json({ ok: true, deleted: info.changes });
+    const deleted = deleteTrackedEmailsCompletely(ids, userId);
+    res.json({ ok: true, deleted });
   } catch (err) {
     console.error("Failed to bulk delete emails:", err);
     res.status(500).json({ error: "Failed to bulk delete emails" });

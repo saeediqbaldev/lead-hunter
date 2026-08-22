@@ -6,6 +6,38 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.66
+A real bug in your lead data, traced back to its source and fixed - and
+a genuine, complete delete feature for tracked emails, found to be less
+complete than it looked.
+
+- **Fixed the malformed-email bug from your screenshot**: traced
+  `%20%20info@rossclarkroofingayr.co.uk` back to the actual scraper
+  code - a source site's slightly broken `mailto:` link was passing a
+  URL-encoded artifact straight through as if it were part of the
+  address. The fix decodes it first, which recovers the real, clean,
+  deliverable address instead of either sending the broken one or
+  losing what's otherwise a good lead. Verified against the exact case
+  from your screenshot, plus a normal mailto link, a genuinely broken
+  percent-sequence, and confirmed the validation layer now rejects any
+  raw artifact that reaches it undecoded.
+- **Delete now actually deletes everything.** A bulk-delete existed
+  already but was hidden until a row got checked - easy to miss. More
+  importantly: this app never turns on SQLite's foreign key
+  enforcement, so despite the schema declaring cascading deletes, they
+  were never actually enforced - every past delete left orphaned
+  open/click/notification records behind, even though the
+  confirmation message claimed otherwise. Fixed to genuinely remove
+  everything, verified directly: seeded a fully-linked email with
+  opens, clicks, and a notification, deleted it, confirmed nothing was
+  left behind anywhere.
+- **Added a visible per-row delete button** so a single email can be
+  removed without selecting a checkbox first.
+- **Caught and fixed one more bug along the way**: the new delete
+  button wasn't refreshing the summary stat cards afterward, only the
+  table rows - so counts could look stale immediately after a delete.
+  Found by actually checking a screenshot, not by assuming it worked.
+
 ## What's in this V15.65
 Cities and state/province borders removed, and the underlying hover
 interaction on the globe rebuilt to actually be smooth - not just

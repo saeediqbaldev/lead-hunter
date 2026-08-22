@@ -1829,6 +1829,11 @@ a.site-generate-btn { color: #1a1310; }
 .contacted-status-pill.opened { background: rgba(232,162,61,0.15); color: var(--warn); }
 .contacted-status-pill.clicked { background: rgba(46,166,110,0.15); color: var(--good); }
 
+.contacted-row-delete-btn {
+  background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px 6px; border-radius: 6px; font-size: 14px; transition: color 0.15s, background 0.15s;
+}
+.contacted-row-delete-btn:hover { color: var(--danger); background: rgba(217,93,93,0.12); }
+
 .contacted-detail-panel {
   position: fixed; top: 0; right: 0; width: 420px; max-width: 92vw; height: 100vh; background: var(--panel);
   border-left: 1px solid var(--border); box-shadow: -12px 0 32px rgba(0,0,0,0.3); z-index: 200; overflow-y: auto;

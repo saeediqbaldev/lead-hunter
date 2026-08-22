@@ -1,6 +1,6 @@
 // Bump this on every meaningful change - shown in the topbar and console so
 // you can immediately confirm the browser is running the build you just deployed.
-const APP_VERSION = "2026.08.22-15.65";
+const APP_VERSION = "2026.08.22-15.66";
 
 // Every email provider section (Hostinger, Gmail, Bluehost/Titan) shares
 // the same Tracking/History/Alerts/Reports/Campaigns/Setup views, keyed
@@ -1139,7 +1139,7 @@ async function renderContactedTable() {
   const tbody = document.getElementById("contactedTableBody");
 
   if (!data.emails.length) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--text-muted); padding:24px;">No tracked emails yet - send one with the extension's Track toggle on.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:var(--text-muted); padding:24px;">No tracked emails yet - send one with the extension's Track toggle on.</td></tr>`;
     updateGenericPagination("contactedTracking", 0, 0);
     return;
   }
@@ -1156,6 +1156,7 @@ async function renderContactedTable() {
       <td>${email.open_count}</td>
       <td>${email.click_count}</td>
       <td>${formatContactedTimestamp(email.created_at)}</td>
+      <td><button type="button" class="contacted-row-delete-btn" data-email-id="${email.id}" title="Delete this tracked email" onclick="event.stopPropagation(); deleteContactedEmail('${email.id}')"><i class="bi bi-trash3"></i></button></td>
     </tr>`
     )
     .join("");
@@ -1165,6 +1166,14 @@ async function renderContactedTable() {
   });
   updateContactedBulkDeleteVisibility();
   updateGenericPagination("contactedTracking", data.total, CONTACTED_PAGE_SIZE);
+}
+
+async function deleteContactedEmail(id) {
+  const confirmed = await openModal({ title: "Delete this tracked email?", message: "This also deletes its open/click history. This cannot be undone.", confirmText: "Delete", danger: true });
+  if (!confirmed) return;
+  await api(`/api/tracker/emails/${id}`, { method: "DELETE" });
+  showToast("Deleted", "success");
+  loadContactedTracking();
 }
 
 function updateContactedBulkDeleteVisibility() {
