@@ -33,7 +33,7 @@ function cssVar(name, fallback) {
 // Borders are stroked after every country is filled, deliberately more
 // prominent than the city marker styling below - establishes the same
 // visual hierarchy (country outline >> city dot) the flat map uses.
-function buildGlobeTexture(geojson, statsByName) {
+function buildGlobeTexture(geojson, statsByName, densityActive) {
   const canvas = document.createElement("canvas");
   canvas.width = 4096;
   canvas.height = 2048;
@@ -42,7 +42,6 @@ function buildGlobeTexture(geojson, statsByName) {
   const oceanColor = cssVar("--panel-raised", "#221e1a");
   const landColor = cssVar("--border", "#33302a");
   const huntedColor = cssVar("--accent", "#ff6a3d");
-  const borderColor = cssVar("--map-border-color", "#ffffff");
   const graticuleColor = cssVar("--text-muted", "#948d80");
 
   ctx.fillStyle = oceanColor;
@@ -65,11 +64,8 @@ function buildGlobeTexture(geojson, statsByName) {
     const isHunted = !!statsByName[feature.properties.name];
     ctx.beginPath();
     path(feature);
-    ctx.fillStyle = isHunted ? huntedColor : landColor;
+    ctx.fillStyle = isHunted && !densityActive ? huntedColor : landColor;
     ctx.fill();
-    ctx.lineWidth = 1.75;
-    ctx.strokeStyle = borderColor;
-    ctx.stroke();
   });
 
   return canvas;
@@ -104,6 +100,72 @@ let currentGeojson, currentStatsByName, currentCities, onHoverCb, onCityHoverCb,
 let resizeObserver;
 let cityMarkers = []; // [{ mesh, city }]
 let cityMarkerGeometry, cityMarkerMaterial;
+
+let borderLines = null;
+let stateBorderLines = null;
+
+function buildCountryBorderLines(geojson) {
+  const positions = [];
+
+  function addRing(ring) {
+    for (let i = 0; i < ring.length; i++) {
+      const [lon1, lat1] = ring[i];
+      const [lon2, lat2] = ring[(i + 1) % ring.length];
+      const p1 = latLonToXYZ(lat1, lon1, 1.003);
+      const p2 = latLonToXYZ(lat2, lon2, 1.003);
+      positions.push(p1.x, p1.y, p1.z, p2.x, p2.y, p2.z);
+    }
+  }
+
+  geojson.features.forEach((feature) => {
+    const geom = feature.geometry;
+    if (!geom) return;
+    if (geom.type === "Polygon") {
+      geom.coordinates.forEach(addRing);
+    } else if (geom.type === "MultiPolygon") {
+      geom.coordinates.forEach((polygon) => polygon.forEach(addRing));
+    }
+  });
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  const material = new THREE.LineBasicMaterial({ color: cssVar("--map-border-color", "#ffffff") });
+  return new THREE.LineSegments(geometry, material);
+}
+
+// Same line-segment technique as country borders, but deliberately
+// lower opacity - WebGL doesn't reliably support variable line width
+// across platforms (most browsers ignore linewidth > 1), so opacity is
+// the reliable way to keep state borders visually subordinate to
+// country borders, sitting fractionally further out to avoid z-fighting.
+function buildStateBorderLines(statesGeojson) {
+  const positions = [];
+
+  function addRing(ring) {
+    for (let i = 0; i < ring.length; i++) {
+      const [lon1, lat1] = ring[i];
+      const [lon2, lat2] = ring[(i + 1) % ring.length];
+      const p1 = latLonToXYZ(lat1, lon1, 1.004);
+      const p2 = latLonToXYZ(lat2, lon2, 1.004);
+      positions.push(p1.x, p1.y, p1.z, p2.x, p2.y, p2.z);
+    }
+  }
+
+  statesGeojson.features.forEach((feature) => {
+    const geom = feature.geometry;
+    if (!geom) return;
+    if (geom.type === "Polygon") {
+      geom.coordinates.forEach(addRing);
+    } else if (geom.type === "MultiPolygon") {
+      geom.coordinates.forEach((polygon) => polygon.forEach(addRing));
+    }
+  });
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  const material = new THREE.LineBasicMaterial({ color: cssVar("--map-border-color", "#ffffff"), transparent: true, opacity: 0.4 });
+  return new THREE.LineSegments(geometry, material);
+}
 
 function buildCityMarkers(cities) {
   cityMarkers.forEach((m) => globeMesh.remove(m.mesh));
@@ -152,13 +214,16 @@ function setDensityDots(cities, active) {
   cities
     .filter((c) => c.lat != null && c.lng != null)
     .forEach((city) => {
-      const dotCount = Math.min(24, Math.ceil(city.leadsScraped / 2));
+      const dotCount = Math.min(140, Math.max(6, city.leadsScraped));
       const rand = seededRandom(city.catchLogId * 7919);
       for (let i = 0; i < dotCount; i++) {
-        // Small offsets in lat/lon degrees - a reasonable approximation
-        // of a local tangent-plane scatter for offsets this small.
-        const offsetLat = city.lat + (rand() - 0.5) * 3;
-        const offsetLon = city.lng + (rand() - 0.5) * 3;
+        const angle = rand() * Math.PI * 2;
+        // Center-biased (sqrt of a uniform random) for an organic
+        // stippled-area look rather than a hard-edged ring, matching
+        // the same technique the flat map uses.
+        const dist = Math.sqrt(rand()) * 3.2; // degrees
+        const offsetLat = city.lat + Math.sin(angle) * dist;
+        const offsetLon = city.lng + Math.cos(angle) * dist;
         const mesh = new THREE.Mesh(densityDotGeometry, densityDotMaterial);
         mesh.position.copy(latLonToXYZ(offsetLat, offsetLon, 1.008));
         globeMesh.add(mesh);
@@ -167,7 +232,7 @@ function setDensityDots(cities, active) {
     });
 }
 
-function initGlobe(container, geojson, statsByName, cities, { onHover, onCityHover, onCountryEmptyHover, onLeave } = {}) {
+function initGlobe(container, geojson, statesGeojson, statsByName, cities, { onHover, onCityHover, onCountryEmptyHover, onLeave } = {}) {
   currentGeojson = geojson;
   currentStatsByName = statsByName;
   currentCities = cities;
@@ -189,7 +254,7 @@ function initGlobe(container, geojson, statsByName, cities, { onHover, onCityHov
   container.innerHTML = "";
   container.appendChild(renderer.domElement);
 
-  const texture = new THREE.CanvasTexture(buildGlobeTexture(geojson, statsByName));
+  const texture = new THREE.CanvasTexture(buildGlobeTexture(geojson, statsByName, false));
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
   texture.needsUpdate = true;
@@ -207,6 +272,14 @@ function initGlobe(container, geojson, statsByName, cities, { onHover, onCityHov
   const keyLight = new THREE.DirectionalLight(0xffffff, 1.1);
   keyLight.position.set(3, 2, 4);
   scene.add(keyLight);
+
+  borderLines = buildCountryBorderLines(geojson);
+  globeMesh.add(borderLines);
+
+  if (statesGeojson) {
+    stateBorderLines = buildStateBorderLines(statesGeojson);
+    globeMesh.add(stateBorderLines);
+  }
 
   buildCityMarkers(cities);
 
@@ -304,6 +377,8 @@ function initGlobe(container, geojson, statsByName, cities, { onHover, onCityHov
     },
     setDensityFilter(active) {
       setDensityDots(currentCities || [], active);
+      texture.image = buildGlobeTexture(currentGeojson, currentStatsByName, active);
+      texture.needsUpdate = true;
     },
     destroy() {
       cancelAnimationFrame(animationId);
@@ -315,6 +390,16 @@ function initGlobe(container, geojson, statsByName, cities, { onHover, onCityHov
       geometry.dispose();
       material.dispose();
       texture.dispose();
+      if (borderLines) {
+        borderLines.geometry.dispose();
+        borderLines.material.dispose();
+        borderLines = null;
+      }
+      if (stateBorderLines) {
+        stateBorderLines.geometry.dispose();
+        stateBorderLines.material.dispose();
+        stateBorderLines = null;
+      }
       if (cityMarkerGeometry) cityMarkerGeometry.dispose();
       if (cityMarkerMaterial) cityMarkerMaterial.dispose();
       cityMarkerGeometry = null;

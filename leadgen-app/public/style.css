@@ -647,7 +647,9 @@ body {
    highlighted country visibly responds without needing the tooltip to
    already be open. */
 .map-country { stroke: var(--map-border-color); stroke-width: 0.5; vector-effect: non-scaling-stroke; fill: var(--border); transition: fill 0.15s; cursor: pointer; }
+.map-state-border { fill: none; stroke: var(--map-border-color); stroke-width: 0.25; vector-effect: non-scaling-stroke; opacity: 0.45; pointer-events: none; }
 .map-country.hunted { fill: color-mix(in srgb, var(--accent) 75%, var(--border)); }
+.map-overview-svg.density-mode .map-country.hunted { fill: var(--border); }
 .map-country.hunted:hover { fill: var(--accent); }
 
 /* City markers - deliberately subtler border than country borders above,

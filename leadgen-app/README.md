@@ -6,6 +6,32 @@ GMB optimization, local SEO, etc.), and gives you a board to shortlist and
 track them. Capped at 100 new leads/day by default to stay inside Google's
 free API quota.
 
+## What's in this V15.64
+State and province borders, worldwide, on both map views - the piece
+that took real, honest effort to source properly.
+
+- **Found a working, properly-licensed source** after the previous
+  round's dataset turned out to be technically unreachable (Git LFS
+  blocked every access path available). This one - Natural Earth's own
+  1:10m data, redistributed as plain GeoJSON - is CC0: public domain,
+  no attribution even legally required. Verified directly before using
+  it: 4,594 features across 241 countries, Germany's real 16 states,
+  the US's real 51, checked by name.
+- **Shrank it from 63MB to about 1MB** without losing any of it -
+  stripped down to only the 3 properties actually needed, then properly
+  simplified with mapshaper. Verified the full feature count and
+  Germany's states were still intact after each transformation step,
+  not just trusting that the file got smaller.
+- **Built for both views**: real vector line geometry on the 3D globe
+  (not a flatter, blurrier texture-based approach), and matching SVG
+  paths on the flat map - both deliberately thinner and less prominent
+  than country borders, as asked. Confirmed nothing existing broke:
+  countries, city markers, and hover all still verified working
+  afterward.
+- Also added a short attribution note in the code pointing back to the
+  source, even though the license doesn't require it - similar to how
+  the country-level basemap is documented.
+
 ## What's in this V15.63
 Three of your four requests, verified in a real browser. The fourth
 (city/state borders) needed real, honest investigation before I could
